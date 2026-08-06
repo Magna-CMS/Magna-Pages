@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\PageRenderer;
 use Magna\Pages\Routing\PageRouteResolver;
+use Magna\Pages\Routing\RedirectManager;
 
 /**
  * Public page controller — the fallback route for every URL nothing else
@@ -19,6 +20,7 @@ final class PageController
     public function __construct(
         private readonly PageRouteResolver $resolver,
         private readonly PageRenderer $renderer,
+        private readonly RedirectManager $redirects,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -39,6 +41,15 @@ final class PageController
         $entry = $this->resolver->resolve($request->path(), $settings);
 
         if ($entry === null) {
+            // A live page always wins over a redirect; redirects only fire
+            // for paths nothing resolves anymore.
+            $redirect = $this->redirects->forPath($request->path());
+            if ($redirect !== null) {
+                return response('', $redirect->status, [
+                    'Location' => url('/'.ltrim($redirect->target_path, '/')),
+                ]);
+            }
+
             $notFoundPage = $this->resolver->notFoundPage($settings);
 
             return response(

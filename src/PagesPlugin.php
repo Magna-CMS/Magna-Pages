@@ -6,9 +6,11 @@ namespace Magna\Pages;
 
 use Magna\Admin\Nav\NavGroup;
 use Magna\Admin\Nav\NavItem;
+use Magna\Content\Entry;
 use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersSettingsPages;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
+use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Plugins\Plugin;
 
 /**
@@ -30,6 +32,12 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersS
     public function boot(): void
     {
         $this->loadViewsFrom('resources/views', 'magna-pages');
+
+        // Auto-301 on page slug renames. The `updating` model event is the
+        // one point where old AND new slug are both visible.
+        Entry::updating(function (Entry $entry): void {
+            app(RecordSlugRenameRedirect::class)->handle($entry);
+        });
     }
 
     public function adminNavigation(): NavGroup
