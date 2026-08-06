@@ -17,7 +17,7 @@
             "type": "slug",
             "label": "Slug",
             "localizable": true,
-            "source": "title"
+            "from": "title"
         },
         {
             "handle": "template",

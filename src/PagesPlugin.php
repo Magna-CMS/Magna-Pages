@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Magna\Pages;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Magna\Admin\Nav\NavGroup;
 use Magna\Admin\Nav\NavItem;
@@ -87,6 +88,19 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             Event::listen($event, function (object $e): void {
                 app(PurgePageCache::class)->handleEntryEvent($e);
             });
+        }
+
+        // Expired pages_cache rows are dead weight after their TTL — sweep
+        // hourly. Same deferred-Schedule pattern as core's prune commands
+        // (a plugin is not a ServiceProvider, so the callAfterResolving
+        // helper is spelled out here): no-op unless the scheduler runs.
+        $wire = function (Schedule $schedule): void {
+            $schedule->command('magna:pages:cache-prune')->hourly();
+        };
+        if (app()->resolved(Schedule::class)) {
+            $wire(app(Schedule::class));
+        } else {
+            app()->afterResolving(Schedule::class, $wire);
         }
     }
 

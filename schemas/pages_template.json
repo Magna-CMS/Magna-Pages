@@ -15,7 +15,7 @@
             "handle": "slug",
             "type": "slug",
             "label": "Handle",
-            "source": "title",
+            "from": "title",
             "localizable": false
         },
         {
