@@ -47,13 +47,28 @@ final class PageRenderer
     public function render(Entry $page): string
     {
         $document = $page->getAttribute('blocks_data');
-        $tree = PageTree::fromArray(is_array($document) ? $document : []);
-
         $title = $page->getAttribute('title');
+
+        return $this->renderDocument(
+            is_array($document) ? $document : [],
+            is_string($title) ? $title : '',
+        );
+    }
+
+    /**
+     * Render a raw block document through the full themed pipeline — used
+     * for stored pages AND for unsaved editor state (live preview), so the
+     * preview is byte-identical to what publishing would produce.
+     *
+     * @param  array<mixed, mixed>  $document
+     */
+    public function renderDocument(array $document, string $title): string
+    {
+        $tree = PageTree::fromArray($document);
         $siteName = GeneralSettings::get()->site_name;
 
         return view($this->themeViews->layoutView(), [
-            'title' => is_string($title) ? $title : '',
+            'title' => $title,
             'siteName' => is_string($siteName) && $siteName !== '' ? $siteName : 'Magna',
             'headerMenu' => $this->menus->resolve(self::HEADER_MENU_HANDLE),
             'tree' => $tree,

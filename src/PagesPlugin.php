@@ -7,6 +7,7 @@ namespace Magna\Pages;
 use Magna\Admin\Nav\NavGroup;
 use Magna\Admin\Nav\NavItem;
 use Magna\Blocks\BlockDefinition;
+use Magna\Blocks\Contracts\ProvidesDocumentPreview;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Contracts\RegistersAdminNavigation;
@@ -53,6 +54,10 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // Dynamic data for the nav block flows through the shared resolve
         // seam, same as the core entries/text resolvers.
         app(BlockDataResolver::class)->register(app(NavBlockResolver::class));
+
+        // Light up the core block editor's live-preview pane (§E1 contract
+        // seam — core shows the pane only when this binding exists).
+        app()->singleton(ProvidesDocumentPreview::class, ThemedDocumentPreview::class);
     }
 
     /** @return list<BlockDefinition> */
