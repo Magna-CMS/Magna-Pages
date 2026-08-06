@@ -8,8 +8,10 @@ use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
+use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\Themes\ThemeTokens;
 use Magna\Pages\Themes\ThemeViewResolver;
+use Magna\Settings\GeneralSettings;
 
 /**
  * Renders a page entry's block document to public HTML.
@@ -27,11 +29,19 @@ use Magna\Pages\Themes\ThemeViewResolver;
  */
 final class PageRenderer
 {
+    /**
+     * The menu handle theme layouts render in their header until template
+     * parts land — a site convention, resolved HERE so theme views stay
+     * logic-free (views receive data; they never query).
+     */
+    private const HEADER_MENU_HANDLE = 'primary';
+
     public function __construct(
         private readonly BlockRegistry $registry,
         private readonly BlockDataResolver $resolver,
         private readonly ThemeViewResolver $themeViews,
         private readonly ThemeTokens $tokens,
+        private readonly MenuManager $menus,
     ) {}
 
     public function render(Entry $page): string
@@ -40,9 +50,12 @@ final class PageRenderer
         $tree = PageTree::fromArray(is_array($document) ? $document : []);
 
         $title = $page->getAttribute('title');
+        $siteName = GeneralSettings::get()->site_name;
 
         return view($this->themeViews->layoutView(), [
             'title' => is_string($title) ? $title : '',
+            'siteName' => is_string($siteName) && $siteName !== '' ? $siteName : 'Magna',
+            'headerMenu' => $this->menus->resolve(self::HEADER_MENU_HANDLE),
             'tree' => $tree,
             'registry' => $this->registry,
             'resolver' => $this->resolver,
