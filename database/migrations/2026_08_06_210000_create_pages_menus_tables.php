@@ -50,7 +50,7 @@ return new class extends Migration
             $table->foreignUlid('menu_id')->constrained('pages_menus')->onDelete('cascade');
             $table->json('payload');
             $table->char('author_id', 26)->nullable();
-            $table->timestamp('created_at');
+            $table->timestamp('created_at')->useCurrent();
         });
     }
 
