@@ -6,6 +6,7 @@ namespace Magna\Pages\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Magna\Pages\Cache\PageCache;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\PageRenderer;
 use Magna\Pages\Routing\PageRouteResolver;
@@ -21,6 +22,7 @@ final class PageController
         private readonly PageRouteResolver $resolver,
         private readonly PageRenderer $renderer,
         private readonly RedirectManager $redirects,
+        private readonly PageCache $cache,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -36,6 +38,21 @@ final class PageController
                 503,
                 ['Content-Type' => 'text/html; charset=utf-8', 'Retry-After' => '600'],
             );
+        }
+
+        // Shared page cache: guest GETs without query strings only — per-user
+        // or parameterized responses never enter the shared cache.
+        $cacheable = $request->user() === null && $request->query() === [];
+        $cacheUrl = '/'.trim($request->path(), '/');
+
+        if ($cacheable) {
+            $hit = $this->cache->get($cacheUrl);
+            if ($hit !== null) {
+                return response($hit, 200, [
+                    'Content-Type' => 'text/html; charset=utf-8',
+                    'X-Magna-Cache' => 'hit',
+                ]);
+            }
         }
 
         $entry = $this->resolver->resolve($request->path(), $settings);
@@ -61,10 +78,19 @@ final class PageController
             );
         }
 
-        return response(
-            $this->renderer->render($entry),
-            200,
-            ['Content-Type' => 'text/html; charset=utf-8'],
-        );
+        $html = $this->renderer->render($entry);
+
+        if ($cacheable) {
+            $entryKey = $entry->getKey();
+            $this->cache->put($cacheUrl, $html, [
+                'page:'.(is_string($entryKey) ? $entryKey : ''),
+                'site:pages',
+            ]);
+        }
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=utf-8',
+            'X-Magna-Cache' => $cacheable ? 'miss' : 'bypass',
+        ]);
     }
 }

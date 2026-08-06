@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Magna\Pages\Listeners;
 
 use Magna\Content\Entry;
+use Magna\Pages\Cache\PageCache;
 use Magna\Pages\Routing\RedirectManager;
 
 /**
@@ -18,7 +19,10 @@ use Magna\Pages\Routing\RedirectManager;
  */
 class RecordSlugRenameRedirect
 {
-    public function __construct(private readonly RedirectManager $redirects) {}
+    public function __construct(
+        private readonly RedirectManager $redirects,
+        private readonly PageCache $cache,
+    ) {}
 
     public function handle(Entry $entry): void
     {
@@ -40,5 +44,9 @@ class RecordSlugRenameRedirect
         $locale = $entry->getOriginal('locale');
 
         $this->redirects->recordSlugChange($old, $new, is_string($locale) ? $locale : '');
+
+        // A renamed slug changes this page's URL everywhere it is linked
+        // (nav blocks, header menus) — sitewide blast radius, full flush.
+        $this->cache->flush();
     }
 }

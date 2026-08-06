@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
+use Magna\Pages\Cache\PageCache;
 
 /**
  * Menu lifecycle + resolution.
@@ -54,6 +55,9 @@ class MenuManager
                 'created_at' => now(),
             ]);
         });
+
+        // Menus render on every page (header nav) — sitewide blast radius.
+        app(PageCache::class)->flush();
     }
 
     /**

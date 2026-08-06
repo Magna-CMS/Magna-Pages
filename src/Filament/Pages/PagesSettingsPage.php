@@ -15,6 +15,7 @@ use Filament\Schemas\Schema;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
+use Magna\Pages\Cache\PageCache;
 use Magna\Pages\PagesSettings;
 use Magna\Settings\SettingsRepository;
 
@@ -102,6 +103,9 @@ class PagesSettingsPage extends Page implements HasForms
         $settings->maintenance_mode = (bool) ($this->data['maintenance_mode'] ?? false);
 
         app(SettingsRepository::class)->persist($settings);
+
+        // Home page / 404 / maintenance affect routing sitewide.
+        app(PageCache::class)->flush();
 
         Notification::make()->title('Site settings saved')->success()->send();
     }

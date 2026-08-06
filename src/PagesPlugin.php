@@ -4,15 +4,21 @@ declare(strict_types=1);
 
 namespace Magna\Pages;
 
+use Illuminate\Support\Facades\Event;
 use Magna\Admin\Nav\NavGroup;
 use Magna\Admin\Nav\NavItem;
 use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\Contracts\ProvidesDocumentPreview;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
+use Magna\Content\Events\EntryDeleted;
+use Magna\Content\Events\EntryPublished;
+use Magna\Content\Events\EntryUnpublished;
+use Magna\Content\Events\EntryUpdated;
 use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersSettingsPages;
+use Magna\Pages\Cache\PurgePageCache;
 use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
@@ -58,6 +64,18 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // Light up the core block editor's live-preview pane (§E1 contract
         // seam — core shows the pane only when this binding exists).
         app()->singleton(ProvidesDocumentPreview::class, ThemedDocumentPreview::class);
+
+        // Page-cache invalidation: content edits purge exactly that page.
+        foreach ([
+            EntryUpdated::class,
+            EntryPublished::class,
+            EntryUnpublished::class,
+            EntryDeleted::class,
+        ] as $event) {
+            Event::listen($event, function (object $e): void {
+                app(PurgePageCache::class)->handleEntryEvent($e);
+            });
+        }
     }
 
     /** @return list<BlockDefinition> */
