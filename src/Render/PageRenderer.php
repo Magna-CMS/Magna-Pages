@@ -8,6 +8,8 @@ use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
+use Magna\Pages\Themes\ThemeTokens;
+use Magna\Pages\Themes\ThemeViewResolver;
 
 /**
  * Renders a page entry's block document to public HTML.
@@ -28,6 +30,8 @@ final class PageRenderer
     public function __construct(
         private readonly BlockRegistry $registry,
         private readonly BlockDataResolver $resolver,
+        private readonly ThemeViewResolver $themeViews,
+        private readonly ThemeTokens $tokens,
     ) {}
 
     public function render(Entry $page): string
@@ -37,11 +41,13 @@ final class PageRenderer
 
         $title = $page->getAttribute('title');
 
-        return view('magna-pages::page', [
+        return view($this->themeViews->layoutView(), [
             'title' => is_string($title) ? $title : '',
             'tree' => $tree,
             'registry' => $this->registry,
             'resolver' => $this->resolver,
+            'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
+            'tokensCss' => $this->tokens->rootCss(),
         ])->render();
     }
 }
