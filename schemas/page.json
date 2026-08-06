@@ -3,6 +3,7 @@
     "displayName": "Page",
     "localizable": true,
     "draftable": true,
+    "hierarchical": true,
     "fields": [
         {
             "handle": "title",

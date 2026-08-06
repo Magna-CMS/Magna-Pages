@@ -163,9 +163,11 @@ class MenuManager
             ->where('status', EntryStatus::Published->value)
             ->get() as $entry) {
             $id = $entry->getKey();
+            $path = $entry->getAttribute('path');
             $slug = $entry->getAttribute('slug');
-            if (is_string($id) && is_string($slug) && $slug !== '') {
-                $urls[$id] = '/'.$slug;
+            $segment = is_string($path) && $path !== '' ? $path : (is_string($slug) ? $slug : '');
+            if (is_string($id) && $segment !== '') {
+                $urls[$id] = '/'.$segment;
             }
         }
 

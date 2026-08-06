@@ -34,14 +34,25 @@ final class PageRouteResolver
             return $this->publishedById($settings->home_page_id);
         }
 
-        // Single-segment slugs only for now; nested paths resolve once the
-        // page hierarchy (parent/materialized path) ships.
+        // Materialized path first (nested URLs, one indexed read); slug as
+        // the fallback for rows created before the hierarchy backfill.
+        /** @var Entry|null $entry */
+        $entry = Entry::type('page')
+            ->where('path', $path)
+            ->where('status', EntryStatus::Published->value)
+            ->first();
+
+        if ($entry !== null) {
+            return $entry;
+        }
+
         if (str_contains($path, '/')) {
             return null;
         }
 
         /** @var Entry|null $entry */
         $entry = Entry::type('page')
+            ->whereNull('path')
             ->where('slug', $path)
             ->where('status', EntryStatus::Published->value)
             ->first();

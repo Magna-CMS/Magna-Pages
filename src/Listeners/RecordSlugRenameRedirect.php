@@ -30,12 +30,16 @@ class RecordSlugRenameRedirect
             return;
         }
 
-        if (! $entry->isDirty('slug')) {
+        // The materialized path IS the URL: it changes on slug renames AND
+        // on moves under a different parent — and the descendant cascade
+        // saves each moved child through this same listener, so a whole
+        // subtree rename records a 301 per moved URL.
+        if (! $entry->isDirty('path')) {
             return;
         }
 
-        $old = $entry->getOriginal('slug');
-        $new = $entry->getAttribute('slug');
+        $old = $entry->getOriginal('path');
+        $new = $entry->getAttribute('path');
 
         if (! is_string($old) || ! is_string($new)) {
             return;
@@ -45,8 +49,8 @@ class RecordSlugRenameRedirect
 
         $this->redirects->recordSlugChange($old, $new, is_string($locale) ? $locale : '');
 
-        // A renamed slug changes this page's URL everywhere it is linked
-        // (nav blocks, header menus) — sitewide blast radius, full flush.
+        // A moved URL may be linked from anywhere (nav blocks, header
+        // menus) — sitewide blast radius, full flush.
         $this->cache->flush();
     }
 }
