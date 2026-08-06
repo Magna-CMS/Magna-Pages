@@ -6,11 +6,16 @@ namespace Magna\Pages;
 
 use Magna\Admin\Nav\NavGroup;
 use Magna\Admin\Nav\NavItem;
+use Magna\Blocks\BlockDefinition;
+use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Contracts\RegistersAdminNavigation;
+use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersSettingsPages;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
+use Magna\Pages\Menus\MenuOptions;
+use Magna\Pages\Menus\NavBlockResolver;
 use Magna\Plugins\Plugin;
 
 /**
@@ -27,17 +32,48 @@ use Magna\Plugins\Plugin;
  * Routing, rendering, menus, and the builder land in the next Phase A items
  * on top of this skeleton.
  */
-class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersSettingsPages
+class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersSettingsPages
 {
     public function boot(): void
     {
         $this->loadViewsFrom('resources/views', 'magna-pages');
+
+        // Also expose this plugin's block views on the shared magna::
+        // namespace so the standard block-view resolution chain
+        // (theme::blocks.X → magna::blocks.X) finds them.
+        $this->loadViewsFrom('resources/views', 'magna');
 
         // Auto-301 on page slug renames. The `updating` model event is the
         // one point where old AND new slug are both visible.
         Entry::updating(function (Entry $entry): void {
             app(RecordSlugRenameRedirect::class)->handle($entry);
         });
+
+        // Dynamic data for the nav block flows through the shared resolve
+        // seam, same as the core entries/text resolvers.
+        app(BlockDataResolver::class)->register(app(NavBlockResolver::class));
+    }
+
+    /** @return list<BlockDefinition> */
+    public function blocks(): array
+    {
+        return [
+            BlockDefinition::fromArray([
+                'handle' => 'nav',
+                'label' => 'Navigation',
+                'icon' => 'heroicon-o-bars-3',
+                'category' => 'site',
+                'fields' => [
+                    [
+                        'handle' => 'menu',
+                        'type' => 'select',
+                        'label' => 'Menu',
+                        'required' => true,
+                        'optionsFrom' => MenuOptions::class,
+                    ],
+                ],
+            ]),
+        ];
     }
 
     public function adminNavigation(): NavGroup
