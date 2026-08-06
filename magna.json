@@ -1,0 +1,29 @@
+{
+    "name": "magna/pages",
+    "displayName": "Magna Pages",
+    "description": "Turns a headless Magna install into a rendered website: pages, templates, menus, and the visual site builder.",
+    "version": "0.1.0",
+    "author": "Magna Team",
+    "license": "proprietary",
+    "compat": {
+        "magna": "^1.0",
+        "php": "^8.3"
+    },
+    "entry": "Magna\\Pages\\PagesPlugin",
+    "provides": {
+        "settingsPages": true,
+        "adminNavigation": true,
+        "contentTypes": ["page"]
+    },
+    "permissions": [
+        "pages.content",
+        "pages.layout",
+        "pages.design",
+        "pages.publish",
+        "pages.settings"
+    ],
+    "uninstall": {
+        "tables": ["magna_entries_page"],
+        "contentTypes": ["page"]
+    }
+}

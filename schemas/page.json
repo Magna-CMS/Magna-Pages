@@ -1,0 +1,34 @@
+{
+    "handle": "page",
+    "displayName": "Page",
+    "localizable": true,
+    "draftable": true,
+    "fields": [
+        {
+            "handle": "title",
+            "type": "text",
+            "label": "Title",
+            "required": true,
+            "localizable": true
+        },
+        {
+            "handle": "slug",
+            "type": "slug",
+            "label": "Slug",
+            "localizable": true,
+            "source": "title"
+        },
+        {
+            "handle": "template",
+            "type": "text",
+            "label": "Template",
+            "localizable": false
+        },
+        {
+            "handle": "blocks_data",
+            "type": "blocks",
+            "label": "Content",
+            "localizable": true
+        }
+    ]
+}
