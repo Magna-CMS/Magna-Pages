@@ -17,8 +17,11 @@ use Magna\Content\Events\EntryUnpublished;
 use Magna\Content\Events\EntryUpdated;
 use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
+use Magna\Contracts\RegistersCommands;
 use Magna\Contracts\RegistersSettingsPages;
 use Magna\Pages\Cache\PurgePageCache;
+use Magna\Pages\Console\InstallDemoCommand;
+use Magna\Pages\Console\PruneCacheCommand;
 use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
@@ -40,8 +43,17 @@ use Magna\Plugins\Plugin;
  * Routing, rendering, menus, and the builder land in the next Phase A items
  * on top of this skeleton.
  */
-class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersSettingsPages
+class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersCommands, RegistersSettingsPages
 {
+    /** @return list<class-string> */
+    public function commands(): array
+    {
+        return [
+            InstallDemoCommand::class,
+            PruneCacheCommand::class,
+        ];
+    }
+
     public function boot(): void
     {
         $this->loadViewsFrom('resources/views', 'magna-pages');
