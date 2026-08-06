@@ -23,9 +23,17 @@
 </head>
 <body>
 
+@if(!empty($headerPartHtml))
+    <header>{!! $headerPartHtml !!}</header>
+@endif
+
 <main>
     @include('magna-pages::partials.sections')
 </main>
+
+@if(!empty($footerPartHtml))
+    <footer>{!! $footerPartHtml !!}</footer>
+@endif
 
 </body>
 </html>

@@ -18,7 +18,19 @@ class PurgePageCache
     public function handleEntryEvent(object $event): void
     {
         $entry = property_exists($event, 'entry') ? $event->entry : null;
-        if (! $entry instanceof Entry || $entry->getHandle() !== 'page') {
+        if (! $entry instanceof Entry) {
+            return;
+        }
+
+        // Template parts (headers, footers, reusable sections) render on
+        // every page — their blast radius is the whole site.
+        if ($entry->getHandle() === 'pages_template') {
+            $this->cache->flush();
+
+            return;
+        }
+
+        if ($entry->getHandle() !== 'page') {
             return;
         }
 

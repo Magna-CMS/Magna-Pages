@@ -1,0 +1,37 @@
+{
+    "handle": "pages_template",
+    "displayName": "Template",
+    "localizable": true,
+    "draftable": true,
+    "fields": [
+        {
+            "handle": "title",
+            "type": "text",
+            "label": "Title",
+            "required": true,
+            "localizable": true
+        },
+        {
+            "handle": "slug",
+            "type": "slug",
+            "label": "Handle",
+            "source": "title",
+            "localizable": false
+        },
+        {
+            "handle": "kind",
+            "type": "select",
+            "label": "Kind",
+            "required": true,
+            "default": "part",
+            "options": ["part", "page", "collection", "popup", "system"],
+            "localizable": false
+        },
+        {
+            "handle": "blocks_data",
+            "type": "blocks",
+            "label": "Content",
+            "localizable": true
+        }
+    ]
+}

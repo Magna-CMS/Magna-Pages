@@ -9,6 +9,7 @@ use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Pages\Menus\MenuManager;
+use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
 use Magna\Pages\Themes\ThemeViewResolver;
 use Magna\Settings\GeneralSettings;
@@ -42,6 +43,7 @@ final class PageRenderer
         private readonly ThemeViewResolver $themeViews,
         private readonly ThemeTokens $tokens,
         private readonly MenuManager $menus,
+        private readonly TemplatePartResolver $parts,
     ) {}
 
     public function render(Entry $page): string
@@ -64,7 +66,9 @@ final class PageRenderer
      */
     public function renderDocument(array $document, string $title): string
     {
-        $tree = PageTree::fromArray($document);
+        // Ref sections splice their template part's sections in place
+        // before parsing — parts compose pages, never the reverse.
+        $tree = PageTree::fromArray($this->parts->expandRefs($document));
         $siteName = GeneralSettings::get()->site_name;
 
         return view($this->themeViews->layoutView(), [
@@ -76,6 +80,29 @@ final class PageRenderer
             'resolver' => $this->resolver,
             'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
             'tokensCss' => $this->tokens->rootCss(),
+            // Site-designed header/footer parts (slugs "header"/"footer")
+            // replace a theme layout's built-in chrome when published.
+            'headerPartHtml' => $this->renderPart('header'),
+            'footerPartHtml' => $this->renderPart('footer'),
+        ])->render();
+    }
+
+    /**
+     * A template part rendered through the same section pipeline, or null
+     * when the part does not exist or is not published.
+     */
+    private function renderPart(string $handle): ?string
+    {
+        $tree = $this->parts->partTree($handle);
+        if ($tree === null || $tree->sections === []) {
+            return null;
+        }
+
+        return view('magna-pages::partials.sections', [
+            'tree' => $tree,
+            'registry' => $this->registry,
+            'resolver' => $this->resolver,
+            'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
         ])->render();
     }
 }

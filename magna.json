@@ -13,7 +13,7 @@
     "provides": {
         "settingsPages": true,
         "adminNavigation": true,
-        "contentTypes": ["page"]
+        "contentTypes": ["page", "pages_template"]
     },
     "permissions": [
         "pages.content",
@@ -23,7 +23,7 @@
         "pages.settings"
     ],
     "uninstall": {
-        "tables": ["magna_entries_page"],
-        "contentTypes": ["page"]
+        "tables": ["magna_entries_page", "magna_entries_pages_template"],
+        "contentTypes": ["page", "pages_template"]
     }
 }
