@@ -12,6 +12,7 @@ use Magna\Content\Entry;
 use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersSettingsPages;
+use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
@@ -79,6 +80,8 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
     public function adminNavigation(): NavGroup
     {
         return NavGroup::make('Site', icon: 'heroicon-o-globe-alt')->items([
+            NavItem::page('Menus', route: 'filament.admin.pages.pages-menus')
+                ->can('pages.settings'),
             NavItem::page('Site settings', route: 'filament.admin.pages.pages-settings')
                 ->can('pages.settings'),
         ]);
@@ -87,6 +90,8 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
     /** @return list<class-string> */
     public function settingsPages(): array
     {
-        return [PagesSettingsPage::class];
+        // First entry is what the Installed Plugins screen's "Settings"
+        // button links to — keep the settings page first.
+        return [PagesSettingsPage::class, MenusPage::class];
     }
 }
