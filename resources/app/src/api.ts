@@ -74,6 +74,9 @@ export function createApi(pageId: string, base = '/pages-builder') {
 
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
 
+        publish: (): Promise<{ status: string; published_at: string | null; url: string | null }> =>
+            request(`${base}/${pageId}/publish`, { method: 'POST' }),
+
         heartbeat: (): Promise<{ held: boolean }> =>
             request(`${base}/${pageId}/heartbeat`, { method: 'POST' }),
 

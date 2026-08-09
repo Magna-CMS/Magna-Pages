@@ -46,6 +46,7 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::post('/{id}/heartbeat', [BuilderApiController::class, 'heartbeat'])->name('pages.builder.heartbeat');
     Route::post('/{id}/take-over', [BuilderApiController::class, 'takeOver'])->name('pages.builder.take-over');
     Route::post('/{id}/release', [BuilderApiController::class, 'release'])->name('pages.builder.release');
+    Route::post('/{id}/publish', [BuilderApiController::class, 'publish'])->name('pages.builder.publish');
 });
 
 Route::fallback(PageController::class)->name('pages.web.show');

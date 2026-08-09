@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Magna\Blocks\BlockRegistry;
 use Magna\Content\Entry;
+use Magna\Content\EntryManager;
 use Magna\Pages\Builder\BuilderBootstrap;
 use Magna\Pages\Builder\DocumentEditor;
 use Magna\Pages\Builder\Exceptions\PatchException;
@@ -135,6 +136,33 @@ final class BuilderApiController
         $this->locks->takeOver((string) $entry->getKey(), $user);
 
         return response()->json(['lock' => $this->lockPayload($id, $user)]);
+    }
+
+    /**
+     * Publish the page from the builder. Its own permission (a content
+     * editor may draft all day without being allowed to ship), and its own
+     * lock check — publishing what somebody else is mid-edit is the same
+     * hazard as writing over them.
+     */
+    public function publish(Request $request, EntryManager $entries, string $id): JsonResponse
+    {
+        Gate::authorize('pages.publish');
+
+        $user = $this->actor($request);
+        if (! $this->locks->holds($id, $user)) {
+            return response()->json([
+                'message' => 'Another editor holds this document.',
+                'lock' => $this->lockPayload($id, $user),
+            ], 409);
+        }
+
+        $entry = $entries->publish($this->findPage($id), actorId: (string) $user->getKey());
+
+        return response()->json([
+            'status' => $entry->status->value,
+            'published_at' => $entry->published_at?->toIso8601String(),
+            'url' => $entry->path !== null ? url('/'.$entry->path) : null,
+        ]);
     }
 
     /** Give the lock up cleanly (the SPA calls this on close). */

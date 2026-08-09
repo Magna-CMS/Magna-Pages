@@ -297,6 +297,10 @@ function startHeartbeat() {
     }, 30_000)
 }
 
+async function onPublish() {
+    await store.publish(api)
+}
+
 async function onTakeOver() {
     await store.takeOver(api)
     reloadCanvas()
@@ -332,13 +336,17 @@ onBeforeUnmount(() => {
     <div class="builder" :class="{ 'is-saving': store.saving }">
         <BuilderTopBar
             :title="store.title"
+            :status="store.status"
+            :public-url="store.publicUrl"
             :saving="store.saving"
             :can-undo="store.canUndo"
             :can-redo="store.canRedo"
             :can-delete="store.selectedNode !== null && store.capabilities.structure"
+            :can-publish="store.capabilities.publish && store.lock.mine"
             @undo="onUndo"
             @redo="onRedo"
             @remove="onDelete"
+            @publish="onPublish"
         />
 
         <div v-if="!store.lock.mine && store.loaded" class="builder__lockbar" role="alert">

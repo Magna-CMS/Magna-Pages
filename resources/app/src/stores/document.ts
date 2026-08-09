@@ -45,6 +45,8 @@ interface HistoryEntry {
 interface State {
     pageId: string
     title: string
+    status: string
+    publicUrl: string | null
     blocks: BlockDocument
     registry: BlockDefinition[]
     tokens: Record<string, string>
@@ -62,6 +64,8 @@ export const useDocumentStore = defineStore('document', {
     state: (): State => ({
         pageId: '',
         title: '',
+        status: '',
+        publicUrl: null,
         blocks: [],
         registry: [],
         tokens: {},
@@ -91,12 +95,31 @@ export const useDocumentStore = defineStore('document', {
 
             this.pageId = payload.document.id
             this.title = payload.document.title
+            this.status = payload.document.status
             this.blocks = payload.document.blocks
             this.registry = payload.registry
             this.tokens = payload.tokens
             this.capabilities = payload.capabilities
             this.lock = payload.lock ?? { mine: true, holder: null }
             this.loaded = true
+        },
+
+        async publish(api: BuilderApi): Promise<boolean> {
+            this.error = null
+            this.saving = true
+            try {
+                const result = await api.publish()
+                this.status = result.status
+                this.publicUrl = result.url
+
+                return true
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            } finally {
+                this.saving = false
+            }
         },
 
         async takeOver(api: BuilderApi): Promise<void> {
