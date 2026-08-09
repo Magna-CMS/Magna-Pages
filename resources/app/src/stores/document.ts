@@ -9,6 +9,7 @@ import {
     moveNode,
     removeNode,
 } from '../document/edits'
+import { locate } from '../document/locate'
 import { applyPatch } from '../document/patch'
 import type {
     BlockDefinition,
@@ -42,11 +43,18 @@ interface HistoryEntry {
     redo: PatchOperation[]
 }
 
+export interface PatternSummary {
+    id: string
+    name: string
+    kind: string
+}
+
 interface State {
     pageId: string
     title: string
     status: string
     publicUrl: string | null
+    patterns: PatternSummary[]
     blocks: BlockDocument
     registry: BlockDefinition[]
     tokens: Record<string, string>
@@ -66,6 +74,7 @@ export const useDocumentStore = defineStore('document', {
         title: '',
         status: '',
         publicUrl: null,
+        patterns: [],
         blocks: [],
         registry: [],
         tokens: {},
@@ -102,6 +111,74 @@ export const useDocumentStore = defineStore('document', {
             this.capabilities = payload.capabilities
             this.lock = payload.lock ?? { mine: true, holder: null }
             this.loaded = true
+        },
+
+        async loadPatterns(api: BuilderApi): Promise<void> {
+            try {
+                this.patterns = (await api.patterns()).patterns
+            } catch {
+                // The library failing to list must not take the builder down.
+                this.patterns = []
+            }
+        },
+
+        /** Save the currently selected section or block as a pattern. */
+        async saveAsPattern(api: BuilderApi, name: string): Promise<boolean> {
+            if (!this.selectedNode) {
+                return false
+            }
+
+            const found = locate(this.blocks, this.selectedNode)
+            if (!found || found.kind === 'column') {
+                this.error = 'Select a section or a block to save as a pattern.'
+
+                return false
+            }
+
+            this.error = null
+            try {
+                await api.savePattern(name, found.kind, found.node)
+                await this.loadPatterns(api)
+
+                return true
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            }
+        },
+
+        /** Insert a pattern instance: sections append, blocks join a column. */
+        async insertPattern(
+            api: BuilderApi,
+            patternId: string,
+            targetColumn: string | null,
+        ): Promise<boolean> {
+            this.error = null
+
+            let instance: { kind: string; node: Record<string, unknown> }
+            try {
+                instance = await api.patternInstance(patternId)
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            }
+
+            const operations =
+                instance.kind === 'section'
+                    ? appendSection(this.blocks, instance.node as never)
+                    : targetColumn !== null
+                      ? insertBlock(this.blocks, targetColumn, instance.node as never)
+                      : null
+
+            if (!operations) {
+                this.error = 'Select a column to place this block pattern in.'
+
+                return false
+            }
+
+            return this.edit(api, 'Insert pattern', operations)
         },
 
         async publish(api: BuilderApi): Promise<boolean> {

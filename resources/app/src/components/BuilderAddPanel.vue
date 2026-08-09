@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import type { PatternSummary } from '../stores/document'
 import type { BlockDefinition, Capabilities, SectionNode } from '../document/types'
 
 /**
@@ -18,9 +19,10 @@ const props = defineProps<{
     sections: SectionNode[]
     targetColumn: string | null
     capabilities: Capabilities
+    patterns: PatternSummary[]
 }>()
 
-defineEmits<{ add: [handle: string]; addSection: [] }>()
+defineEmits<{ add: [handle: string]; addSection: []; insertPattern: [id: string, kind: string] }>()
 
 const categories = computed(() => {
     const groups = new Map<string, BlockDefinition[]>()
@@ -64,6 +66,28 @@ function blocked(definition: BlockDefinition): string | null {
         <p v-if="!canPlace && capabilities.structure" class="add__hint">
             Select a column to place a block in.
         </p>
+
+        <div v-if="patterns.length > 0" class="add__group">
+            <h3 class="add__category">My library</h3>
+
+            <ul class="add__list">
+                <li v-for="pattern in patterns" :key="pattern.id">
+                    <button
+                        type="button"
+                        class="add__block"
+                        :disabled="
+                            !capabilities.structure ||
+                            (pattern.kind === 'block' && targetColumn === null)
+                        "
+                        :title="pattern.kind === 'block' ? 'Inserts into the selected column' : 'Appends a section'"
+                        @click="$emit('insertPattern', pattern.id, pattern.kind)"
+                    >
+                        {{ pattern.name }}
+                        <small>{{ pattern.kind }}</small>
+                    </button>
+                </li>
+            </ul>
+        </div>
 
         <div v-for="[category, blocks] in categories" :key="category" class="add__group">
             <h3 class="add__category">{{ category }}</h3>

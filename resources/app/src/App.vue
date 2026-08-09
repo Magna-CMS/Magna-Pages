@@ -322,6 +322,23 @@ async function onPublish() {
     await store.publish(api)
 }
 
+async function onInsertPattern(id: string) {
+    if (await store.insertPattern(api, id, targetColumn.value)) {
+        reloadCanvas()
+    }
+}
+
+async function onSavePattern() {
+    // A window.prompt is deliberate v1: naming is the only input, and a
+    // modal component for one string is UI the feature does not need yet.
+    const name = window.prompt('Pattern name')
+    if (name === null) {
+        return
+    }
+
+    await store.saveAsPattern(api, name)
+}
+
 async function onTakeOver() {
     await store.takeOver(api)
     reloadCanvas()
@@ -340,6 +357,7 @@ onMounted(async () => {
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('pagehide', onUnload)
     await store.load(api)
+    void store.loadPatterns(api)
     startHeartbeat()
 })
 
@@ -364,10 +382,16 @@ onBeforeUnmount(() => {
             :can-redo="store.canRedo"
             :can-delete="store.selectedNode !== null && store.capabilities.structure"
             :can-publish="store.capabilities.publish && store.lock.mine"
+            :can-save-pattern="
+                store.selectedNode !== null &&
+                store.capabilities.structure &&
+                selected?.kind !== 'column'
+            "
             @undo="onUndo"
             @redo="onRedo"
             @remove="onDelete"
             @publish="onPublish"
+            @save-pattern="onSavePattern"
         />
 
         <div v-if="!store.lock.mine && store.loaded" class="builder__lockbar" role="alert">
@@ -394,8 +418,10 @@ onBeforeUnmount(() => {
                     :sections="store.sections"
                     :target-column="targetColumn"
                     :capabilities="store.capabilities"
+                    :patterns="store.patterns"
                     @add="onAddBlock"
                     @add-section="onAddSection"
+                    @insert-pattern="onInsertPattern"
                 />
             </aside>
 

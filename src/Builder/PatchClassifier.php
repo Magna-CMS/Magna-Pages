@@ -55,7 +55,11 @@ final class PatchClassifier
         }
 
         if ($named === null || $namedIndex === null) {
-            throw new PatchException('A patch pointer must address a named part of a node.');
+            // Every segment is positional. In the legacy list form the
+            // document ROOT is the sections container, so "/0" or "/-" is
+            // adding/removing/reordering a section — structure, same as
+            // "/sections/0" is in the wrapped form.
+            return PatchKind::Structure;
         }
 
         // Positional tail after a container key = adding/removing/reordering

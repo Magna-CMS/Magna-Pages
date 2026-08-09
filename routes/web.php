@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Magna\Pages\Http\Controllers\BuilderApiController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
+use Magna\Pages\Http\Controllers\BuilderPatternController;
 use Magna\Pages\Http\Controllers\BuilderSpaController;
 use Magna\Pages\Http\Controllers\PageController;
 use Magna\Pages\Http\Controllers\PagePreviewController;
@@ -35,6 +36,10 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     // which would otherwise swallow "registry", "app" and the rest.
     Route::get('/registry', [BuilderApiController::class, 'registry'])->name('pages.builder.registry');
     Route::get('/bridge.js', [BuilderCanvasController::class, 'bridge'])->name('pages.builder.bridge');
+    Route::get('/patterns', [BuilderPatternController::class, 'index'])->name('pages.builder.patterns');
+    Route::post('/patterns', [BuilderPatternController::class, 'store'])->name('pages.builder.patterns.store');
+    Route::get('/patterns/{id}/instance', [BuilderPatternController::class, 'instance'])->name('pages.builder.patterns.instance');
+    Route::delete('/patterns/{id}', [BuilderPatternController::class, 'destroy'])->name('pages.builder.patterns.destroy');
     Route::get('/app/{path}', [BuilderSpaController::class, 'asset'])
         ->where('path', '.*')
         ->name('pages.builder.asset');

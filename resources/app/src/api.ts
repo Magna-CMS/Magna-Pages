@@ -77,6 +77,15 @@ export function createApi(pageId: string, base = '/pages-builder') {
         publish: (): Promise<{ status: string; published_at: string | null; url: string | null }> =>
             request(`${base}/${pageId}/publish`, { method: 'POST' }),
 
+        patterns: (): Promise<{ patterns: { id: string; name: string; kind: string }[] }> =>
+            request(`${base}/patterns`),
+
+        savePattern: (name: string, kind: string, node: unknown): Promise<{ id: string }> =>
+            request(`${base}/patterns`, { method: 'POST', body: JSON.stringify({ name, kind, node }) }),
+
+        patternInstance: (id: string): Promise<{ kind: string; node: Record<string, unknown> }> =>
+            request(`${base}/patterns/${id}/instance`),
+
         heartbeat: (): Promise<{ held: boolean }> =>
             request(`${base}/${pageId}/heartbeat`, { method: 'POST' }),
 

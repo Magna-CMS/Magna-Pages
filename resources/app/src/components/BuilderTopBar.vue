@@ -8,9 +8,10 @@ defineProps<{
     canRedo: boolean
     canDelete: boolean
     canPublish: boolean
+    canSavePattern: boolean
 }>()
 
-defineEmits<{ undo: []; redo: []; remove: []; publish: [] }>()
+defineEmits<{ undo: []; redo: []; remove: []; publish: []; savePattern: [] }>()
 </script>
 
 <template>
@@ -24,6 +25,9 @@ defineEmits<{ undo: []; redo: []; remove: []; publish: [] }>()
             <button type="button" :disabled="!canUndo" @click="$emit('undo')">Undo</button>
             <button type="button" :disabled="!canRedo" @click="$emit('redo')">Redo</button>
             <button type="button" :disabled="!canDelete" @click="$emit('remove')">Delete</button>
+            <button type="button" :disabled="!canSavePattern" @click="$emit('savePattern')">
+                Save as pattern
+            </button>
             <span class="topbar__state" role="status">{{ saving ? 'Saving…' : 'Saved' }}</span>
 
             <a v-if="publicUrl" class="topbar__view" :href="publicUrl" target="_blank" rel="noopener">
