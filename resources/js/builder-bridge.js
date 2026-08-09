@@ -141,6 +141,49 @@
         true,
     )
 
+    /*
+     * Pointer position in canvas coordinates. The parent draws the drag
+     * overlay, but the pointer is inside this frame while a drag crosses it
+     * — without forwarding, a drag would go blind the moment it entered the
+     * canvas, which is the whole area it operates in.
+     */
+    document.addEventListener(
+        'pointerdown',
+        function (event) {
+            var id = nodeIdFrom(event.target)
+            if (id !== null) {
+                send('pointerdown', {
+                    node: id,
+                    x: event.clientX + window.scrollX,
+                    y: event.clientY + window.scrollY,
+                })
+            }
+        },
+        true,
+    )
+
+    document.addEventListener(
+        'pointermove',
+        function (event) {
+            send('pointermove', {
+                x: event.clientX + window.scrollX,
+                y: event.clientY + window.scrollY,
+            })
+        },
+        true,
+    )
+
+    document.addEventListener(
+        'pointerup',
+        function (event) {
+            send('pointerup', {
+                x: event.clientX + window.scrollX,
+                y: event.clientY + window.scrollY,
+            })
+        },
+        true,
+    )
+
     window.addEventListener('resize', reportRects)
     window.addEventListener('scroll', function () {
         send('scroll', { scrollY: window.scrollY })

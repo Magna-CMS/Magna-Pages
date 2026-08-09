@@ -9,6 +9,7 @@ import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import { columnOf } from './document/edits'
 import { locate } from './document/locate'
+import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
 import { useDocumentStore } from './stores/document'
 
 /**
@@ -30,6 +31,23 @@ const hovered = ref<string | null>(null)
 const canvasHeight = ref(0)
 const scrollY = ref(0)
 
+const dragging = ref<string | null>(null)
+const dragOrigin = ref<{ x: number; y: number } | null>(null)
+const dropTarget = ref<DropTarget | null>(null)
+
+/** Block ids per column, so drop math orders by the document, not geometry. */
+const blocksByColumn = computed<Record<string, string[]>>(() => {
+    const map: Record<string, string[]> = {}
+
+    for (const section of store.sections) {
+        for (const column of section.columns ?? []) {
+            map[column.id] = (column.blocks ?? []).map((block) => block.id)
+        }
+    }
+
+    return map
+})
+
 const bridge = new CanvasBridge({
     onRects: (next, height) => {
         rects.value = next
@@ -38,7 +56,52 @@ const bridge = new CanvasBridge({
     onSelect: (node) => store.select(node),
     onHover: (node) => (hovered.value = node),
     onScroll: (y) => (scrollY.value = y),
+
+    onPointerDown: (node, at) => {
+        // Remember where a press started; it only becomes a drag once it
+        // travels, so a click stays a click.
+        if (store.capabilities.structure && locate(store.blocks, node)?.kind === 'block') {
+            dragging.value = node
+            dragOrigin.value = at
+        }
+    },
+
+    onPointerMove: (at) => {
+        if (!dragging.value || !dragOrigin.value) {
+            return
+        }
+        if (!exceedsThreshold(dragOrigin.value, at)) {
+            return
+        }
+
+        dropTarget.value = dropTargetAt(
+            layout(rects.value, blocksByColumn.value),
+            at.x,
+            at.y,
+        )
+    },
+
+    onPointerUp: () => {
+        void finishDrag()
+    },
 })
+
+async function finishDrag() {
+    const node = dragging.value
+    const target = dropTarget.value
+
+    dragging.value = null
+    dragOrigin.value = null
+    dropTarget.value = null
+
+    if (!node || !target) {
+        return
+    }
+
+    if (await store.moveBlock(api, node, target.column, target.index)) {
+        reloadCanvas()
+    }
+}
 
 /** Re-render one node from current (unsaved) state and swap it in. */
 const refreshFragment = debounceByKey(async (node: string) => {
@@ -225,6 +288,16 @@ onBeforeUnmount(() => {
                     >
                         <span class="builder__label">{{ selectedRect.kind }}</span>
                     </div>
+
+                    <div
+                        v-if="dropTarget"
+                        class="builder__drop"
+                        :style="{
+                            top: `${dropTarget.indicator.top - scrollY}px`,
+                            left: `${dropTarget.indicator.left}px`,
+                            width: `${dropTarget.indicator.width}px`,
+                        }"
+                    />
                 </div>
             </main>
 
@@ -325,6 +398,14 @@ body {
 
 .builder__outline--selected {
     outline: 2px solid var(--builder-accent);
+}
+
+.builder__drop {
+    position: absolute;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--builder-accent);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
 }
 
 .builder__label {

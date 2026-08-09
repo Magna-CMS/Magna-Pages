@@ -20,12 +20,20 @@ export interface NodeRect {
     height: number
 }
 
+export interface PointerPosition {
+    x: number
+    y: number
+}
+
 export interface BridgeHandlers {
     onRects?: (rects: NodeRect[], height: number) => void
     onSelect?: (node: string) => void
     onHover?: (node: string | null) => void
     onScroll?: (scrollY: number) => void
     onReady?: () => void
+    onPointerDown?: (node: string, at: PointerPosition) => void
+    onPointerMove?: (at: PointerPosition) => void
+    onPointerUp?: (at: PointerPosition) => void
 }
 
 export class CanvasBridge {
@@ -98,10 +106,23 @@ export class CanvasBridge {
             case 'scroll':
                 this.handlers.onScroll?.(Number(data.scrollY ?? 0))
                 break
+            case 'pointerdown':
+                this.handlers.onPointerDown?.(String(data.node), pointerFrom(data))
+                break
+            case 'pointermove':
+                this.handlers.onPointerMove?.(pointerFrom(data))
+                break
+            case 'pointerup':
+                this.handlers.onPointerUp?.(pointerFrom(data))
+                break
             default:
                 break
         }
     }
+}
+
+function pointerFrom(data: Record<string, unknown>): PointerPosition {
+    return { x: Number(data.x ?? 0), y: Number(data.y ?? 0) }
 }
 
 /** Fragment requests are debounced per node — a keystroke is not a render. */
