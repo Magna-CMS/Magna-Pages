@@ -157,8 +157,115 @@
 
         if (data.type === 'rects') {
             reportRects()
+
+            return
+        }
+
+        /*
+         * Inline text editing. The parent decides WHETHER a node is
+         * editable (it knows the block schema and the actor's permissions);
+         * this side only turns the marked element into a plain-text editor
+         * and reports what was typed. textContent in, textContent out —
+         * markup can neither enter nor leave through this path.
+         */
+        if (data.type === 'editable' && typeof data.node === 'string') {
+            if (data.editable) {
+                startInlineEdit(data.node)
+            } else if (inlineEditing !== null && inlineEditing.node === data.node) {
+                inlineEditing.element.blur()
+            }
         }
     })
+
+    var inlineEditing = null
+
+    function startInlineEdit(id) {
+        var element = findNode(id)
+        if (!element || inlineEditing !== null) {
+            return
+        }
+
+        // An element with child ELEMENTS carries markup; editing it as text
+        // would flatten that markup into a string. The inspector is the
+        // editing path for those.
+        if (element.children.length > 0) {
+            send('uneditable', { node: id, reason: 'markup' })
+
+            return
+        }
+
+        inlineEditing = {
+            element: element,
+            original: element.textContent,
+            node: id,
+        }
+
+        element.setAttribute('contenteditable', 'plaintext-only')
+        // Some engines reject plaintext-only; fall back and rely on the
+        // textContent read to strip anything pasted.
+        if (element.contentEditable !== 'plaintext-only') {
+            element.setAttribute('contenteditable', 'true')
+        }
+        element.focus()
+
+        var selection = window.getSelection()
+        if (selection) {
+            var range = document.createRange()
+            range.selectNodeContents(element)
+            selection.removeAllRanges()
+            selection.addRange(range)
+        }
+
+        element.addEventListener('blur', finishInlineEdit)
+        element.addEventListener('keydown', inlineEditKeys)
+    }
+
+    function inlineEditKeys(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            event.target.blur()
+        }
+        if (event.key === 'Escape') {
+            if (inlineEditing) {
+                inlineEditing.element.textContent = inlineEditing.original
+            }
+            event.target.blur()
+        }
+        // Keystrokes inside the editor must not become canvas shortcuts.
+        event.stopPropagation()
+    }
+
+    function finishInlineEdit() {
+        if (inlineEditing === null) {
+            return
+        }
+
+        var element = inlineEditing.element
+        var text = element.textContent || ''
+        var changed = text !== inlineEditing.original
+        var node = inlineEditing.node
+
+        element.removeAttribute('contenteditable')
+        element.removeEventListener('blur', finishInlineEdit)
+        element.removeEventListener('keydown', inlineEditKeys)
+        inlineEditing = null
+
+        if (changed) {
+            send('textCommit', { node: node, text: text })
+        }
+    }
+
+    document.addEventListener(
+        'dblclick',
+        function (event) {
+            var id = nodeIdFrom(event.target)
+            if (id !== null) {
+                event.preventDefault()
+                send('editRequest', { node: id })
+            }
+        },
+        true,
+    )
 
     document.addEventListener(
         'click',

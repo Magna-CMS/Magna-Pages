@@ -9,7 +9,7 @@ import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
-import { columnOf } from './document/edits'
+import { columnOf, primaryTextField } from './document/edits'
 import { locate } from './document/locate'
 import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
 import { buildActions } from './palette'
@@ -118,7 +118,7 @@ const bridge = new CanvasBridge({
  * and writing that over stored markup would destroy it.
  */
 function editableField(nodeId: string): string | null {
-    if (!store.capabilities.content) {
+    if (!store.capabilities.content || !store.lock.mine) {
         return null
     }
 
@@ -128,11 +128,19 @@ function editableField(nodeId: string): string | null {
     }
 
     const definition = store.blockDefinition(String((found.node as { block: string }).block))
-    const field = definition?.fields.find(
-        (entry) => entry.type === 'text' || entry.type === 'textarea',
-    )
+    const field = definition ? primaryTextField(definition) : null
+    if (!field) {
+        return null
+    }
 
-    return field?.handle ?? null
+    // A bound field resolves at render; typing over the resolved output
+    // would silently replace the binding with a literal.
+    const value = (found.node as { data?: Record<string, unknown> }).data?.[field]
+    if (typeof value === 'object' && value !== null && '$bind' in value) {
+        return null
+    }
+
+    return field
 }
 
 async function commitText(nodeId: string, text: string) {

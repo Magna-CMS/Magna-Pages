@@ -35,7 +35,6 @@ export interface BridgeHandlers {
     onPointerMove?: (at: PointerPosition) => void
     onPointerUp?: (at: PointerPosition) => void
     onEditRequest?: (node: string) => void
-    onText?: (node: string, text: string) => void
     onTextCommit?: (node: string, text: string) => void
     onUneditable?: (node: string, reason: string) => void
 }
@@ -71,9 +70,9 @@ export class CanvasBridge {
         this.post({ type: 'tokens', tokens })
     }
 
-    /** Make a node's element editable in place (or stop). */
-    setEditable(node: string, on: boolean): void {
-        this.post({ type: 'editable', node, on })
+    /** Open (or close) the plain-text inline editor on a node's element. */
+    setEditable(node: string, editable: boolean): void {
+        this.post({ type: 'editable', node, editable })
     }
 
     requestRects(): void {
@@ -124,13 +123,10 @@ export class CanvasBridge {
             case 'pointerup':
                 this.handlers.onPointerUp?.(pointerFrom(data))
                 break
-            case 'editrequest':
+            case 'editRequest':
                 this.handlers.onEditRequest?.(String(data.node))
                 break
-            case 'text':
-                this.handlers.onText?.(String(data.node), String(data.text ?? ''))
-                break
-            case 'textcommit':
+            case 'textCommit':
                 this.handlers.onTextCommit?.(String(data.node), String(data.text ?? ''))
                 break
             case 'uneditable':
