@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { createApi } from './api'
 import { CanvasBridge, debounceByKey, type NodeRect } from './bridge'
 import BuilderAddPanel from './components/BuilderAddPanel.vue'
+import BuilderCommandPalette from './components/BuilderCommandPalette.vue'
 import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
@@ -11,6 +12,7 @@ import BuilderTopBar from './components/BuilderTopBar.vue'
 import { columnOf } from './document/edits'
 import { locate } from './document/locate'
 import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
+import { buildActions } from './palette'
 import { useDocumentStore } from './stores/document'
 
 /**
@@ -262,7 +264,46 @@ async function onDelete() {
     }
 }
 
+/** Command palette. */
+const paletteOpen = ref(false)
+
+const paletteActions = computed(() =>
+    buildActions({
+        capabilities: store.capabilities,
+        lockMine: store.lock.mine,
+        hasSelection: store.selectedNode !== null,
+        targetColumn: targetColumn.value,
+        blocks: store.registry.map((definition) => ({
+            handle: definition.handle,
+            label: definition.label,
+            requiresPermission: definition.requiresPermission,
+        })),
+        patterns: store.patterns,
+        breakpoints: Object.keys(BREAKPOINTS),
+        handlers: {
+            addBlock: (handle) => void onAddBlock(handle),
+            addSection: () => void onAddSection(),
+            insertPattern: (id) => void onInsertPattern(id),
+            setBreakpoint: (device) => (breakpoint.value = device as keyof typeof BREAKPOINTS),
+            undo: () => void onUndo(),
+            redo: () => void onRedo(),
+            deleteSelection: () => void onDelete(),
+            publish: () => void onPublish(),
+            savePattern: () => void onSavePattern(),
+        },
+    }),
+)
+
 function onKeydown(event: KeyboardEvent) {
+    // The palette opens from anywhere, even mid-typing — that is the point
+    // of a global command surface.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        paletteOpen.value = !paletteOpen.value
+
+        return
+    }
+
     const target = event.target as HTMLElement | null
     const typing =
         target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
@@ -534,6 +575,12 @@ onBeforeUnmount(() => {
         </div>
 
         <p v-if="store.error" class="builder__error" role="alert">{{ store.error }}</p>
+
+        <BuilderCommandPalette
+            :open="paletteOpen"
+            :actions="paletteActions"
+            @close="paletteOpen = false"
+        />
     </div>
 </template>
 
