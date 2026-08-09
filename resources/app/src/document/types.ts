@@ -78,7 +78,14 @@ export interface Capabilities {
     publish: boolean
 }
 
+export interface LockState {
+    mine: boolean
+    holder: { id: string; name: string } | null
+    acquired_at?: string
+}
+
 export interface BootstrapPayload {
+    lock?: LockState
     document: {
         id: string
         title: string

@@ -12,6 +12,8 @@ use Magna\Content\Entry;
 use Magna\Pages\Builder\BuilderBootstrap;
 use Magna\Pages\Builder\DocumentEditor;
 use Magna\Pages\Builder\Exceptions\PatchException;
+use Magna\Pages\Builder\LockManager;
+use Magna\Users\User;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -29,20 +31,43 @@ final class BuilderApiController
         private readonly BuilderBootstrap $bootstrap,
         private readonly DocumentEditor $editor,
         private readonly BlockRegistry $blocks,
+        private readonly LockManager $locks,
     ) {}
 
-    /** Everything the SPA needs to render a document on open, in one payload. */
+    /**
+     * Everything the SPA needs to render a document on open, in one payload.
+     * Opening also tries to take the edit lock — the common case is one
+     * editor, and they should not need a second request to start typing.
+     */
     public function bootstrap(Request $request, string $id): JsonResponse
     {
         Gate::authorize('pages.content');
 
-        return response()->json($this->bootstrap->forEntry($this->findPage($id), $request->user()));
+        $entry = $this->findPage($id);
+        $user = $this->actor($request);
+        $lock = $this->locks->acquire((string) $entry->getKey(), $user);
+
+        $payload = $this->bootstrap->forEntry($entry, $request->user());
+        $payload['lock'] = $this->lockPayload((string) $entry->getKey(), $user);
+
+        return response()->json($payload);
     }
 
     /** Apply a batch of builder edits. Authorized per operation, all-or-nothing. */
     public function patch(Request $request, string $id): JsonResponse
     {
         Gate::authorize('pages.content');
+
+        // Writing requires holding the lock. 409 rather than 422: the batch
+        // may be perfectly valid — somebody else simply owns the document
+        // right now, and the response says who.
+        $user = $this->actor($request);
+        if (! $this->locks->holds($id, $user)) {
+            return response()->json([
+                'message' => 'Another editor holds this document.',
+                'lock' => $this->lockPayload($id, $user),
+            ], 409);
+        }
 
         $request->validate([
             'operations' => ['required', 'array', 'min:1'],
@@ -82,6 +107,77 @@ final class BuilderApiController
         Gate::authorize('pages.content');
 
         return response()->json(['blocks' => $this->bootstrap->registryPayload($this->blocks)]);
+    }
+
+    /** Keep the lock alive. The SPA calls this on an interval while open. */
+    public function heartbeat(Request $request, string $id): JsonResponse
+    {
+        Gate::authorize('pages.content');
+
+        $user = $this->actor($request);
+        $alive = $this->locks->heartbeat($id, $user);
+
+        return response()->json(['held' => $alive, 'lock' => $this->lockPayload($id, $user)], $alive ? 200 : 409);
+    }
+
+    /**
+     * Take the lock from its current holder. Any editor may — the common
+     * case is a colleague's dead tab, and visibility (the holder is named,
+     * the loser's next write is refused) is the protection, not a fight
+     * over who ranks higher.
+     */
+    public function takeOver(Request $request, string $id): JsonResponse
+    {
+        Gate::authorize('pages.content');
+
+        $entry = $this->findPage($id);
+        $user = $this->actor($request);
+        $this->locks->takeOver((string) $entry->getKey(), $user);
+
+        return response()->json(['lock' => $this->lockPayload($id, $user)]);
+    }
+
+    /** Give the lock up cleanly (the SPA calls this on close). */
+    public function release(Request $request, string $id): JsonResponse
+    {
+        Gate::authorize('pages.content');
+
+        $this->locks->release($id, $this->actor($request));
+
+        return response()->json(['released' => true]);
+    }
+
+    /** @return array<string, mixed> */
+    private function lockPayload(string $entryId, User $user): array
+    {
+        $lock = $this->locks->current($entryId);
+
+        if ($lock === null) {
+            return ['mine' => false, 'holder' => null];
+        }
+
+        $holder = User::query()->find($lock->user_id);
+
+        return [
+            'mine' => $lock->user_id === $user->getKey(),
+            'holder' => [
+                'id' => $lock->user_id,
+                'name' => $holder?->name ?? 'Unknown user',
+            ],
+            'acquired_at' => $lock->acquired_at->toIso8601String(),
+        ];
+    }
+
+    private function actor(Request $request): User
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            // Unreachable behind the auth middleware; the type says so too.
+            throw new NotFoundHttpException('No authenticated user.');
+        }
+
+        return $user;
     }
 
     private function findPage(string $id): Entry

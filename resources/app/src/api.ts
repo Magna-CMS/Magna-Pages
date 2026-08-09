@@ -73,6 +73,26 @@ export function createApi(pageId: string, base = '/pages-builder') {
             }),
 
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
+
+        heartbeat: (): Promise<{ held: boolean }> =>
+            request(`${base}/${pageId}/heartbeat`, { method: 'POST' }),
+
+        takeOver: (): Promise<{ lock: { mine: boolean } }> =>
+            request(`${base}/${pageId}/take-over`, { method: 'POST' }),
+
+        /**
+         * Best-effort goodbye on tab close. keepalive lets the request
+         * outlive the page; a lost one only means the lock expires by TTL
+         * instead of immediately.
+         */
+        release: (): void => {
+            void fetch(`${base}/${pageId}/release`, {
+                method: 'POST',
+                keepalive: true,
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+            }).catch(() => undefined)
+        },
     }
 }
 

@@ -278,16 +278,52 @@ function reloadCanvas() {
     frame.value?.contentWindow?.location.reload()
 }
 
+/**
+ * Heartbeat at a third of the server TTL (90s): one lost request does not
+ * cost the lock, two might, three means the tab really is gone.
+ */
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+function startHeartbeat() {
+    heartbeatTimer = setInterval(async () => {
+        if (!store.lock.mine) {
+            return
+        }
+        try {
+            await api.heartbeat()
+        } catch {
+            store.lockLost(null)
+        }
+    }, 30_000)
+}
+
+async function onTakeOver() {
+    await store.takeOver(api)
+    reloadCanvas()
+}
+
+function onUnload() {
+    if (store.lock.mine) {
+        api.release()
+    }
+}
+
 onMounted(async () => {
     if (frame.value) {
         bridge.attach(frame.value)
     }
     window.addEventListener('keydown', onKeydown)
+    window.addEventListener('pagehide', onUnload)
     await store.load(api)
+    startHeartbeat()
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('pagehide', onUnload)
+    if (heartbeatTimer !== null) {
+        clearInterval(heartbeatTimer)
+    }
     bridge.destroy()
 })
 </script>
@@ -304,6 +340,17 @@ onBeforeUnmount(() => {
             @redo="onRedo"
             @remove="onDelete"
         />
+
+        <div v-if="!store.lock.mine && store.loaded" class="builder__lockbar" role="alert">
+            <span>
+                {{
+                    store.lock.holder
+                        ? `${store.lock.holder.name} is editing this page — your changes will not save.`
+                        : 'You no longer hold the edit lock — your changes will not save.'
+                }}
+            </span>
+            <button type="button" @click="onTakeOver">Take over</button>
+        </div>
 
         <div class="builder__body">
             <aside class="builder__rail">
@@ -473,6 +520,26 @@ body {
     border-radius: 3px 3px 0 0;
     background: var(--builder-accent);
     color: #fff;
+}
+
+.builder__lockbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 12px;
+    background: #4a3a12;
+    color: #ffe9b3;
+}
+
+.builder__lockbar button {
+    padding: 3px 10px;
+    border: 1px solid currentcolor;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
 }
 
 .builder__error {

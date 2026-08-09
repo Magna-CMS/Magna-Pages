@@ -14,6 +14,7 @@ import type {
     BlockDefinition,
     BlockDocument,
     Capabilities,
+    LockState,
     PatchOperation,
     SectionNode,
 } from '../document/types'
@@ -49,6 +50,7 @@ interface State {
     tokens: Record<string, string>
     capabilities: Capabilities
     selectedNode: string | null
+    lock: LockState
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -65,6 +67,7 @@ export const useDocumentStore = defineStore('document', {
         tokens: {},
         capabilities: { content: false, structure: false, style: false, publish: false },
         selectedNode: null,
+        lock: { mine: false, holder: null },
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -92,7 +95,25 @@ export const useDocumentStore = defineStore('document', {
             this.registry = payload.registry
             this.tokens = payload.tokens
             this.capabilities = payload.capabilities
+            this.lock = payload.lock ?? { mine: true, holder: null }
             this.loaded = true
+        },
+
+        async takeOver(api: BuilderApi): Promise<void> {
+            try {
+                const result = await api.takeOver()
+                this.lock = { mine: result.lock.mine, holder: null }
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+            }
+        },
+
+        /** Called when a heartbeat or write reports the lock is gone. */
+        lockLost(holderName: string | null): void {
+            this.lock = {
+                mine: false,
+                holder: holderName === null ? null : { id: '', name: holderName },
+            }
         },
 
         /**

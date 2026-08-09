@@ -43,6 +43,9 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::patch('/{id}', [BuilderApiController::class, 'patch'])->name('pages.builder.patch');
     Route::get('/{id}/canvas', [BuilderCanvasController::class, 'canvas'])->name('pages.builder.canvas');
     Route::post('/{id}/fragment', [BuilderCanvasController::class, 'fragment'])->name('pages.builder.fragment');
+    Route::post('/{id}/heartbeat', [BuilderApiController::class, 'heartbeat'])->name('pages.builder.heartbeat');
+    Route::post('/{id}/take-over', [BuilderApiController::class, 'takeOver'])->name('pages.builder.take-over');
+    Route::post('/{id}/release', [BuilderApiController::class, 'release'])->name('pages.builder.release');
 });
 
 Route::fallback(PageController::class)->name('pages.web.show');
