@@ -31,6 +31,14 @@ const hovered = ref<string | null>(null)
 const canvasHeight = ref(0)
 const scrollY = ref(0)
 
+/**
+ * Breakpoint preview: the iframe is rendered at true device width, so the
+ * page's own media queries decide what shows — the same rules the visitor's
+ * browser applies, not an editor simulation of them.
+ */
+const BREAKPOINTS = { desktop: '100%', tablet: '768px', mobile: '390px' } as const
+const breakpoint = ref<keyof typeof BREAKPOINTS>('desktop')
+
 const dragging = ref<string | null>(null)
 const dragOrigin = ref<{ x: number; y: number } | null>(null)
 const dropTarget = ref<DropTarget | null>(null)
@@ -207,6 +215,19 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
     }
 }
 
+async function onSettingEdit(pointer: string, key: string, value: unknown) {
+    // `add` rather than `replace`: settings keys (visibility, anchor) may
+    // not exist on the node yet, and add-on-an-object is upsert.
+    const ok = await store.edit(api, `Edit ${key}`, [
+        { op: 'add', path: `${pointer}/settings/${key}`, value },
+    ])
+
+    if (ok) {
+        // Section settings change wrappers the fragment loop does not cover.
+        reloadCanvas()
+    }
+}
+
 /**
  * Where a new block would go: the selected column, or the column holding
  * the selected block, so "select a heading, add a paragraph" lands where the
@@ -379,14 +400,28 @@ onBeforeUnmount(() => {
             </aside>
 
             <main class="builder__canvas">
-                <iframe
-                    ref="frame"
-                    class="builder__frame"
-                    :src="api.canvasUrl()"
-                    title="Page canvas"
-                />
+                <div class="builder__viewport-bar">
+                    <button
+                        v-for="(_width, device) in BREAKPOINTS"
+                        :key="device"
+                        type="button"
+                        class="builder__viewport"
+                        :class="{ 'is-active': breakpoint === device }"
+                        @click="breakpoint = device"
+                    >
+                        {{ device }}
+                    </button>
+                </div>
 
-                <div class="builder__overlay" aria-hidden="true">
+                <div class="builder__stage" :style="{ width: BREAKPOINTS[breakpoint] }">
+                    <iframe
+                        ref="frame"
+                        class="builder__frame"
+                        :src="api.canvasUrl()"
+                        title="Page canvas"
+                    />
+
+                    <div class="builder__overlay" aria-hidden="true">
                     <div
                         v-if="hoveredRect"
                         class="builder__outline builder__outline--hover"
@@ -409,6 +444,7 @@ onBeforeUnmount(() => {
                             width: `${dropTarget.indicator.width}px`,
                         }"
                     />
+                    </div>
                 </div>
             </main>
 
@@ -422,6 +458,7 @@ onBeforeUnmount(() => {
                     "
                     :capabilities="store.capabilities"
                     @edit="onFieldEdit"
+                    @edit-setting="onSettingEdit"
                 />
             </aside>
         </div>
@@ -481,7 +518,44 @@ body {
 
 .builder__canvas {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     background: #0b0c10;
+}
+
+.builder__viewport-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+}
+
+.builder__viewport {
+    padding: 2px 10px;
+    border: 1px solid var(--builder-border);
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    text-transform: capitalize;
+    cursor: pointer;
+}
+
+.builder__viewport.is-active {
+    background: var(--builder-accent);
+    border-color: var(--builder-accent);
+    color: #fff;
+}
+
+/* The stage carries the device width; iframe and overlay both fill it, so
+   rects reported in frame coordinates stay aligned at every breakpoint. */
+.builder__stage {
+    position: relative;
+    flex: 1;
+    max-width: 100%;
+    min-height: 0;
+    transition: width 0.15s ease;
 }
 
 .builder__frame {

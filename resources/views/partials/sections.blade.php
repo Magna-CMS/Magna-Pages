@@ -14,7 +14,40 @@
     $mark = fn (string $html, string $id, string $kind): string => $inBuilder
         ? app(\Magna\Pages\Render\BuilderMarkup::class)->mark($html, $id, $kind)
         : $html;
+
+    // Per-device visibility (settings.visibility, written by both editors).
+    // A device key that is absent means visible — only an explicit false
+    // hides, so documents from before this feature render unchanged.
+    $visibilityClasses = function (array $settings): string {
+        $visibility = $settings['visibility'] ?? [];
+        if (! is_array($visibility)) {
+            return '';
+        }
+        $classes = '';
+        foreach (['desktop', 'tablet', 'mobile'] as $device) {
+            if (($visibility[$device] ?? true) === false) {
+                $classes .= ' magna-hide-'.$device;
+            }
+        }
+
+        return $classes;
+    };
 @endphp
+
+{{--
+    Structural utilities the document itself relies on (device visibility).
+    Owned by this partial rather than by themes so a theme cannot forget
+    them; @once because the partial runs again for header/footer parts.
+    Breakpoints match the editor's three devices: mobile <768, tablet
+    768-1023, desktop >=1024.
+--}}
+@once
+    <style>
+        @media (min-width: 1024px) { .magna-hide-desktop { display: none !important; } }
+        @media (min-width: 768px) and (max-width: 1023.98px) { .magna-hide-tablet { display: none !important; } }
+        @media (max-width: 767.98px) { .magna-hide-mobile { display: none !important; } }
+    </style>
+@endonce
 @foreach($tree->sections as $section)
     @continue($section->isRef()) {{-- refs are spliced before parsing; a stray one renders nothing --}}
 
@@ -32,7 +65,7 @@
         $cssClass = $section->settings['cssClass'] ?? '';
     @endphp
     <section
-        class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}"
+        class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}"
         @if(is_string($anchor) && $anchor !== '') id="{{ $anchor }}" @endif
         @if($styleAttr !== '') style="{{ $styleAttr }}" @endif
         @if($inBuilder) data-magna-node="{{ $section->id }}" data-magna-kind="section" @endif

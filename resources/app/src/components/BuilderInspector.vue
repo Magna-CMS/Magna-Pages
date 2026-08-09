@@ -22,7 +22,35 @@ const props = defineProps<{
     capabilities: Capabilities
 }>()
 
-const emit = defineEmits<{ edit: [pointer: string, handle: string, value: unknown] }>()
+const emit = defineEmits<{
+    edit: [pointer: string, handle: string, value: unknown]
+    editSetting: [pointer: string, key: string, value: unknown]
+}>()
+
+/** Per-device visibility of the selected section (absent key = visible). */
+const visibility = computed<Record<string, boolean>>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+    const stored = settings?.visibility
+
+    const map = typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {}
+
+    return {
+        desktop: map.desktop !== false,
+        tablet: map.tablet !== false,
+        mobile: map.mobile !== false,
+    }
+})
+
+function toggleDevice(device: string) {
+    if (!props.located) {
+        return
+    }
+
+    emit('editSetting', props.located.pointer, 'visibility', {
+        ...visibility.value,
+        [device]: !visibility.value[device],
+    })
+}
 
 const data = computed<Record<string, unknown>>(() => {
     const node = props.located?.node as { data?: Record<string, unknown> } | undefined
@@ -108,6 +136,27 @@ function isBound(field: BlockFieldDefinition): boolean {
             </p>
         </template>
 
+        <template v-else-if="located.kind === 'section'">
+            <p class="inspector__block">Section</p>
+
+            <fieldset class="inspector__field inspector__devices">
+                <legend>Show on</legend>
+                <label v-for="device in ['desktop', 'tablet', 'mobile']" :key="device">
+                    <input
+                        type="checkbox"
+                        :checked="visibility[device]"
+                        :disabled="!capabilities.style"
+                        @change="toggleDevice(device)"
+                    />
+                    {{ device }}
+                </label>
+            </fieldset>
+
+            <p v-if="!capabilities.style" class="inspector__locked">
+                Visibility needs the design permission.
+            </p>
+        </template>
+
         <p v-else class="inspector__empty">
             {{ located.kind === 'block' ? 'This block is not installed.' : 'No settings yet.' }}
         </p>
@@ -155,6 +204,31 @@ input:disabled,
 textarea:disabled,
 select:disabled {
     opacity: 0.5;
+}
+
+.inspector__devices {
+    border: 1px solid var(--builder-border);
+    border-radius: 4px;
+    padding: 8px 10px;
+}
+
+.inspector__devices legend {
+    font-size: 11px;
+    opacity: 0.7;
+    padding: 0 4px;
+}
+
+.inspector__devices label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+    font-size: 13px;
+    text-transform: capitalize;
+}
+
+.inspector__devices input {
+    width: auto;
 }
 
 .inspector__empty,
