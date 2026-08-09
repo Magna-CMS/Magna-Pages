@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Magna\Pages\Http\Controllers\BuilderApiController;
+use Magna\Pages\Http\Controllers\BuilderCanvasController;
 use Magna\Pages\Http\Controllers\PageController;
 use Magna\Pages\Http\Controllers\PagePreviewController;
 
@@ -32,6 +33,8 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::get('/registry', [BuilderApiController::class, 'registry'])->name('pages.builder.registry');
     Route::get('/{id}', [BuilderApiController::class, 'bootstrap'])->name('pages.builder.bootstrap');
     Route::patch('/{id}', [BuilderApiController::class, 'patch'])->name('pages.builder.patch');
+    Route::get('/{id}/canvas', [BuilderCanvasController::class, 'canvas'])->name('pages.builder.canvas');
+    Route::post('/{id}/fragment', [BuilderCanvasController::class, 'fragment'])->name('pages.builder.fragment');
 });
 
 Route::fallback(PageController::class)->name('pages.web.show');

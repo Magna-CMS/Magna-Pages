@@ -46,7 +46,7 @@ final class PageRenderer
         private readonly TemplatePartResolver $parts,
     ) {}
 
-    public function render(Entry $page): string
+    public function render(Entry $page, bool $builderMode = false): string
     {
         $document = $page->getAttribute('blocks_data');
         $title = $page->getAttribute('title');
@@ -54,6 +54,7 @@ final class PageRenderer
         return $this->renderDocument(
             is_array($document) ? $document : [],
             is_string($title) ? $title : '',
+            $builderMode,
         );
     }
 
@@ -64,7 +65,7 @@ final class PageRenderer
      *
      * @param  array<mixed, mixed>  $document
      */
-    public function renderDocument(array $document, string $title): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false): string
     {
         // Ref sections splice their template part's sections in place
         // before parsing — parts compose pages, never the reverse.
@@ -84,6 +85,9 @@ final class PageRenderer
             // replace a theme layout's built-in chrome when published.
             'headerPartHtml' => $this->renderPart('header'),
             'footerPartHtml' => $this->renderPart('footer'),
+            // Inherited by the sections partial through @include, so a theme
+            // layout needs no builder awareness of its own.
+            'builderMode' => $builderMode,
         ])->render();
     }
 
