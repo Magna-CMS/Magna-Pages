@@ -40,7 +40,7 @@ final class BuilderCanvasController
     {
         Gate::authorize('pages.content');
 
-        $html = $this->renderer->render($this->findPage($id), builderMode: true);
+        $html = $this->withBridge($this->renderer->render($this->findPage($id), builderMode: true));
 
         return response($html, 200, [
             'Content-Type' => 'text/html; charset=utf-8',
@@ -81,6 +81,39 @@ final class BuilderCanvasController
         }
 
         return response()->json(['node' => $node, 'html' => $html]);
+    }
+
+    /**
+     * Add the canvas bridge to a rendered page.
+     *
+     * Appended here rather than emitted by the layout so themes stay
+     * unaware of the builder entirely — a theme cannot forget to include
+     * it, and cannot include it on the public site by mistake. Loaded as a
+     * separate file, not inlined, so it needs no CSP script-src exception.
+     */
+    private function withBridge(string $html): string
+    {
+        $tag = '<script src="'.e(url('/pages-builder/bridge.js')).'" defer></script>';
+
+        $position = strripos($html, '</body>');
+
+        return $position === false
+            ? $html.$tag
+            : substr($html, 0, $position).$tag.substr($html, $position);
+    }
+
+    /** The bridge script itself. */
+    public function bridge(): Response
+    {
+        Gate::authorize('pages.content');
+
+        $path = dirname(__DIR__, 3).'/resources/js/builder-bridge.js';
+        $script = is_file($path) ? (string) file_get_contents($path) : '';
+
+        return response($script, 200, [
+            'Content-Type' => 'text/javascript; charset=utf-8',
+            'Cache-Control' => 'no-cache',
+        ]);
     }
 
     private function findPage(string $id): Entry

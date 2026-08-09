@@ -1,0 +1,24 @@
+{
+    "name": "magna-pages-builder",
+    "private": true,
+    "type": "module",
+    "description": "The Magna Pages visual builder. Built output is committed to ../../public/builder so a Magna install never needs Node.",
+    "scripts": {
+        "dev": "vite",
+        "build": "vue-tsc --noEmit && vite build",
+        "typecheck": "vue-tsc --noEmit",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "pinia": "^2.3.0",
+        "vue": "^3.5.13"
+    },
+    "devDependencies": {
+        "@types/node": "^26.1.2",
+        "@vitejs/plugin-vue": "^5.2.1",
+        "typescript": "^5.7.2",
+        "vite": "^6.0.7",
+        "vitest": "^2.1.8",
+        "vue-tsc": "^2.2.0"
+    }
+}

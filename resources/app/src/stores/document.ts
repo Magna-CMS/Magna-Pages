@@ -1,0 +1,173 @@
+import { defineStore } from 'pinia'
+
+import type { BuilderApi } from '../api'
+import { applyPatch } from '../document/patch'
+import type {
+    BlockDefinition,
+    BlockDocument,
+    Capabilities,
+    PatchOperation,
+    SectionNode,
+} from '../document/types'
+import { sectionsOf } from '../document/types'
+
+/**
+ * The document store: the single source of truth the canvas projects.
+ *
+ * An edit lands locally first so typing feels instant, then goes to the
+ * server. If the server refuses — a permission the UI mis-modelled, a
+ * document that would end up invalid — the local change is rolled back with
+ * the inverse batch that was computed when it was applied. The user sees
+ * their edit undone and the server's reason, rather than a canvas that
+ * disagrees with what was actually saved.
+ *
+ * Undo history is the same inverse mechanism, kept to a bounded number of
+ * steps and grouped per gesture.
+ */
+
+const HISTORY_LIMIT = 100
+
+interface HistoryEntry {
+    label: string
+    undo: PatchOperation[]
+    redo: PatchOperation[]
+}
+
+interface State {
+    pageId: string
+    title: string
+    blocks: BlockDocument
+    registry: BlockDefinition[]
+    tokens: Record<string, string>
+    capabilities: Capabilities
+    selectedNode: string | null
+    undoStack: HistoryEntry[]
+    redoStack: HistoryEntry[]
+    saving: boolean
+    error: string | null
+    loaded: boolean
+}
+
+export const useDocumentStore = defineStore('document', {
+    state: (): State => ({
+        pageId: '',
+        title: '',
+        blocks: [],
+        registry: [],
+        tokens: {},
+        capabilities: { content: false, structure: false, style: false, publish: false },
+        selectedNode: null,
+        undoStack: [],
+        redoStack: [],
+        saving: false,
+        error: null,
+        loaded: false,
+    }),
+
+    getters: {
+        sections: (state): SectionNode[] => sectionsOf(state.blocks),
+        canUndo: (state): boolean => state.undoStack.length > 0,
+        canRedo: (state): boolean => state.redoStack.length > 0,
+        blockDefinition: (state) => {
+            return (handle: string): BlockDefinition | undefined =>
+                state.registry.find((definition) => definition.handle === handle)
+        },
+    },
+
+    actions: {
+        async load(api: BuilderApi): Promise<void> {
+            const payload = await api.bootstrap()
+
+            this.pageId = payload.document.id
+            this.title = payload.document.title
+            this.blocks = payload.document.blocks
+            this.registry = payload.registry
+            this.tokens = payload.tokens
+            this.capabilities = payload.capabilities
+            this.loaded = true
+        },
+
+        /**
+         * Apply one gesture's worth of operations: locally now, on the
+         * server next, rolled back if the server refuses.
+         */
+        async edit(api: BuilderApi, label: string, operations: PatchOperation[]): Promise<boolean> {
+            this.error = null
+
+            let inverse: PatchOperation[]
+            try {
+                const applied = applyPatch(this.blocks, operations)
+                this.blocks = applied.document
+                inverse = applied.inverse
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            }
+
+            this.pushHistory({ label, undo: inverse, redo: operations })
+
+            this.saving = true
+            try {
+                const result = await api.patch(operations)
+                // Adopt the server's document: it is the one that exists.
+                this.blocks = result.document
+
+                return true
+            } catch (error) {
+                this.blocks = applyPatch(this.blocks, inverse).document
+                this.undoStack.pop()
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            } finally {
+                this.saving = false
+            }
+        },
+
+        async undo(api: BuilderApi): Promise<void> {
+            const entry = this.undoStack.pop()
+            if (!entry) {
+                return
+            }
+
+            const applied = applyPatch(this.blocks, entry.undo)
+            this.blocks = applied.document
+            this.redoStack.push(entry)
+
+            try {
+                const result = await api.patch(entry.undo)
+                this.blocks = result.document
+            } catch (error) {
+                this.blocks = applyPatch(this.blocks, applied.inverse).document
+                this.undoStack.push(entry)
+                this.redoStack.pop()
+                this.error = error instanceof Error ? error.message : String(error)
+            }
+        },
+
+        async redo(api: BuilderApi): Promise<void> {
+            const entry = this.redoStack.pop()
+            if (!entry) {
+                return
+            }
+
+            await this.edit(api, entry.label, entry.redo)
+        },
+
+        select(nodeId: string | null): void {
+            this.selectedNode = nodeId
+        },
+
+        pushHistory(entry: HistoryEntry): void {
+            this.undoStack.push(entry)
+            if (this.undoStack.length > HISTORY_LIMIT) {
+                this.undoStack.shift()
+            }
+            // A new edit forks the timeline; anything redone from here on
+            // would reapply operations against a document that no longer
+            // matches what they were computed from.
+            this.redoStack = []
+        },
+    },
+})

@@ -1,0 +1,129 @@
+import type { BlockDocument } from './document/types'
+
+/**
+ * The parent half of the canvas bridge.
+ *
+ * Mirrors resources/js/builder-bridge.js. Origin is pinned in both
+ * directions: the iframe is same-origin (the plugin serves it), so the
+ * expected origin is simply this window's, and anything else is ignored
+ * rather than trusted because it arrived on the right channel.
+ */
+
+const PROTOCOL = 1
+
+export interface NodeRect {
+    node: string
+    kind: 'section' | 'column' | 'block'
+    top: number
+    left: number
+    width: number
+    height: number
+}
+
+export interface BridgeHandlers {
+    onRects?: (rects: NodeRect[], height: number) => void
+    onSelect?: (node: string) => void
+    onHover?: (node: string | null) => void
+    onScroll?: (scrollY: number) => void
+    onReady?: () => void
+}
+
+export class CanvasBridge {
+    private frame: HTMLIFrameElement | null = null
+
+    private readonly origin = window.location.origin
+
+    private readonly listener: (event: MessageEvent) => void
+
+    constructor(private readonly handlers: BridgeHandlers) {
+        this.listener = (event: MessageEvent) => this.receive(event)
+        window.addEventListener('message', this.listener)
+    }
+
+    attach(frame: HTMLIFrameElement): void {
+        this.frame = frame
+    }
+
+    destroy(): void {
+        window.removeEventListener('message', this.listener)
+        this.frame = null
+    }
+
+    /** Swap one node's markup after a fragment render. */
+    applyFragment(node: string, html: string): void {
+        this.post({ type: 'fragment', node, html })
+    }
+
+    /** The instant style path: set CSS variables without a round trip. */
+    applyTokens(tokens: Record<string, string>): void {
+        this.post({ type: 'tokens', tokens })
+    }
+
+    requestRects(): void {
+        this.post({ type: 'rects' })
+    }
+
+    private post(message: Record<string, unknown>): void {
+        this.frame?.contentWindow?.postMessage({ magna: PROTOCOL, ...message }, this.origin)
+    }
+
+    private receive(event: MessageEvent): void {
+        if (event.origin !== this.origin) {
+            return
+        }
+
+        const data = event.data as Record<string, unknown> | null
+        if (!data || data.magna !== PROTOCOL) {
+            return
+        }
+
+        switch (data.type) {
+            case 'loaded':
+                // The frame announced itself; the handshake fixes the origin
+                // it will accept commands from.
+                this.post({ type: 'hello' })
+                break
+            case 'ready':
+                this.handlers.onReady?.()
+                break
+            case 'rects':
+                this.handlers.onRects?.(data.rects as NodeRect[], Number(data.height ?? 0))
+                break
+            case 'select':
+                this.handlers.onSelect?.(String(data.node))
+                break
+            case 'hover':
+                this.handlers.onHover?.(data.node === null ? null : String(data.node))
+                break
+            case 'scroll':
+                this.handlers.onScroll?.(Number(data.scrollY ?? 0))
+                break
+            default:
+                break
+        }
+    }
+}
+
+/** Fragment requests are debounced per node — a keystroke is not a render. */
+export function debounceByKey<T extends unknown[]>(
+    fn: (key: string, ...args: T) => void,
+    wait: number,
+): (key: string, ...args: T) => void {
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+    return (key: string, ...args: T) => {
+        const existing = timers.get(key)
+        if (existing) {
+            clearTimeout(existing)
+        }
+        timers.set(
+            key,
+            setTimeout(() => {
+                timers.delete(key)
+                fn(key, ...args)
+            }, wait),
+        )
+    }
+}
+
+export type FragmentFetcher = (node: string, blocks: BlockDocument) => Promise<{ html: string }>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Magna\Pages\Http\Controllers\BuilderApiController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
+use Magna\Pages\Http\Controllers\BuilderSpaController;
 use Magna\Pages\Http\Controllers\PageController;
 use Magna\Pages\Http\Controllers\PagePreviewController;
 
@@ -30,7 +31,14 @@ Route::post('/pages-preview', PagePreviewController::class)
  * permission of its own; the session only establishes WHO is asking.
  */
 Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
+    // Literal segments first: they must win over the {id} routes below,
+    // which would otherwise swallow "registry", "app" and the rest.
     Route::get('/registry', [BuilderApiController::class, 'registry'])->name('pages.builder.registry');
+    Route::get('/bridge.js', [BuilderCanvasController::class, 'bridge'])->name('pages.builder.bridge');
+    Route::get('/app/{path}', [BuilderSpaController::class, 'asset'])
+        ->where('path', '.*')
+        ->name('pages.builder.asset');
+    Route::get('/edit/{id}', [BuilderSpaController::class, 'index'])->name('pages.builder.edit');
     Route::get('/{id}', [BuilderApiController::class, 'bootstrap'])->name('pages.builder.bootstrap');
     Route::patch('/{id}', [BuilderApiController::class, 'patch'])->name('pages.builder.patch');
     Route::get('/{id}/canvas', [BuilderCanvasController::class, 'canvas'])->name('pages.builder.canvas');
