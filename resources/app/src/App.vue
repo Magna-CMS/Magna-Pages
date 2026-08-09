@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { createApi } from './api'
 import { CanvasBridge, debounceByKey, type NodeRect } from './bridge'
 import BuilderAddPanel from './components/BuilderAddPanel.vue'
+import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
@@ -322,6 +323,39 @@ async function onPublish() {
     await store.publish(api)
 }
 
+/** Design tab state: theme tokens + site overrides. */
+const themeTokens = ref<Record<string, string>>({})
+const styleOverrides = ref<Record<string, string>>({})
+const savingStyles = ref(false)
+
+async function loadStyles() {
+    try {
+        const styles = await api.styles()
+        themeTokens.value = styles.theme
+        styleOverrides.value = styles.overrides
+    } catch {
+        // No styles endpoint response leaves the Design tab empty; the
+        // builder itself is unaffected.
+    }
+}
+
+function onStylePreview(tokens: Record<string, string>) {
+    bridge.applyTokens(tokens)
+}
+
+async function onStyleSave(tokens: Record<string, string>) {
+    savingStyles.value = true
+    try {
+        const result = await api.saveStyles(tokens)
+        styleOverrides.value = result.overrides
+        bridge.applyTokens(result.effective)
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    } finally {
+        savingStyles.value = false
+    }
+}
+
 async function onInsertPattern(id: string) {
     if (await store.insertPattern(api, id, targetColumn.value)) {
         reloadCanvas()
@@ -358,6 +392,7 @@ onMounted(async () => {
     window.addEventListener('pagehide', onUnload)
     await store.load(api)
     void store.loadPatterns(api)
+    void loadStyles()
     startHeartbeat()
 })
 
@@ -422,6 +457,15 @@ onBeforeUnmount(() => {
                     @add="onAddBlock"
                     @add-section="onAddSection"
                     @insert-pattern="onInsertPattern"
+                />
+
+                <BuilderDesignPanel
+                    :theme="themeTokens"
+                    :overrides="styleOverrides"
+                    :capabilities="store.capabilities"
+                    :saving="savingStyles"
+                    @preview="onStylePreview"
+                    @save="onStyleSave"
                 />
             </aside>
 

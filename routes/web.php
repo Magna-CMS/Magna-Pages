@@ -7,6 +7,7 @@ use Magna\Pages\Http\Controllers\BuilderApiController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
 use Magna\Pages\Http\Controllers\BuilderPatternController;
 use Magna\Pages\Http\Controllers\BuilderSpaController;
+use Magna\Pages\Http\Controllers\BuilderStylesController;
 use Magna\Pages\Http\Controllers\PageController;
 use Magna\Pages\Http\Controllers\PagePreviewController;
 
@@ -40,6 +41,8 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::post('/patterns', [BuilderPatternController::class, 'store'])->name('pages.builder.patterns.store');
     Route::get('/patterns/{id}/instance', [BuilderPatternController::class, 'instance'])->name('pages.builder.patterns.instance');
     Route::delete('/patterns/{id}', [BuilderPatternController::class, 'destroy'])->name('pages.builder.patterns.destroy');
+    Route::get('/styles', [BuilderStylesController::class, 'show'])->name('pages.builder.styles');
+    Route::put('/styles', [BuilderStylesController::class, 'update'])->name('pages.builder.styles.update');
     Route::get('/app/{path}', [BuilderSpaController::class, 'asset'])
         ->where('path', '.*')
         ->name('pages.builder.asset');

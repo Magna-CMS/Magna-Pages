@@ -24,11 +24,40 @@ class ThemeTokens
     public function __construct(private readonly ThemeManager $themes) {}
 
     /**
-     * The active theme's tokens as a CSS custom-property map.
+     * The effective tokens: the theme's declarations with the site's saved
+     * overrides (Design tab) applied on top. Overrides only ever REPLACE a
+     * declared variable — StyleManager refuses unknown names at write, and
+     * the merge here ignores them too, so a stale row from a previous theme
+     * version cannot introduce variables the theme never had.
      *
      * @return array<string, string>
      */
     public function cssVariables(): array
+    {
+        $variables = $this->themeVariables();
+        if ($variables === []) {
+            return [];
+        }
+
+        foreach ($this->siteOverrides() as $name => $value) {
+            if (array_key_exists($name, $variables)
+                && is_string($value) && $value !== ''
+                && ! str_contains($value, ';') && ! str_contains($value, '(')
+            ) {
+                $variables[$name] = $value;
+            }
+        }
+
+        return $variables;
+    }
+
+    /**
+     * What the active theme itself declares, before site overrides — the
+     * Design tab lists these and validates override names against them.
+     *
+     * @return array<string, string>
+     */
+    public function themeVariables(): array
     {
         $active = $this->themes->active();
         if ($active === null) {
@@ -94,6 +123,28 @@ class ThemeTokens
         }
 
         return ':root{'.implode(';', $lines).'}';
+    }
+
+    /** @return array<mixed, mixed> */
+    private function siteOverrides(): array
+    {
+        $theme = $this->themes->active()?->name;
+        if ($theme === null) {
+            return [];
+        }
+
+        // Read directly rather than through StyleManager: the manager
+        // depends on this class for validation, and a cycle for one query
+        // buys nothing.
+        try {
+            $row = GlobalStyles::query()->where('theme', $theme)->first();
+        } catch (\Throwable) {
+            // Table not migrated yet (fresh install mid-upgrade) — the theme
+            // simply renders unoverridden.
+            return [];
+        }
+
+        return $row?->tokens ?? [];
     }
 
     private function kebab(string $key): string
