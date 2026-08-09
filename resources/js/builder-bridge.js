@@ -100,6 +100,50 @@
             return
         }
 
+        /*
+         * Inline editing. The parent decides WHICH node is editable (it
+         * knows the block's field schema and the actor's permissions); this
+         * side only turns the real element into a text input and reports
+         * what was typed.
+         *
+         * Refused when the element contains child markup: this edits text,
+         * and writing innerText back over a node with structure inside it
+         * would silently destroy that structure. Rich text keeps using the
+         * inspector until an editor that understands markup is mounted here.
+         */
+        if (data.type === 'editable' && typeof data.node === 'string') {
+            var editing = findNode(data.node)
+            if (!editing) {
+                return
+            }
+
+            if (data.on === false) {
+                editing.removeAttribute('contenteditable')
+
+                return
+            }
+
+            if (editing.children.length > 0) {
+                send('uneditable', { node: data.node, reason: 'markup' })
+
+                return
+            }
+
+            editing.setAttribute('contenteditable', 'plaintext-only')
+            editing.focus()
+
+            editing.addEventListener('input', function () {
+                send('text', { node: data.node, text: editing.innerText })
+            })
+
+            editing.addEventListener('blur', function () {
+                editing.removeAttribute('contenteditable')
+                send('textcommit', { node: data.node, text: editing.innerText })
+            })
+
+            return
+        }
+
         if (data.type === 'tokens' && data.tokens) {
             // The instant path for style edits: set the CSS variable and the
             // page restyles without a server round trip.
@@ -137,6 +181,18 @@
         'mouseover',
         function (event) {
             send('hover', { node: nodeIdFrom(event.target) })
+        },
+        true,
+    )
+
+    document.addEventListener(
+        'dblclick',
+        function (event) {
+            var id = nodeIdFrom(event.target)
+            if (id !== null) {
+                event.preventDefault()
+                send('editrequest', { node: id })
+            }
         },
         true,
     )

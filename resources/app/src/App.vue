@@ -84,7 +84,63 @@ const bridge = new CanvasBridge({
     onPointerUp: () => {
         void finishDrag()
     },
+
+    onEditRequest: (node) => {
+        if (editableField(node) !== null) {
+            store.select(node)
+            bridge.setEditable(node, true)
+        }
+    },
+
+    onTextCommit: (node, text) => {
+        void commitText(node, text)
+    },
+
+    onUneditable: () => {
+        // The element carries markup; the inspector is the editing path.
+    },
 })
+
+/**
+ * The field inline editing writes to: the block's first plain-text field.
+ * Fields with markup (richtext) are excluded — the bridge edits innerText,
+ * and writing that over stored markup would destroy it.
+ */
+function editableField(nodeId: string): string | null {
+    if (!store.capabilities.content) {
+        return null
+    }
+
+    const found = locate(store.blocks, nodeId)
+    if (!found || found.kind !== 'block') {
+        return null
+    }
+
+    const definition = store.blockDefinition(String((found.node as { block: string }).block))
+    const field = definition?.fields.find(
+        (entry) => entry.type === 'text' || entry.type === 'textarea',
+    )
+
+    return field?.handle ?? null
+}
+
+async function commitText(nodeId: string, text: string) {
+    const handle = editableField(nodeId)
+    const found = locate(store.blocks, nodeId)
+    if (!handle || !found) {
+        return
+    }
+
+    const ok = await store.edit(api, 'Edit text', [
+        { op: 'replace', path: `${found.pointer}/data/${handle}`, value: text },
+    ])
+
+    // Re-render the node either way: on success the canvas shows the stored
+    // (sanitized) text; on refusal it snaps back to the document's truth.
+    refreshFragment(nodeId)
+
+    return ok
+}
 
 async function finishDrag() {
     const node = dragging.value

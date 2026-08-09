@@ -34,6 +34,10 @@ export interface BridgeHandlers {
     onPointerDown?: (node: string, at: PointerPosition) => void
     onPointerMove?: (at: PointerPosition) => void
     onPointerUp?: (at: PointerPosition) => void
+    onEditRequest?: (node: string) => void
+    onText?: (node: string, text: string) => void
+    onTextCommit?: (node: string, text: string) => void
+    onUneditable?: (node: string, reason: string) => void
 }
 
 export class CanvasBridge {
@@ -65,6 +69,11 @@ export class CanvasBridge {
     /** The instant style path: set CSS variables without a round trip. */
     applyTokens(tokens: Record<string, string>): void {
         this.post({ type: 'tokens', tokens })
+    }
+
+    /** Make a node's element editable in place (or stop). */
+    setEditable(node: string, on: boolean): void {
+        this.post({ type: 'editable', node, on })
     }
 
     requestRects(): void {
@@ -114,6 +123,18 @@ export class CanvasBridge {
                 break
             case 'pointerup':
                 this.handlers.onPointerUp?.(pointerFrom(data))
+                break
+            case 'editrequest':
+                this.handlers.onEditRequest?.(String(data.node))
+                break
+            case 'text':
+                this.handlers.onText?.(String(data.node), String(data.text ?? ''))
+                break
+            case 'textcommit':
+                this.handlers.onTextCommit?.(String(data.node), String(data.text ?? ''))
+                break
+            case 'uneditable':
+                this.handlers.onUneditable?.(String(data.node), String(data.reason ?? ''))
                 break
             default:
                 break
