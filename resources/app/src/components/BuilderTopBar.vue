@@ -4,9 +4,10 @@ defineProps<{
     saving: boolean
     canUndo: boolean
     canRedo: boolean
+    canDelete: boolean
 }>()
 
-defineEmits<{ undo: []; redo: [] }>()
+defineEmits<{ undo: []; redo: []; remove: [] }>()
 </script>
 
 <template>
@@ -16,6 +17,7 @@ defineEmits<{ undo: []; redo: [] }>()
         <div class="topbar__actions">
             <button type="button" :disabled="!canUndo" @click="$emit('undo')">Undo</button>
             <button type="button" :disabled="!canRedo" @click="$emit('redo')">Redo</button>
+            <button type="button" :disabled="!canDelete" @click="$emit('remove')">Delete</button>
             <span class="topbar__state" role="status">{{ saving ? 'Saving…' : 'Saved' }}</span>
         </div>
     </header>

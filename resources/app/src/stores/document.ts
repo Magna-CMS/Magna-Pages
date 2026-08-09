@@ -1,6 +1,14 @@
 import { defineStore } from 'pinia'
 
 import type { BuilderApi } from '../api'
+import {
+    appendSection,
+    blockFrom,
+    emptySection,
+    insertBlock,
+    moveNode,
+    removeNode,
+} from '../document/edits'
 import { applyPatch } from '../document/patch'
 import type {
     BlockDefinition,
@@ -153,6 +161,66 @@ export const useDocumentStore = defineStore('document', {
             }
 
             await this.edit(api, entry.label, entry.redo)
+        },
+
+        /**
+         * Structure gestures. Each returns whether the edit survived the
+         * server, so the caller knows whether to refresh the canvas — and
+         * each is a no-op when the gesture does not apply to the current
+         * document, rather than sending a patch that would be refused.
+         */
+        async addBlock(api: BuilderApi, columnId: string, handle: string): Promise<boolean> {
+            const definition = this.registry.find((entry) => entry.handle === handle)
+            if (!definition) {
+                return false
+            }
+
+            const block = blockFrom(definition)
+            const operations = insertBlock(this.blocks, columnId, block)
+            if (!operations) {
+                return false
+            }
+
+            const ok = await this.edit(api, `Add ${definition.label}`, operations)
+            if (ok) {
+                this.select(block.id)
+            }
+
+            return ok
+        },
+
+        async addSection(api: BuilderApi): Promise<boolean> {
+            const section = emptySection()
+
+            return this.edit(api, 'Add section', appendSection(this.blocks, section))
+        },
+
+        async removeNode(api: BuilderApi, nodeId: string): Promise<boolean> {
+            const operations = removeNode(this.blocks, nodeId)
+            if (!operations) {
+                return false
+            }
+
+            const ok = await this.edit(api, 'Delete', operations)
+            if (ok && this.selectedNode === nodeId) {
+                this.select(null)
+            }
+
+            return ok
+        },
+
+        async moveBlock(
+            api: BuilderApi,
+            nodeId: string,
+            columnId: string,
+            index: number,
+        ): Promise<boolean> {
+            const operations = moveNode(this.blocks, nodeId, columnId, index)
+            if (!operations || operations.length === 0) {
+                return operations !== null
+            }
+
+            return this.edit(api, 'Move block', operations)
         },
 
         select(nodeId: string | null): void {

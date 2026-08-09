@@ -3,9 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { createApi } from './api'
 import { CanvasBridge, debounceByKey, type NodeRect } from './bridge'
+import BuilderAddPanel from './components/BuilderAddPanel.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
+import { columnOf } from './document/edits'
 import { locate } from './document/locate'
 import { useDocumentStore } from './stores/document'
 
@@ -86,6 +88,61 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
     }
 }
 
+/**
+ * Where a new block would go: the selected column, or the column holding
+ * the selected block, so "select a heading, add a paragraph" lands where the
+ * user is looking rather than at the end of the page.
+ */
+const targetColumn = computed<string | null>(() => {
+    if (!selected.value) {
+        return null
+    }
+
+    return selected.value.kind === 'column'
+        ? String((selected.value.node as { id: string }).id)
+        : columnOf(store.blocks, String((selected.value.node as { id: string }).id))
+})
+
+async function onAddBlock(handle: string) {
+    if (targetColumn.value && (await store.addBlock(api, targetColumn.value, handle))) {
+        reloadCanvas()
+    }
+}
+
+async function onAddSection() {
+    if (await store.addSection(api)) {
+        reloadCanvas()
+    }
+}
+
+async function onDelete() {
+    if (store.selectedNode && (await store.removeNode(api, store.selectedNode))) {
+        reloadCanvas()
+    }
+}
+
+function onKeydown(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null
+    const typing =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+
+    if (typing) {
+        return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        void (event.shiftKey ? onRedo() : onUndo())
+
+        return
+    }
+
+    if ((event.key === 'Delete' || event.key === 'Backspace') && store.selectedNode) {
+        event.preventDefault()
+        void onDelete()
+    }
+}
+
 async function onUndo() {
     await store.undo(api)
     reloadCanvas()
@@ -106,10 +163,14 @@ onMounted(async () => {
     if (frame.value) {
         bridge.attach(frame.value)
     }
+    window.addEventListener('keydown', onKeydown)
     await store.load(api)
 })
 
-onBeforeUnmount(() => bridge.destroy())
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onKeydown)
+    bridge.destroy()
+})
 </script>
 
 <template>
@@ -119,8 +180,10 @@ onBeforeUnmount(() => bridge.destroy())
             :saving="store.saving"
             :can-undo="store.canUndo"
             :can-redo="store.canRedo"
+            :can-delete="store.selectedNode !== null && store.capabilities.structure"
             @undo="onUndo"
             @redo="onRedo"
+            @remove="onDelete"
         />
 
         <div class="builder__body">
@@ -129,6 +192,15 @@ onBeforeUnmount(() => bridge.destroy())
                     :sections="store.sections"
                     :selected="store.selectedNode"
                     @select="store.select($event)"
+                />
+
+                <BuilderAddPanel
+                    :registry="store.registry"
+                    :sections="store.sections"
+                    :target-column="targetColumn"
+                    :capabilities="store.capabilities"
+                    @add="onAddBlock"
+                    @add-section="onAddSection"
                 />
             </aside>
 
