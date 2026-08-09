@@ -24,8 +24,12 @@ return new class extends Migration
             // database, not in a check-then-act window.
             $table->char('entry_id', 26)->unique();
             $table->char('user_id', 26)->index();
-            $table->timestamp('acquired_at');
-            $table->timestamp('heartbeat_at');
+            // useCurrent: LockManager always writes both explicitly, but a
+            // NOT NULL timestamp with no default breaks on MySQL strict
+            // mode the moment any other writer forgets (ArchitectureTest
+            // enforces this project-wide).
+            $table->timestamp('acquired_at')->useCurrent();
+            $table->timestamp('heartbeat_at')->useCurrent();
             $table->timestamps();
         });
     }
