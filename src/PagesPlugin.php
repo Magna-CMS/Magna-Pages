@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Event;
 use Magna\Admin\Nav\NavGroup;
 use Magna\Admin\Nav\NavItem;
 use Magna\Blocks\BlockDefinition;
+use Magna\Blocks\Contracts\GuardsDocumentEdits;
 use Magna\Blocks\Contracts\ProvidesDocumentPreview;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
@@ -20,6 +21,7 @@ use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersCommands;
 use Magna\Contracts\RegistersSettingsPages;
+use Magna\Pages\Builder\LivewireEditGuard;
 use Magna\Pages\Cache\PurgePageCache;
 use Magna\Pages\Console\InstallDemoCommand;
 use Magna\Pages\Console\PruneCacheCommand;
@@ -77,6 +79,13 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // Light up the core block editor's live-preview pane (§E1 contract
         // seam — core shows the pane only when this binding exists).
         app()->singleton(ProvidesDocumentPreview::class, ThemedDocumentPreview::class);
+
+        // The structured editor honors the builder's document lock (§E2) —
+        // two editors, one lock, neither can overwrite the other unseen.
+        app()->singleton(
+            GuardsDocumentEdits::class,
+            LivewireEditGuard::class,
+        );
 
         // Page-cache invalidation: content edits purge exactly that page.
         foreach ([
