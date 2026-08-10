@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Render;
 
+use Magna\Blocks\DynamicTags\DynamicTagRegistry;
 use Magna\Content\Entry;
 use Magna\Settings\GeneralSettings;
+use Throwable;
 
 /**
  * Resolves `{"$bind": "source.key"}` values in block data at render time
@@ -13,10 +15,13 @@ use Magna\Settings\GeneralSettings;
  * Phase A; this is where they finally resolve).
  *
  * v1 sources: the entry being rendered (`entry.<attribute>`, allowlisted —
- * a binding must not become a read primitive over arbitrary model state)
- * and the site (`site.name`). Unknown sources resolve to an EMPTY STRING,
- * never an error and never a leak: a page whose binding outlived its
- * source renders a gap, not a stack trace and not somebody's data.
+ * a binding must not become a read primitive over arbitrary model state),
+ * the site (`site.name`), and plugin dynamic tags (`tag.<handle>` through
+ * the core DynamicTagRegistry — a tag that throws degrades to an empty
+ * string and a log line, never a broken page). Unknown sources resolve to
+ * an EMPTY STRING, never an error and never a leak: a page whose binding
+ * outlived its source renders a gap, not a stack trace and not somebody's
+ * data.
  *
  * Resolution feeds the view payload only — the stored document keeps its
  * bindings, which is what makes them bindings.
@@ -25,6 +30,8 @@ class BindingResolver
 {
     /** Entry attributes a binding may read. */
     private const ENTRY_SOURCES = ['title', 'slug', 'path', 'published_at', 'updated_at'];
+
+    public function __construct(private readonly DynamicTagRegistry $tags) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -52,6 +59,10 @@ class BindingResolver
         foreach (self::ENTRY_SOURCES as $attribute) {
             $sources['entry.'.$attribute] = 'Page '.str_replace('_', ' ', $attribute);
         }
+        foreach ($this->tags->all() as $handle => $tag) {
+            $sources['tag.'.$handle] = $tag->label();
+        }
+        ksort($sources);
 
         return $sources;
     }
@@ -66,6 +77,21 @@ class BindingResolver
             $name = GeneralSettings::get()->site_name;
 
             return is_string($name) ? $name : '';
+        }
+
+        if (str_starts_with($bind, 'tag.')) {
+            $tag = $this->tags->get(substr($bind, 4));
+            if ($tag === null) {
+                return '';
+            }
+            try {
+                return $tag->resolve();
+            } catch (Throwable $e) {
+                // A misbehaving tag costs its own gap, never the page.
+                logger()->warning("Dynamic tag [{$tag->handle()}] failed to resolve: {$e->getMessage()}");
+
+                return '';
+            }
         }
 
         if (str_starts_with($bind, 'entry.') && $entry !== null) {

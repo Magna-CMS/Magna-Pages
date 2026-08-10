@@ -12,6 +12,7 @@ use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\Contracts\GuardsDocumentEdits;
 use Magna\Blocks\Contracts\ProvidesDocumentPreview;
 use Magna\Blocks\DataSources\DataSource;
+use Magna\Blocks\DynamicTags\DynamicTag;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\Events\EntryDeleted;
@@ -22,7 +23,9 @@ use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersCommands;
 use Magna\Contracts\RegistersDataSources;
+use Magna\Contracts\RegistersDynamicTags;
 use Magna\Contracts\RegistersSettingsPages;
+use Magna\Pages\Blocks\CurrentYearTag;
 use Magna\Pages\Blocks\DataSourceOptions;
 use Magna\Pages\Blocks\LatestPagesSource;
 use Magna\Pages\Blocks\LoopBlockResolver;
@@ -54,7 +57,7 @@ use Magna\Plugins\Plugin;
  * Routing, rendering, menus, and the builder land in the next Phase A items
  * on top of this skeleton.
  */
-class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersCommands, RegistersDataSources, RegistersSettingsPages
+class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersCommands, RegistersDataSources, RegistersDynamicTags, RegistersSettingsPages
 {
     /** @return list<DataSource> */
     public function dataSources(): array
@@ -63,6 +66,13 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // contract third-party plugins use — one wiring path, exercised
         // on every boot.
         return [app(LatestPagesSource::class)];
+    }
+
+    /** @return list<DynamicTag> */
+    public function dynamicTags(): array
+    {
+        // Same one-wiring-path rule as dataSources().
+        return [new CurrentYearTag];
     }
 
     /** @return list<class-string> */
