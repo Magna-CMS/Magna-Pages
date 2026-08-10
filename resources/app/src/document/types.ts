@@ -92,6 +92,7 @@ export interface ApprovalState {
 export interface BootstrapPayload {
     lock?: LockState
     approval?: ApprovalState | null
+    bindingSources?: Record<string, string>
     document: {
         id: string
         title: string

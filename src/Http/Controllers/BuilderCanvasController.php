@@ -75,7 +75,7 @@ final class BuilderCanvasController
             'document' => ['required', 'array'],
         ]);
 
-        $this->findDocument($id);
+        $entry = $this->findDocument($id);
 
         /** @var array<mixed, mixed> $document */
         $document = (array) $request->input('document', []);
@@ -89,7 +89,7 @@ final class BuilderCanvasController
         }
 
         $node = $request->string('node')->value();
-        $html = $this->fragments->renderBlock($document, $node);
+        $html = $this->fragments->renderBlock($document, $node, context: $entry);
 
         if ($html === null) {
             return response()->json(['message' => 'That node is not in the document.'], 404);

@@ -20,6 +20,7 @@ const props = defineProps<{
     located: Located | null
     definition?: BlockDefinition | undefined
     capabilities: Capabilities
+    bindingSources: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -144,6 +145,26 @@ function isBound(field: BlockFieldDefinition): boolean {
 
     return typeof value === 'object' && value !== null && '$bind' in value
 }
+
+function boundSource(field: BlockFieldDefinition): string {
+    const value = data.value[field.handle]
+
+    return isBound(field) ? String((value as Record<string, unknown>).$bind ?? '') : ''
+}
+
+/** Binding writes are design-tier — the server refuses them below that. */
+function bindField(field: BlockFieldDefinition, source: string) {
+    if (!props.located) {
+        return
+    }
+
+    emit(
+        'edit',
+        props.located.pointer,
+        field.handle,
+        source === '' ? '' : { $bind: source },
+    )
+}
 </script>
 
 <template>
@@ -161,9 +182,18 @@ function isBound(field: BlockFieldDefinition): boolean {
                     <span v-if="field.required" aria-hidden="true">*</span>
                 </label>
 
-                <p v-if="isBound(field)" class="inspector__bound">
-                    Bound to dynamic data — edit the binding to change it.
-                </p>
+                <div v-if="isBound(field)" class="inspector__bindrow">
+                    <select
+                        :value="boundSource(field)"
+                        :disabled="!capabilities.style"
+                        @change="bindField(field, ($event.target as HTMLSelectElement).value)"
+                    >
+                        <option value="">— unbind (back to literal) —</option>
+                        <option v-for="(label, source) in bindingSources" :key="source" :value="source">
+                            {{ label }}
+                        </option>
+                    </select>
+                </div>
 
                 <textarea
                     v-else-if="field.type === 'textarea' || field.type === 'richtext'"
@@ -186,14 +216,29 @@ function isBound(field: BlockFieldDefinition): boolean {
                     </option>
                 </select>
 
-                <input
-                    v-else
-                    :id="`field-${field.handle}`"
-                    :type="field.type === 'number' ? 'number' : 'text'"
-                    :value="valueFor(field)"
-                    :disabled="!editable"
-                    @change="onInput(field, $event)"
-                />
+                <div v-else class="inspector__bindrow">
+                    <input
+                        :id="`field-${field.handle}`"
+                        :type="field.type === 'number' ? 'number' : 'text'"
+                        :value="valueFor(field)"
+                        :disabled="!editable"
+                        @change="onInput(field, $event)"
+                    />
+                    <!-- Bind to dynamic data: design-tier, so the toggle
+                         only shows to actors the server would not refuse. -->
+                    <select
+                        v-if="capabilities.style && (field.type === 'text' || field.type === 'textarea')"
+                        class="inspector__bindpick"
+                        title="Bind to dynamic data"
+                        :value="''"
+                        @change="bindField(field, ($event.target as HTMLSelectElement).value)"
+                    >
+                        <option value="" disabled selected>⛓</option>
+                        <option v-for="(label, source) in bindingSources" :key="source" :value="source">
+                            {{ label }}
+                        </option>
+                    </select>
+                </div>
             </div>
 
             <p v-if="!editable" class="inspector__locked">
@@ -353,6 +398,21 @@ select:disabled {
     color: inherit;
     font: inherit;
     font-size: 12px;
+}
+
+.inspector__bindrow {
+    display: flex;
+    gap: 4px;
+}
+
+.inspector__bindrow input,
+.inspector__bindrow > select:first-child {
+    flex: 1;
+}
+
+.inspector__bindpick {
+    width: 40px !important;
+    flex: 0 0 auto;
 }
 
 .inspector__empty,

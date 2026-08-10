@@ -9,6 +9,7 @@ use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\BlockField;
 use Magna\Blocks\BlockRegistry;
 use Magna\Content\Entry;
+use Magna\Pages\Render\BindingResolver;
 use Magna\Pages\Themes\ThemeTokens;
 
 /**
@@ -27,6 +28,7 @@ final class BuilderBootstrap
     public function __construct(
         private readonly BlockRegistry $blocks,
         private readonly ThemeTokens $tokens,
+        private readonly BindingResolver $bindings,
     ) {}
 
     /**
@@ -49,6 +51,8 @@ final class BuilderBootstrap
             'registry' => $this->registryPayload($this->blocks),
             'tokens' => $this->tokens->cssVariables(),
             'capabilities' => $this->capabilities($actor),
+            // What a $bind may point at, for the inspector's picker.
+            'bindingSources' => $this->bindings->sources(),
         ];
     }
 

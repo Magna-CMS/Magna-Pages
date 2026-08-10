@@ -82,6 +82,7 @@ interface State {
     selectedNode: string | null
     lock: LockState
     approval: ApprovalState | null
+    bindingSources: Record<string, string>
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -108,6 +109,7 @@ export const useDocumentStore = defineStore('document', {
         selectedNode: null,
         lock: { mine: false, holder: null },
         approval: null,
+        bindingSources: {},
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -140,6 +142,7 @@ export const useDocumentStore = defineStore('document', {
             this.capabilities = payload.capabilities
             this.lock = payload.lock ?? { mine: true, holder: null }
             this.approval = payload.approval ?? null
+            this.bindingSources = payload.bindingSources ?? {}
             this.loaded = true
         },
 

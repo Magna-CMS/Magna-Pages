@@ -661,6 +661,7 @@ onBeforeUnmount(() => {
                             : undefined
                     "
                     :capabilities="store.capabilities"
+                    :binding-sources="store.bindingSources"
                     @edit="onFieldEdit"
                     @edit-setting="onSettingEdit"
                 />

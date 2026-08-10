@@ -51,6 +51,8 @@
 @php
     // Display conditions: absent closure (older include sites) = show all.
     $passes = $conditionsPass ?? fn (array $settings): bool => true;
+    // Bindings: absent closure = literals pass through untouched.
+    $bound = $resolveBindings ?? fn ($block) => $block;
 @endphp
 @foreach($tree->sections as $section)
     @continue($section->isRef()) {{-- refs are spliced before parsing; a stray one renders nothing --}}
@@ -88,7 +90,7 @@
                             @php $blockView = $blockViewFor($block->block); @endphp
                             @if($blockView !== null)
                                 {!! $mark(view($blockView, [
-                                    'block' => $resolver->viewPayload($block),
+                                    'block' => $resolver->viewPayload($bound($block)),
                                     'definition' => $registry->get($block->block),
                                 ])->render(), $block->id, 'block') !!}
                             @endif

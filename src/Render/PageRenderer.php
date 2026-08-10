@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Render;
 
+use Magna\Blocks\BlockNode;
 use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
@@ -46,6 +47,7 @@ final class PageRenderer
         private readonly MenuManager $menus,
         private readonly TemplatePartResolver $parts,
         private readonly ConditionEvaluator $conditions,
+        private readonly BindingResolver $bindings,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -58,6 +60,7 @@ final class PageRenderer
             is_string($title) ? $title : '',
             $builderMode,
             $withParts,
+            $page,
         );
     }
 
@@ -68,7 +71,7 @@ final class PageRenderer
      *
      * @param  array<mixed, mixed>  $document
      */
-    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null): string
     {
         // Ref sections splice their template part's sections in place
         // before parsing — parts compose pages, never the reverse.
@@ -89,8 +92,8 @@ final class PageRenderer
             // withParts false = a template document editing itself bare;
             // injecting the published header while EDITING the header would
             // show two of it, one stale.
-            'headerPartHtml' => $withParts ? $this->renderPart('header') : null,
-            'footerPartHtml' => $withParts ? $this->renderPart('footer') : null,
+            'headerPartHtml' => $withParts ? $this->renderPart('header', $context) : null,
+            'footerPartHtml' => $withParts ? $this->renderPart('footer', $context) : null,
             // Inherited by the sections partial through @include, so a theme
             // layout needs no builder awareness of its own.
             'builderMode' => $builderMode,
@@ -102,6 +105,13 @@ final class PageRenderer
                 ? fn (array $settings): bool => true
                 : fn (array $settings): bool => $this->conditions
                     ->evaluate($settings, auth()->user(), now())->visible,
+            // Bindings resolve against the PAGE being rendered — a part's
+            // {"$bind": "entry.title"} means the page it appears on. The
+            // stored document keeps its bindings; only the view payload
+            // carries the values.
+            'resolveBindings' => fn (BlockNode $block): BlockNode => $block->withData(
+                $this->bindings->resolve($block->data, $context),
+            ),
         ])->render();
     }
 
@@ -109,7 +119,7 @@ final class PageRenderer
      * A template part rendered through the same section pipeline, or null
      * when the part does not exist or is not published.
      */
-    private function renderPart(string $handle): ?string
+    private function renderPart(string $handle, ?Entry $context = null): ?string
     {
         $tree = $this->parts->partTree($handle);
         if ($tree === null || $tree->sections === []) {
@@ -124,6 +134,10 @@ final class PageRenderer
             // Parts obey conditions on the public site like any section.
             'conditionsPass' => fn (array $settings): bool => $this->conditions
                 ->evaluate($settings, auth()->user(), now())->visible,
+            // A part's bindings mean the page it appears on.
+            'resolveBindings' => fn (BlockNode $block): BlockNode => $block->withData(
+                $this->bindings->resolve($block->data, $context),
+            ),
         ])->render();
     }
 }

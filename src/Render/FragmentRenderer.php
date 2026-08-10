@@ -8,6 +8,7 @@ use Magna\Blocks\BlockNode;
 use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
+use Magna\Content\Entry;
 use Magna\Pages\Themes\ThemeViewResolver;
 
 /**
@@ -30,6 +31,7 @@ final class FragmentRenderer
         private readonly BlockDataResolver $resolver,
         private readonly ThemeViewResolver $themeViews,
         private readonly BuilderMarkup $markup,
+        private readonly BindingResolver $bindings,
     ) {}
 
     /**
@@ -37,7 +39,7 @@ final class FragmentRenderer
      * @return string|null null when the node is not in the document, or its
      *                     block handle has no view (a disabled plugin)
      */
-    public function renderBlock(array $document, string $nodeId, bool $builderMode = true): ?string
+    public function renderBlock(array $document, string $nodeId, bool $builderMode = true, ?Entry $context = null): ?string
     {
         $block = $this->findBlock(PageTree::fromArray($document), $nodeId);
         if ($block === null) {
@@ -48,6 +50,10 @@ final class FragmentRenderer
         if ($view === null) {
             return null;
         }
+
+        // Same binding resolution as the full render — a fragment-swapped
+        // canvas and a freshly loaded one must be the same document.
+        $block = $block->withData($this->bindings->resolve($block->data, $context));
 
         $html = view($view, [
             'block' => $this->resolver->viewPayload($block),
