@@ -21,6 +21,8 @@ use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersCommands;
 use Magna\Contracts\RegistersSettingsPages;
+use Magna\Pages\Blocks\DataSourceOptions;
+use Magna\Pages\Blocks\LoopBlockResolver;
 use Magna\Pages\Builder\LivewireEditGuard;
 use Magna\Pages\Cache\PurgePageCache;
 use Magna\Pages\Console\E2eUserCommand;
@@ -80,6 +82,9 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // seam, same as the core entries/text resolvers.
         app(BlockDataResolver::class)->register(app(NavBlockResolver::class));
 
+        // The Loop block: plugin data sources onto pages.
+        app(BlockDataResolver::class)->register(app(LoopBlockResolver::class));
+
         // Light up the core block editor's live-preview pane (§E1 contract
         // seam — core shows the pane only when this binding exists).
         app()->singleton(ProvidesDocumentPreview::class, ThemedDocumentPreview::class);
@@ -121,6 +126,23 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
     public function blocks(): array
     {
         return [
+            BlockDefinition::fromArray([
+                'handle' => 'loop',
+                'label' => 'Loop',
+                'icon' => 'heroicon-o-arrow-path-rounded-square',
+                'category' => 'dynamic',
+                'fields' => [
+                    ['handle' => 'heading', 'type' => 'text', 'label' => 'Heading', 'required' => false],
+                    [
+                        'handle' => 'source',
+                        'type' => 'select',
+                        'label' => 'Data source',
+                        'required' => true,
+                        'optionsFrom' => DataSourceOptions::class,
+                    ],
+                    ['handle' => 'limit', 'type' => 'number', 'label' => 'Items', 'required' => false, 'default' => 6],
+                ],
+            ]),
             BlockDefinition::fromArray([
                 'handle' => 'nav',
                 'label' => 'Navigation',
