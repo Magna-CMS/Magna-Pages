@@ -372,6 +372,15 @@ async function onPublish() {
     await store.publish(api)
 }
 
+async function onRequestPublish() {
+    const note = window.prompt('Anything the reviewer should know? (optional)')
+    if (note === null) {
+        return
+    }
+
+    await store.requestPublish(api, note.trim() === '' ? null : note.trim())
+}
+
 /** Design tab state: theme tokens + site overrides. */
 const themeTokens = ref<Record<string, string>>({})
 const styleOverrides = ref<Record<string, string>>({})
@@ -471,11 +480,14 @@ onBeforeUnmount(() => {
                 store.capabilities.structure &&
                 selected?.kind !== 'column'
             "
+            :can-request-publish="store.capabilities.content"
+            :publish-requested="store.approval !== null"
             @undo="onUndo"
             @redo="onRedo"
             @remove="onDelete"
             @publish="onPublish"
             @save-pattern="onSavePattern"
+            @request-publish="onRequestPublish"
         />
 
         <div v-if="!store.lock.mine && store.loaded" class="builder__lockbar" role="alert">

@@ -77,6 +77,12 @@ export function createApi(pageId: string, base = '/pages-builder') {
         publish: (): Promise<{ status: string; published_at: string | null; url: string | null }> =>
             request(`${base}/${pageId}/publish`, { method: 'POST' }),
 
+        requestPublish: (note: string | null): Promise<{ request: { id: string } }> =>
+            request(`${base}/${pageId}/request-publish`, {
+                method: 'POST',
+                body: JSON.stringify({ note }),
+            }),
+
         styles: (): Promise<{
             theme: Record<string, string>
             overrides: Record<string, string>

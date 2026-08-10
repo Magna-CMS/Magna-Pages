@@ -9,9 +9,11 @@ defineProps<{
     canDelete: boolean
     canPublish: boolean
     canSavePattern: boolean
+    canRequestPublish: boolean
+    publishRequested: boolean
 }>()
 
-defineEmits<{ undo: []; redo: []; remove: []; publish: []; savePattern: [] }>()
+defineEmits<{ undo: []; redo: []; remove: []; publish: []; savePattern: []; requestPublish: [] }>()
 </script>
 
 <template>
@@ -35,13 +37,23 @@ defineEmits<{ undo: []; redo: []; remove: []; publish: []; savePattern: [] }>()
             </a>
 
             <button
+                v-if="canPublish"
                 type="button"
                 class="topbar__publish"
-                :disabled="!canPublish"
-                :title="canPublish ? undefined : 'Needs the publish permission'"
                 @click="$emit('publish')"
             >
                 {{ status === 'published' ? 'Republish' : 'Publish' }}
+            </button>
+
+            <!-- An editor without the publish permission asks instead. -->
+            <button
+                v-else
+                type="button"
+                class="topbar__publish"
+                :disabled="!canRequestPublish || publishRequested"
+                @click="$emit('requestPublish')"
+            >
+                {{ publishRequested ? 'Publish requested' : 'Request publish' }}
             </button>
         </div>
     </header>

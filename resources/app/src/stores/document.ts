@@ -12,6 +12,7 @@ import {
 import { locate } from '../document/locate'
 import { applyPatch } from '../document/patch'
 import type {
+    ApprovalState,
     BlockDefinition,
     BlockDocument,
     Capabilities,
@@ -61,6 +62,7 @@ interface State {
     capabilities: Capabilities
     selectedNode: string | null
     lock: LockState
+    approval: ApprovalState | null
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -81,6 +83,7 @@ export const useDocumentStore = defineStore('document', {
         capabilities: { content: false, structure: false, style: false, publish: false },
         selectedNode: null,
         lock: { mine: false, holder: null },
+        approval: null,
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -110,7 +113,22 @@ export const useDocumentStore = defineStore('document', {
             this.tokens = payload.tokens
             this.capabilities = payload.capabilities
             this.lock = payload.lock ?? { mine: true, holder: null }
+            this.approval = payload.approval ?? null
             this.loaded = true
+        },
+
+        async requestPublish(api: BuilderApi, note: string | null): Promise<boolean> {
+            this.error = null
+            try {
+                const result = await api.requestPublish(note)
+                this.approval = { id: result.request.id, requested_at: null }
+
+                return true
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            }
         },
 
         async loadPatterns(api: BuilderApi): Promise<void> {

@@ -84,8 +84,14 @@ export interface LockState {
     acquired_at?: string
 }
 
+export interface ApprovalState {
+    id: string
+    requested_at: string | null
+}
+
 export interface BootstrapPayload {
     lock?: LockState
+    approval?: ApprovalState | null
     document: {
         id: string
         title: string
