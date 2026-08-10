@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Magna\Pages\Http\Controllers\BuilderApiController;
 use Magna\Pages\Http\Controllers\BuilderApprovalController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
+use Magna\Pages\Http\Controllers\BuilderLibraryController;
 use Magna\Pages\Http\Controllers\BuilderPatternController;
 use Magna\Pages\Http\Controllers\BuilderSpaController;
 use Magna\Pages\Http\Controllers\BuilderStylesController;
@@ -38,6 +39,9 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     // which would otherwise swallow "registry", "app" and the rest.
     Route::get('/registry', [BuilderApiController::class, 'registry'])->name('pages.builder.registry');
     Route::get('/bridge.js', [BuilderCanvasController::class, 'bridge'])->name('pages.builder.bridge');
+    Route::get('/library', [BuilderLibraryController::class, 'index'])->name('pages.builder.library');
+    Route::get('/library/collections/{slug}', [BuilderLibraryController::class, 'collection'])->name('pages.builder.library.collection');
+    Route::get('/library/{slug}/instance', [BuilderLibraryController::class, 'instance'])->name('pages.builder.library.instance');
     Route::get('/patterns', [BuilderPatternController::class, 'index'])->name('pages.builder.patterns');
     Route::post('/patterns', [BuilderPatternController::class, 'store'])->name('pages.builder.patterns.store');
     Route::get('/patterns/{id}/instance', [BuilderPatternController::class, 'instance'])->name('pages.builder.patterns.instance');

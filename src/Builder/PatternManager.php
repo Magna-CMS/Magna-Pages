@@ -56,7 +56,7 @@ final class PatternManager
      */
     public function instance(Pattern $pattern): array
     {
-        return $this->freshIds($pattern->document);
+        return DocumentIds::fresh($pattern->document);
     }
 
     /**
@@ -82,31 +82,5 @@ final class PatternManager
                 'blocks' => [$node],
             ]],
         ]];
-    }
-
-    /**
-     * Regenerate `id` on this node and every structural child. Only the
-     * structural containers are walked — an "id" key inside block DATA is
-     * content and must survive untouched.
-     *
-     * @param  array<mixed, mixed>  $node
-     * @return array<mixed, mixed>
-     */
-    private function freshIds(array $node): array
-    {
-        if (array_key_exists('id', $node)) {
-            $node['id'] = strtolower((string) Str::ulid());
-        }
-
-        foreach (['columns', 'blocks', 'children'] as $container) {
-            if (isset($node[$container]) && is_array($node[$container])) {
-                $node[$container] = array_map(
-                    fn (mixed $child): mixed => is_array($child) ? $this->freshIds($child) : $child,
-                    $node[$container],
-                );
-            }
-        }
-
-        return $node;
     }
 }

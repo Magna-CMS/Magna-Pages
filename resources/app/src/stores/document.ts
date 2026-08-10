@@ -50,12 +50,30 @@ export interface PatternSummary {
     kind: string
 }
 
+export interface LibraryAssetSummary {
+    slug: string
+    name: string
+    kind: string
+    description: string | null
+    missingBlocks: string[]
+    downloads: number
+}
+
+export interface LibraryCollectionSummary {
+    slug: string
+    name: string
+    publisher: string
+    assetCount: number
+}
+
 interface State {
     pageId: string
     title: string
     status: string
     publicUrl: string | null
     patterns: PatternSummary[]
+    libraryAssets: LibraryAssetSummary[]
+    libraryCollections: LibraryCollectionSummary[]
     blocks: BlockDocument
     registry: BlockDefinition[]
     tokens: Record<string, string>
@@ -77,6 +95,8 @@ export const useDocumentStore = defineStore('document', {
         status: '',
         publicUrl: null,
         patterns: [],
+        libraryAssets: [],
+        libraryCollections: [],
         blocks: [],
         registry: [],
         tokens: {},
@@ -164,6 +184,44 @@ export const useDocumentStore = defineStore('document', {
 
                 return false
             }
+        },
+
+        async loadLibrary(api: BuilderApi): Promise<void> {
+            try {
+                const library = await api.library()
+                this.libraryAssets = library.assets
+                this.libraryCollections = library.collections
+            } catch {
+                // A hub outage empties the panel; the builder is unaffected.
+                this.libraryAssets = []
+                this.libraryCollections = []
+            }
+        },
+
+        /**
+         * Insert a cloud-library asset. Patterns and parts are one section;
+         * a page asset is a whole sections list, appended in order.
+         */
+        async insertLibraryAsset(api: BuilderApi, slug: string): Promise<boolean> {
+            this.error = null
+
+            let instance: { kind: string; node: Record<string, unknown> }
+            try {
+                instance = await api.libraryInstance(slug)
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            }
+
+            const nodes =
+                instance.kind === 'page' && Array.isArray(instance.node)
+                    ? (instance.node as unknown as Record<string, unknown>[])
+                    : [instance.node]
+
+            const operations = nodes.flatMap((node) => appendSection(this.blocks, node as never))
+
+            return this.edit(api, 'Insert from library', operations)
         },
 
         /** Insert a pattern instance: sections append, blocks join a column. */

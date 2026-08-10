@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { PatternSummary } from '../stores/document'
+import type {
+    LibraryAssetSummary,
+    LibraryCollectionSummary,
+    PatternSummary,
+} from '../stores/document'
 import type { BlockDefinition, Capabilities, SectionNode } from '../document/types'
 
 /**
@@ -20,9 +24,16 @@ const props = defineProps<{
     targetColumn: string | null
     capabilities: Capabilities
     patterns: PatternSummary[]
+    libraryAssets: LibraryAssetSummary[]
+    libraryCollections: LibraryCollectionSummary[]
 }>()
 
-defineEmits<{ add: [handle: string]; addSection: []; insertPattern: [id: string, kind: string] }>()
+defineEmits<{
+    add: [handle: string]
+    addSection: []
+    insertPattern: [id: string, kind: string]
+    insertLibrary: [slug: string]
+}>()
 
 const categories = computed(() => {
     const groups = new Map<string, BlockDefinition[]>()
@@ -87,6 +98,38 @@ function blocked(definition: BlockDefinition): string | null {
                     </button>
                 </li>
             </ul>
+        </div>
+
+        <div v-if="libraryAssets.length > 0" class="add__group">
+            <h3 class="add__category">Cloud library</h3>
+
+            <ul class="add__list">
+                <li v-for="asset in libraryAssets" :key="asset.slug">
+                    <button
+                        type="button"
+                        class="add__block"
+                        :disabled="!capabilities.structure"
+                        :title="
+                            asset.missingBlocks.length > 0
+                                ? `This site is missing: ${asset.missingBlocks.join(', ')}`
+                                : (asset.description ?? asset.name)
+                        "
+                        @click="$emit('insertLibrary', asset.slug)"
+                    >
+                        {{ asset.name }}
+                        <small>
+                            {{ asset.kind }} · {{ asset.downloads }} installs
+                            <span v-if="asset.missingBlocks.length > 0" class="add__warning">
+                                — missing {{ asset.missingBlocks.join(', ') }}
+                            </span>
+                        </small>
+                    </button>
+                </li>
+            </ul>
+
+            <p v-for="collection in libraryCollections" :key="collection.slug" class="add__hint">
+                {{ collection.name }} — {{ collection.assetCount }} assets by {{ collection.publisher }}
+            </p>
         </div>
 
         <div v-for="[category, blocks] in categories" :key="category" class="add__group">
@@ -167,5 +210,9 @@ function blocked(definition: BlockDefinition): string | null {
     margin: 6px 0;
     font-size: 12px;
     opacity: 0.6;
+}
+
+.add__warning {
+    color: #f0b45c;
 }
 </style>

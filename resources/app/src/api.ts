@@ -92,6 +92,23 @@ export function createApi(pageId: string, base = '/pages-builder') {
         saveStyles: (tokens: Record<string, string>): Promise<{ overrides: Record<string, string>; effective: Record<string, string> }> =>
             request(`${base}/styles`, { method: 'PUT', body: JSON.stringify({ tokens }) }),
 
+        library: (): Promise<{
+            assets: {
+                slug: string
+                name: string
+                kind: string
+                description: string | null
+                missingBlocks: string[]
+                downloads: number
+            }[]
+            collections: { slug: string; name: string; publisher: string; assetCount: number }[]
+        }> => request(`${base}/library`),
+
+        libraryInstance: (
+            slug: string,
+        ): Promise<{ kind: string; name: string; missingBlocks: string[]; node: Record<string, unknown> }> =>
+            request(`${base}/library/${slug}/instance`),
+
         patterns: (): Promise<{ patterns: { id: string; name: string; kind: string }[] }> =>
             request(`${base}/patterns`),
 

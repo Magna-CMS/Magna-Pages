@@ -414,6 +414,26 @@ async function onStyleSave(tokens: Record<string, string>) {
     }
 }
 
+async function onInsertLibrary(slug: string) {
+    const asset = store.libraryAssets.find((entry) => entry.slug === slug)
+
+    // Missing blocks render as nothing on the public site — insertable, but
+    // never silently: the person choosing gets to decide with the facts.
+    if (asset && asset.missingBlocks.length > 0) {
+        const proceed = window.confirm(
+            `This site is missing: ${asset.missingBlocks.join(', ')}. ` +
+                'Those blocks will not display until their plugin is installed. Insert anyway?',
+        )
+        if (!proceed) {
+            return
+        }
+    }
+
+    if (await store.insertLibraryAsset(api, slug)) {
+        reloadCanvas()
+    }
+}
+
 async function onInsertPattern(id: string) {
     if (await store.insertPattern(api, id, targetColumn.value)) {
         reloadCanvas()
@@ -450,6 +470,7 @@ onMounted(async () => {
     window.addEventListener('pagehide', onUnload)
     await store.load(api)
     void store.loadPatterns(api)
+    void store.loadLibrary(api)
     void loadStyles()
     startHeartbeat()
 })
@@ -515,9 +536,12 @@ onBeforeUnmount(() => {
                     :target-column="targetColumn"
                     :capabilities="store.capabilities"
                     :patterns="store.patterns"
+                    :library-assets="store.libraryAssets"
+                    :library-collections="store.libraryCollections"
                     @add="onAddBlock"
                     @add-section="onAddSection"
                     @insert-pattern="onInsertPattern"
+                    @insert-library="onInsertLibrary"
                 />
 
                 <BuilderDesignPanel
