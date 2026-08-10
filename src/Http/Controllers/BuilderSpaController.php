@@ -6,10 +6,9 @@ namespace Magna\Pages\Http\Controllers;
 
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
-use Magna\Content\Entry;
+use Magna\Pages\Builder\FindsDocuments;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Serves the built builder SPA.
@@ -24,6 +23,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class BuilderSpaController
 {
+    use FindsDocuments;
+
     private const ASSET_TYPES = [
         'js' => 'text/javascript',
         'css' => 'text/css',
@@ -40,10 +41,7 @@ final class BuilderSpaController
     {
         Gate::authorize('pages.content');
 
-        $entry = Entry::type('page')->find($id);
-        if ($entry === null) {
-            throw new NotFoundHttpException('Page not found.');
-        }
+        $entry = $this->findDocument($id);
 
         $index = $this->publicPath('index.html');
 

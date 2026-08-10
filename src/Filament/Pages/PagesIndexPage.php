@@ -36,6 +36,8 @@ class PagesIndexPage extends Page
 
     public string $newPageTitle = '';
 
+    public string $newPartTitle = '';
+
     public static function canAccess(): bool
     {
         return auth()->user()?->can('pages.content') ?? false;
@@ -56,6 +58,28 @@ class PagesIndexPage extends Page
 
         $entry = $entries->create('page', [
             'title' => $title,
+            'blocks_data' => [],
+        ], auth()->id() !== null ? (string) auth()->id() : null);
+
+        $this->redirect(url('/pages-builder/edit/'.$entry->getKey()));
+    }
+
+    /**
+     * Create a template part (slug "header"/"footer" are the live slots)
+     * and open it in the builder — Customize-header in two clicks.
+     */
+    public function createPart(EntryManager $entries): void
+    {
+        $title = trim($this->newPartTitle);
+        if ($title === '') {
+            Notification::make()->title('Give the template a title first.')->warning()->send();
+
+            return;
+        }
+
+        $entry = $entries->create('pages_template', [
+            'title' => $title,
+            'kind' => 'part',
             'blocks_data' => [],
         ], auth()->id() !== null ? (string) auth()->id() : null);
 
@@ -90,6 +114,17 @@ class PagesIndexPage extends Page
                     : null,
             ])->all(),
             'createFieldsUrl' => EntryResource::getUrl('create', ['type' => 'page']),
+            'templates' => Entry::type('pages_template')
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(fn (Entry $template): array => [
+                    'id' => (string) $template->getKey(),
+                    'title' => (string) ($template->getAttribute('title') ?? 'Untitled'),
+                    'slug' => (string) ($template->getAttribute('slug') ?? ''),
+                    'kind' => (string) ($template->getAttribute('kind') ?? 'part'),
+                    'status' => $template->status->value,
+                    'builderUrl' => url('/pages-builder/edit/'.$template->getKey()),
+                ])->all(),
         ];
     }
 }

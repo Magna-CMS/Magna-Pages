@@ -10,10 +10,9 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 use Magna\Blocks\PageTreeAuthorizer;
 use Magna\Blocks\PageTreeValidator;
-use Magna\Content\Entry;
+use Magna\Pages\Builder\FindsDocuments;
 use Magna\Pages\Render\FragmentRenderer;
 use Magna\Pages\Render\PageRenderer;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * What the builder's canvas iframe loads, and how it refreshes one node.
@@ -28,6 +27,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class BuilderCanvasController
 {
+    use FindsDocuments;
+
     public function __construct(
         private readonly PageRenderer $renderer,
         private readonly FragmentRenderer $fragments,
@@ -40,7 +41,16 @@ final class BuilderCanvasController
     {
         Gate::authorize('pages.content');
 
-        $html = $this->withBridge($this->renderer->render($this->findPage($id), builderMode: true));
+        $entry = $this->findDocument($id);
+
+        // A template part edits BARE — rendering the header part inside a
+        // shell that also injects the published header would show the
+        // editor two headers, one of them stale.
+        $html = $this->withBridge($this->renderer->render(
+            $entry,
+            builderMode: true,
+            withParts: $entry->getHandle() !== 'pages_template',
+        ));
 
         return response($html, 200, [
             'Content-Type' => 'text/html; charset=utf-8',
@@ -65,7 +75,7 @@ final class BuilderCanvasController
             'document' => ['required', 'array'],
         ]);
 
-        $this->findPage($id);
+        $this->findDocument($id);
 
         /** @var array<mixed, mixed> $document */
         $document = (array) $request->input('document', []);
@@ -119,16 +129,5 @@ final class BuilderCanvasController
             'Content-Type' => 'text/javascript; charset=utf-8',
             'Cache-Control' => 'no-cache',
         ]);
-    }
-
-    private function findPage(string $id): Entry
-    {
-        $entry = Entry::type('page')->find($id);
-
-        if ($entry === null) {
-            throw new NotFoundHttpException('Page not found.');
-        }
-
-        return $entry;
     }
 }

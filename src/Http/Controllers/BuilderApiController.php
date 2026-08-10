@@ -8,12 +8,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Magna\Blocks\BlockRegistry;
-use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Pages\Builder\ApprovalManager;
 use Magna\Pages\Builder\BuilderBootstrap;
 use Magna\Pages\Builder\DocumentEditor;
 use Magna\Pages\Builder\Exceptions\PatchException;
+use Magna\Pages\Builder\FindsDocuments;
 use Magna\Pages\Builder\LockManager;
 use Magna\Users\User;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -29,6 +29,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class BuilderApiController
 {
+    use FindsDocuments;
+
     public function __construct(
         private readonly BuilderBootstrap $bootstrap,
         private readonly DocumentEditor $editor,
@@ -46,7 +48,7 @@ final class BuilderApiController
     {
         Gate::authorize('pages.content');
 
-        $entry = $this->findPage($id);
+        $entry = $this->findDocument($id);
         $user = $this->actor($request);
         $lock = $this->locks->acquire((string) $entry->getKey(), $user);
 
@@ -98,7 +100,7 @@ final class BuilderApiController
             'is_array',
         ));
 
-        $entry = $this->findPage($id);
+        $entry = $this->findDocument($id);
 
         try {
             $document = $this->editor->applyPatch($entry, $operations, $request->user());
@@ -141,7 +143,7 @@ final class BuilderApiController
     {
         Gate::authorize('pages.content');
 
-        $entry = $this->findPage($id);
+        $entry = $this->findDocument($id);
         $user = $this->actor($request);
         $this->locks->takeOver((string) $entry->getKey(), $user);
 
@@ -166,7 +168,7 @@ final class BuilderApiController
             ], 409);
         }
 
-        $entry = $entries->publish($this->findPage($id), actorId: (string) $user->getKey());
+        $entry = $entries->publish($this->findDocument($id), actorId: (string) $user->getKey());
 
         return response()->json([
             'status' => $entry->status->value,
@@ -216,16 +218,5 @@ final class BuilderApiController
         }
 
         return $user;
-    }
-
-    private function findPage(string $id): Entry
-    {
-        $entry = Entry::type('page')->find($id);
-
-        if ($entry === null) {
-            throw new NotFoundHttpException('Page not found.');
-        }
-
-        return $entry;
     }
 }

@@ -46,7 +46,7 @@ final class PageRenderer
         private readonly TemplatePartResolver $parts,
     ) {}
 
-    public function render(Entry $page, bool $builderMode = false): string
+    public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
     {
         $document = $page->getAttribute('blocks_data');
         $title = $page->getAttribute('title');
@@ -55,6 +55,7 @@ final class PageRenderer
             is_array($document) ? $document : [],
             is_string($title) ? $title : '',
             $builderMode,
+            $withParts,
         );
     }
 
@@ -65,7 +66,7 @@ final class PageRenderer
      *
      * @param  array<mixed, mixed>  $document
      */
-    public function renderDocument(array $document, string $title, bool $builderMode = false): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true): string
     {
         // Ref sections splice their template part's sections in place
         // before parsing — parts compose pages, never the reverse.
@@ -83,8 +84,11 @@ final class PageRenderer
             'tokensCss' => $this->tokens->rootCss(),
             // Site-designed header/footer parts (slugs "header"/"footer")
             // replace a theme layout's built-in chrome when published.
-            'headerPartHtml' => $this->renderPart('header'),
-            'footerPartHtml' => $this->renderPart('footer'),
+            // withParts false = a template document editing itself bare;
+            // injecting the published header while EDITING the header would
+            // show two of it, one stale.
+            'headerPartHtml' => $withParts ? $this->renderPart('header') : null,
+            'footerPartHtml' => $withParts ? $this->renderPart('footer') : null,
             // Inherited by the sections partial through @include, so a theme
             // layout needs no builder awareness of its own.
             'builderMode' => $builderMode,
