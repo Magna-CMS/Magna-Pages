@@ -78,7 +78,7 @@
                    placeholder="Header"
                    class="w-64 rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
         </div>
-        <x-filament::button color="gray" wire:click="createPart">Create &amp; open builder</x-filament::button>
+        <x-filament::button color="gray" wire:click="createPart">Create part &amp; open builder</x-filament::button>
     </div>
 
     <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
