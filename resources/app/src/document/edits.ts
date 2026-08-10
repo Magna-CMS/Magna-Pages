@@ -133,6 +133,97 @@ export function primaryTextField(definition: BlockDefinition): string | null {
     return (textual.find((field) => field.required) ?? textual[0])?.handle ?? null
 }
 
+export interface LibraryExport {
+    name: string
+    kind: 'pattern' | 'part' | 'page'
+    description: string
+    document: unknown
+    requiredBlocks: string[]
+}
+
+/**
+ * Package a selection (or the whole page) as a cloud-library asset — the
+ * exact JSON the hub's authoring screen accepts, so publishing is
+ * export-here, paste-there with no credential plumbing between a site and
+ * the hub.
+ *
+ * Kind falls out of the selection's structure, matching the library's
+ * structural taxonomy: a section exports as a pattern, a block is wrapped
+ * into one (an asset must be insertable alone), no selection means the
+ * whole page.
+ */
+export function exportAsLibraryAsset(
+    document: BlockDocument,
+    nodeId: string | null,
+    name: string,
+): LibraryExport | null {
+    if (nodeId === null) {
+        const sections = sectionsOf(document)
+        if (sections.length === 0) {
+            return null
+        }
+
+        return packageExport(name, 'page', sections)
+    }
+
+    const found = locate(document, nodeId)
+    if (!found || found.kind === 'column') {
+        return null
+    }
+
+    if (found.kind === 'section') {
+        return packageExport(name, 'pattern', found.node)
+    }
+
+    return packageExport(name, 'pattern', {
+        id: newId(),
+        type: 'section',
+        settings: {},
+        columns: [{ id: newId(), span: 12, settings: {}, blocks: [found.node] }],
+    })
+}
+
+function packageExport(name: string, kind: LibraryExport['kind'], document: unknown): LibraryExport {
+    return {
+        name,
+        kind,
+        description: '',
+        document,
+        requiredBlocks: blockHandlesIn(document),
+    }
+}
+
+/** Every block handle in a subtree — mirrors the hub's own computation. */
+export function blockHandlesIn(node: unknown): string[] {
+    const handles = new Set<string>()
+
+    const walk = (value: unknown): void => {
+        if (Array.isArray(value)) {
+            value.forEach(walk)
+
+            return
+        }
+        if (typeof value !== 'object' || value === null) {
+            return
+        }
+
+        const record = value as Record<string, unknown>
+        if (typeof record.block === 'string' && record.block !== '') {
+            handles.add(record.block)
+        }
+
+        for (const container of ['sections', 'columns', 'blocks', 'children']) {
+            if (Array.isArray(record[container])) {
+                walk(record[container])
+            }
+        }
+    }
+
+    walk(node)
+
+    return [...handles]
+}
+
 /** The column a block currently sits in, for drag bookkeeping. */
 export function columnOf(document: BlockDocument, blockId: string): string | null {
     for (const section of sectionsOf(document)) {

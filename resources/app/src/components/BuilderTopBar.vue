@@ -13,7 +13,15 @@ defineProps<{
     publishRequested: boolean
 }>()
 
-defineEmits<{ undo: []; redo: []; remove: []; publish: []; savePattern: []; requestPublish: [] }>()
+defineEmits<{
+    undo: []
+    redo: []
+    remove: []
+    publish: []
+    savePattern: []
+    requestPublish: []
+    exportLibrary: []
+}>()
 </script>
 
 <template>
@@ -29,6 +37,9 @@ defineEmits<{ undo: []; redo: []; remove: []; publish: []; savePattern: []; requ
             <button type="button" :disabled="!canDelete" @click="$emit('remove')">Delete</button>
             <button type="button" :disabled="!canSavePattern" @click="$emit('savePattern')">
                 Save as pattern
+            </button>
+            <button type="button" title="Download as a cloud-library asset file" @click="$emit('exportLibrary')">
+                Export
             </button>
             <span class="topbar__state" role="status">{{ saving ? 'Saving…' : 'Saved' }}</span>
 

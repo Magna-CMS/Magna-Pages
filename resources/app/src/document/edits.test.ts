@@ -5,6 +5,7 @@ import {
     blockFrom,
     columnOf,
     emptySection,
+    exportAsLibraryAsset,
     insertBlock,
     moveNode,
     primaryTextField,
@@ -179,6 +180,38 @@ describe('primaryTextField', () => {
         const definition = definitionWith([{ handle: 'image', type: 'media', required: true }])
 
         expect(primaryTextField(definition)).toBeNull()
+    })
+})
+
+describe('exportAsLibraryAsset', () => {
+    it('exports a section as a pattern with computed required blocks', () => {
+        const asset = exportAsLibraryAsset(documentWith(['a', 'b']), 'sec-1', 'My band')
+
+        expect(asset?.kind).toBe('pattern')
+        expect(asset?.name).toBe('My band')
+        expect(asset?.requiredBlocks).toEqual(['heading'])
+        expect((asset?.document as { id: string }).id).toBe('sec-1')
+    })
+
+    it('wraps a block selection into an insertable section', () => {
+        const asset = exportAsLibraryAsset(documentWith(['a']), 'a', 'One block')
+
+        const doc = asset?.document as { type: string; columns: { blocks: { id: string }[] }[] }
+        expect(doc.type).toBe('section')
+        expect(doc.columns[0].blocks[0].id).toBe('a')
+    })
+
+    it('exports the whole page when nothing is selected, refusing empty pages', () => {
+        const asset = exportAsLibraryAsset(documentWith(['a']), null, 'Whole page')
+
+        expect(asset?.kind).toBe('page')
+        expect(Array.isArray(asset?.document)).toBe(true)
+
+        expect(exportAsLibraryAsset([], null, 'Empty')).toBeNull()
+    })
+
+    it('refuses column selections', () => {
+        expect(exportAsLibraryAsset(documentWith(['a']), 'col-1', 'Nope')).toBeNull()
     })
 })
 

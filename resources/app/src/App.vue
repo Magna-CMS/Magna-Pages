@@ -9,7 +9,7 @@ import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
-import { columnOf, primaryTextField } from './document/edits'
+import { columnOf, exportAsLibraryAsset, primaryTextField } from './document/edits'
 import { locate } from './document/locate'
 import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
 import { buildActions } from './palette'
@@ -440,6 +440,32 @@ async function onInsertPattern(id: string) {
     }
 }
 
+/**
+ * Export the selection (or the whole page) as a library asset file — the
+ * JSON the hub authoring screen accepts. Download, not clipboard: a file
+ * survives the trip to another machine and can sit in a repo.
+ */
+function onExportLibrary() {
+    const name = window.prompt('Asset name for the library export')
+    if (name === null || name.trim() === '') {
+        return
+    }
+
+    const asset = exportAsLibraryAsset(store.blocks, store.selectedNode, name.trim())
+    if (!asset) {
+        store.error = 'Select a section or block to export, or deselect to export the page.'
+
+        return
+    }
+
+    const blob = new Blob([JSON.stringify(asset, null, 2)], { type: 'application/json' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `${asset.kind}-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`
+    link.click()
+    URL.revokeObjectURL(link.href)
+}
+
 async function onSavePattern() {
     // A window.prompt is deliberate v1: naming is the only input, and a
     // modal component for one string is UI the feature does not need yet.
@@ -509,6 +535,7 @@ onBeforeUnmount(() => {
             @publish="onPublish"
             @save-pattern="onSavePattern"
             @request-publish="onRequestPublish"
+            @export-library="onExportLibrary"
         />
 
         <div v-if="!store.lock.mine && store.loaded" class="builder__lockbar" role="alert">
