@@ -31,6 +31,16 @@ defineEmits<{ select: [node: string] }>()
                     @click="$emit('select', section.id)"
                 >
                     Section
+                    <!-- Conditioned nodes show on the canvas regardless, so
+                         the tree is where "this hides for some visitors"
+                         has to be visible. -->
+                    <span
+                        v-if="Array.isArray(section.settings?.conditions) && section.settings.conditions.length > 0"
+                        class="layers__badge"
+                        title="Shown conditionally"
+                    >
+                        conditional
+                    </span>
                 </button>
 
                 <ul class="layers__list layers__list--nested">
@@ -112,5 +122,14 @@ defineEmits<{ select: [node: string] }>()
 
 .layers__empty {
     opacity: 0.6;
+}
+
+.layers__badge {
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #4a3a12;
+    color: #f0b45c;
+    font-size: 10px;
 }
 </style>

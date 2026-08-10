@@ -52,6 +52,71 @@ function toggleDevice(device: string) {
     })
 }
 
+/**
+ * Display conditions, read back from the node. The v1 UI manages one
+ * audience rule and one schedule window — the document format holds any
+ * list, and rules this UI does not model are PRESERVED on write, not
+ * dropped: an install with plugin-contributed conditions must not lose
+ * them because this inspector predates them.
+ */
+interface ConditionRule {
+    type: string
+    [key: string]: unknown
+}
+
+const conditions = computed<ConditionRule[]>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+    const stored = settings?.conditions
+
+    return Array.isArray(stored) ? (stored.filter((c) => typeof c === 'object' && c !== null) as ConditionRule[]) : []
+})
+
+const audience = computed<string>(() => {
+    const rule = conditions.value.find((c) => c.type === 'auth')
+
+    return typeof rule?.show === 'string' ? rule.show : 'everyone'
+})
+
+const schedule = computed<{ from: string; until: string }>(() => {
+    const rule = conditions.value.find((c) => c.type === 'schedule')
+
+    return {
+        from: typeof rule?.from === 'string' ? rule.from : '',
+        until: typeof rule?.until === 'string' ? rule.until : '',
+    }
+})
+
+function writeConditions(next: { audience?: string; from?: string; until?: string }) {
+    if (!props.located) {
+        return
+    }
+
+    const audienceValue = next.audience ?? audience.value
+    const fromValue = next.from ?? schedule.value.from
+    const untilValue = next.until ?? schedule.value.until
+
+    // Foreign rule types survive untouched at the front of the list.
+    const rules: ConditionRule[] = conditions.value.filter(
+        (c) => c.type !== 'auth' && c.type !== 'schedule',
+    )
+
+    if (audienceValue === 'guests' || audienceValue === 'authenticated') {
+        rules.push({ type: 'auth', show: audienceValue })
+    }
+    if (fromValue !== '' || untilValue !== '') {
+        const rule: ConditionRule = { type: 'schedule' }
+        if (fromValue !== '') {
+            rule.from = fromValue
+        }
+        if (untilValue !== '') {
+            rule.until = untilValue
+        }
+        rules.push(rule)
+    }
+
+    emit('editSetting', props.located.pointer, 'conditions', rules)
+}
+
 const data = computed<Record<string, unknown>>(() => {
     const node = props.located?.node as { data?: Record<string, unknown> } | undefined
 
@@ -152,8 +217,45 @@ function isBound(field: BlockFieldDefinition): boolean {
                 </label>
             </fieldset>
 
+            <fieldset class="inspector__field inspector__devices">
+                <legend>Show when</legend>
+
+                <label class="inspector__stack">
+                    Audience
+                    <select
+                        :value="audience"
+                        :disabled="!capabilities.style"
+                        @change="writeConditions({ audience: ($event.target as HTMLSelectElement).value })"
+                    >
+                        <option value="everyone">Everyone</option>
+                        <option value="guests">Guests only</option>
+                        <option value="authenticated">Signed-in only</option>
+                    </select>
+                </label>
+
+                <label class="inspector__stack">
+                    From
+                    <input
+                        type="datetime-local"
+                        :value="schedule.from"
+                        :disabled="!capabilities.style"
+                        @change="writeConditions({ from: ($event.target as HTMLInputElement).value })"
+                    />
+                </label>
+
+                <label class="inspector__stack">
+                    Until
+                    <input
+                        type="datetime-local"
+                        :value="schedule.until"
+                        :disabled="!capabilities.style"
+                        @change="writeConditions({ until: ($event.target as HTMLInputElement).value })"
+                    />
+                </label>
+            </fieldset>
+
             <p v-if="!capabilities.style" class="inspector__locked">
-                Visibility needs the design permission.
+                Visibility and conditions need the design permission.
             </p>
         </template>
 
@@ -229,6 +331,28 @@ select:disabled {
 
 .inspector__devices input {
     width: auto;
+}
+
+.inspector__stack {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 6px 0;
+    font-size: 12px;
+    opacity: 0.85;
+    text-transform: none;
+}
+
+.inspector__stack select,
+.inspector__stack input {
+    width: 100%;
+    padding: 5px 7px;
+    border: 1px solid var(--builder-border);
+    border-radius: 4px;
+    background: #0f1117;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
 }
 
 .inspector__empty,
