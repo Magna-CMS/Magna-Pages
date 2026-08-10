@@ -9,6 +9,7 @@ use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Pages\Menus\MenuManager;
+use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
 use Magna\Pages\Themes\ThemeViewResolver;
@@ -44,6 +45,7 @@ final class PageRenderer
         private readonly ThemeTokens $tokens,
         private readonly MenuManager $menus,
         private readonly TemplatePartResolver $parts,
+        private readonly ConditionEvaluator $conditions,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -92,6 +94,14 @@ final class PageRenderer
             // Inherited by the sections partial through @include, so a theme
             // layout needs no builder awareness of its own.
             'builderMode' => $builderMode,
+            // Display conditions, evaluated per node at render. The BUILDER
+            // shows everything — you cannot edit what you cannot see — and
+            // the canvas marks conditioned nodes instead (the partial adds
+            // a data attribute the overlay can badge).
+            'conditionsPass' => $builderMode
+                ? fn (array $settings): bool => true
+                : fn (array $settings): bool => $this->conditions
+                    ->evaluate($settings, auth()->user(), now())->visible,
         ])->render();
     }
 
@@ -111,6 +121,9 @@ final class PageRenderer
             'registry' => $this->registry,
             'resolver' => $this->resolver,
             'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
+            // Parts obey conditions on the public site like any section.
+            'conditionsPass' => fn (array $settings): bool => $this->conditions
+                ->evaluate($settings, auth()->user(), now())->visible,
         ])->render();
     }
 }

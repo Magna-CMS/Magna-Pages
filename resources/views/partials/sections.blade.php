@@ -48,8 +48,13 @@
         @media (max-width: 767.98px) { .magna-hide-mobile { display: none !important; } }
     </style>
 @endonce
+@php
+    // Display conditions: absent closure (older include sites) = show all.
+    $passes = $conditionsPass ?? fn (array $settings): bool => true;
+@endphp
 @foreach($tree->sections as $section)
     @continue($section->isRef()) {{-- refs are spliced before parsing; a stray one renders nothing --}}
+    @continue(! $passes($section->settings))
 
     @php
         $overrides = $section->tokenOverrides();
@@ -79,6 +84,7 @@
                         @if($inBuilder) data-magna-node="{{ $column->id }}" data-magna-kind="column" @endif
                     >
                         @foreach($column->blocks as $block)
+                            @continue(! $passes($block->settings))
                             @php $blockView = $blockViewFor($block->block); @endphp
                             @if($blockView !== null)
                                 {!! $mark(view($blockView, [

@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Magna\Pages\Cache\PageCache;
 use Magna\Pages\PagesSettings;
+use Magna\Pages\Render\Conditions\DocumentConditions;
 use Magna\Pages\Render\PageRenderer;
 use Magna\Pages\Routing\PageRouteResolver;
 use Magna\Pages\Routing\RedirectManager;
@@ -23,6 +24,7 @@ final class PageController
         private readonly PageRenderer $renderer,
         private readonly RedirectManager $redirects,
         private readonly PageCache $cache,
+        private readonly DocumentConditions $conditions,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -80,12 +82,30 @@ final class PageController
 
         $html = $this->renderer->render($entry);
 
+        // §C9: the document's conditions get a veto on caching. A condition
+        // we cannot evaluate makes the page uncacheable outright; a schedule
+        // shortens the cached copy's life to its next boundary, so the cache
+        // never serves yesterday's banner past its `until`.
         if ($cacheable) {
-            $entryKey = $entry->getKey();
-            $this->cache->put($cacheUrl, $html, [
-                'page:'.(is_string($entryKey) ? $entryKey : ''),
-                'site:pages',
-            ]);
+            $document = $entry->getAttribute('blocks_data');
+            $verdict = $this->conditions->cacheVerdict(
+                is_array($document) ? $document : [],
+                $request->user(),
+                now(),
+            );
+            $cacheable = $verdict['cacheable'];
+
+            if ($cacheable) {
+                $ttl = $verdict['expiresAt'] === null
+                    ? null
+                    : max(1, min(PageCache::DEFAULT_TTL_SECONDS, (int) now()->diffInSeconds($verdict['expiresAt'], false)));
+
+                $entryKey = $entry->getKey();
+                $this->cache->put($cacheUrl, $html, [
+                    'page:'.(is_string($entryKey) ? $entryKey : ''),
+                    'site:pages',
+                ], $ttl);
+            }
         }
 
         return response($html, 200, [
