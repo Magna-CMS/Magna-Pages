@@ -47,6 +47,11 @@ final class BuilderCanvasController
             // Canvas HTML reflects in-flight editor state; caching it would
             // serve a stale document to the next editing session.
             'Cache-Control' => 'no-store, must-revalidate',
+            // The whole point of this response is to be framed by the
+            // builder — same origin only. SecurityHeadersMiddleware
+            // respects an explicit policy instead of appending DENY.
+            'X-Frame-Options' => 'SAMEORIGIN',
+            'Content-Security-Policy' => "frame-ancestors 'self'",
         ]);
     }
 
