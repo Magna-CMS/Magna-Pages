@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Gate;
 use Magna\Blocks\BlockRegistry;
 use Magna\Content\Entry;
 use Magna\Content\EntryManager;
+use Magna\Pages\Builder\ApprovalManager;
 use Magna\Pages\Builder\BuilderBootstrap;
 use Magna\Pages\Builder\DocumentEditor;
 use Magna\Pages\Builder\Exceptions\PatchException;
@@ -33,6 +34,7 @@ final class BuilderApiController
         private readonly DocumentEditor $editor,
         private readonly BlockRegistry $blocks,
         private readonly LockManager $locks,
+        private readonly ApprovalManager $approvals,
     ) {}
 
     /**
@@ -50,6 +52,14 @@ final class BuilderApiController
 
         $payload = $this->bootstrap->forEntry($entry, $request->user());
         $payload['lock'] = $this->lockPayload((string) $entry->getKey(), $user);
+
+        // Whether a publish request is already waiting, so the top bar can
+        // show "Requested" instead of offering the request again.
+        $pending = $this->approvals->pendingFor((string) $entry->getKey());
+        $payload['approval'] = $pending === null ? null : [
+            'id' => $pending->id,
+            'requested_at' => $pending->created_at?->toIso8601String(),
+        ];
 
         return response()->json($payload);
     }

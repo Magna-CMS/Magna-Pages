@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Magna\Pages\Http\Controllers\BuilderApiController;
+use Magna\Pages\Http\Controllers\BuilderApprovalController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
 use Magna\Pages\Http\Controllers\BuilderPatternController;
 use Magna\Pages\Http\Controllers\BuilderSpaController;
@@ -41,6 +42,9 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::post('/patterns', [BuilderPatternController::class, 'store'])->name('pages.builder.patterns.store');
     Route::get('/patterns/{id}/instance', [BuilderPatternController::class, 'instance'])->name('pages.builder.patterns.instance');
     Route::delete('/patterns/{id}', [BuilderPatternController::class, 'destroy'])->name('pages.builder.patterns.destroy');
+    Route::get('/requests', [BuilderApprovalController::class, 'queue'])->name('pages.builder.requests');
+    Route::post('/requests/{requestId}/approve', [BuilderApprovalController::class, 'approve'])->name('pages.builder.requests.approve');
+    Route::post('/requests/{requestId}/return', [BuilderApprovalController::class, 'returnRequest'])->name('pages.builder.requests.return');
     Route::get('/styles', [BuilderStylesController::class, 'show'])->name('pages.builder.styles');
     Route::put('/styles', [BuilderStylesController::class, 'update'])->name('pages.builder.styles.update');
     Route::get('/app/{path}', [BuilderSpaController::class, 'asset'])
@@ -55,6 +59,7 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::post('/{id}/take-over', [BuilderApiController::class, 'takeOver'])->name('pages.builder.take-over');
     Route::post('/{id}/release', [BuilderApiController::class, 'release'])->name('pages.builder.release');
     Route::post('/{id}/publish', [BuilderApiController::class, 'publish'])->name('pages.builder.publish');
+    Route::post('/{id}/request-publish', [BuilderApprovalController::class, 'requestPublish'])->name('pages.builder.request-publish');
 });
 
 Route::fallback(PageController::class)->name('pages.web.show');
