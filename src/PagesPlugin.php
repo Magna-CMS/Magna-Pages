@@ -11,6 +11,7 @@ use Magna\Admin\Nav\NavItem;
 use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\Contracts\GuardsDocumentEdits;
 use Magna\Blocks\Contracts\ProvidesDocumentPreview;
+use Magna\Blocks\DataSources\DataSource;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\Events\EntryDeleted;
@@ -20,8 +21,10 @@ use Magna\Content\Events\EntryUpdated;
 use Magna\Contracts\RegistersAdminNavigation;
 use Magna\Contracts\RegistersBlocks;
 use Magna\Contracts\RegistersCommands;
+use Magna\Contracts\RegistersDataSources;
 use Magna\Contracts\RegistersSettingsPages;
 use Magna\Pages\Blocks\DataSourceOptions;
+use Magna\Pages\Blocks\LatestPagesSource;
 use Magna\Pages\Blocks\LoopBlockResolver;
 use Magna\Pages\Builder\LivewireEditGuard;
 use Magna\Pages\Cache\PurgePageCache;
@@ -51,8 +54,17 @@ use Magna\Plugins\Plugin;
  * Routing, rendering, menus, and the builder land in the next Phase A items
  * on top of this skeleton.
  */
-class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersCommands, RegistersSettingsPages
+class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersBlocks, RegistersCommands, RegistersDataSources, RegistersSettingsPages
 {
+    /** @return list<DataSource> */
+    public function dataSources(): array
+    {
+        // The plugin registers its own built-in source through the same
+        // contract third-party plugins use — one wiring path, exercised
+        // on every boot.
+        return [app(LatestPagesSource::class)];
+    }
+
     /** @return list<class-string> */
     public function commands(): array
     {
