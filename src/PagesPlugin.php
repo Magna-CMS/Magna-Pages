@@ -28,6 +28,7 @@ use Magna\Pages\Console\PruneCacheCommand;
 use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesIndexPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
+use Magna\Pages\Filament\Pages\ReviewQueuePage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
@@ -141,6 +142,8 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         return NavGroup::make('Site', icon: 'heroicon-o-globe-alt')->items([
             NavItem::page('Pages', route: 'filament.admin.pages.pages-index')
                 ->can('pages.content'),
+            NavItem::page('Review queue', route: 'filament.admin.pages.pages-review-queue')
+                ->can('pages.publish'),
             NavItem::page('Menus', route: 'filament.admin.pages.pages-menus')
                 ->can('pages.settings'),
             NavItem::page('Site settings', route: 'filament.admin.pages.pages-settings')
@@ -153,6 +156,6 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
     {
         // First entry is what the Installed Plugins screen's "Settings"
         // button links to — keep the settings page first.
-        return [PagesSettingsPage::class, MenusPage::class, PagesIndexPage::class];
+        return [PagesSettingsPage::class, MenusPage::class, PagesIndexPage::class, ReviewQueuePage::class];
     }
 }
