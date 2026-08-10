@@ -11,6 +11,7 @@ import {
 } from '../document/edits'
 import { locate } from '../document/locate'
 import { applyPatch } from '../document/patch'
+import { classifyFailure, loadQueue, persistQueue, type QueuedBatch } from '../resilience'
 import type {
     ApprovalState,
     BlockDefinition,
@@ -86,6 +87,9 @@ interface State {
     saving: boolean
     error: string | null
     loaded: boolean
+    /** Batches accepted locally but not yet acknowledged by the server. */
+    sendQueue: QueuedBatch[]
+    replaying: boolean
 }
 
 export const useDocumentStore = defineStore('document', {
@@ -109,6 +113,8 @@ export const useDocumentStore = defineStore('document', {
         saving: false,
         error: null,
         loaded: false,
+        sendQueue: [],
+        replaying: false,
     }),
 
     getters: {
@@ -312,6 +318,14 @@ export const useDocumentStore = defineStore('document', {
 
             this.pushHistory({ label, undo: inverse, redo: operations })
 
+            // While a queue exists, new edits join it instead of racing it —
+            // order is the whole guarantee of a send queue.
+            if (this.sendQueue.length > 0) {
+                this.enqueue(operations)
+
+                return true
+            }
+
             this.saving = true
             try {
                 const result = await api.patch(operations)
@@ -320,6 +334,15 @@ export const useDocumentStore = defineStore('document', {
 
                 return true
             } catch (error) {
+                if (classifyFailure(error) === 'network') {
+                    // The server never answered: the edit is not wrong, the
+                    // connection is. Keep it, queue it, replay later.
+                    this.enqueue(operations)
+
+                    return true
+                }
+
+                // The server answered no — retrying a refusal just refuses.
                 this.blocks = applyPatch(this.blocks, inverse).document
                 this.undoStack.pop()
                 this.error = error instanceof Error ? error.message : String(error)
@@ -327,6 +350,66 @@ export const useDocumentStore = defineStore('document', {
                 return false
             } finally {
                 this.saving = false
+            }
+        },
+
+        enqueue(operations: PatchOperation[]): void {
+            this.sendQueue.push({ operations, queuedAt: Date.now() })
+            void persistQueue(this.pageId, [...this.sendQueue])
+        },
+
+        /**
+         * Replay queued batches strictly in order. A network failure stops
+         * and keeps the rest; a refusal abandons the queue and reloads —
+         * the document moved underneath (takeover, permissions) and stale
+         * operations must not be forced over it.
+         */
+        async replayQueue(api: BuilderApi): Promise<void> {
+            if (this.replaying || this.sendQueue.length === 0) {
+                return
+            }
+
+            this.replaying = true
+            try {
+                while (this.sendQueue.length > 0) {
+                    const batch = this.sendQueue[0]
+                    try {
+                        const result = await api.patch(batch.operations)
+                        this.blocks = result.document
+                        this.sendQueue.shift()
+                        void persistQueue(this.pageId, [...this.sendQueue])
+                    } catch (error) {
+                        if (classifyFailure(error) === 'network') {
+                            return // still offline; keep the queue intact
+                        }
+
+                        this.sendQueue = []
+                        void persistQueue(this.pageId, [])
+                        this.error =
+                            'Offline changes could not be applied — the page changed while you were away. ' +
+                            (error instanceof Error ? error.message : '')
+                        await this.load(api)
+
+                        return
+                    }
+                }
+            } finally {
+                this.replaying = false
+            }
+        },
+
+        /** Crash recovery: batches persisted by a previous session. */
+        async restoreQueue(api: BuilderApi): Promise<void> {
+            const persisted = await loadQueue(this.pageId)
+            if (persisted.length === 0) {
+                return
+            }
+
+            this.sendQueue = persisted
+            await this.replayQueue(api)
+            // Whatever replay decided, the store now mirrors the server.
+            if (this.sendQueue.length === 0) {
+                await this.load(api)
             }
         },
 

@@ -11,6 +11,7 @@ defineProps<{
     canSavePattern: boolean
     canRequestPublish: boolean
     publishRequested: boolean
+    pendingCount: number
 }>()
 
 defineEmits<{
@@ -41,7 +42,19 @@ defineEmits<{
             <button type="button" title="Download as a cloud-library asset file" @click="$emit('exportLibrary')">
                 Export
             </button>
-            <span class="topbar__state" role="status">{{ saving ? 'Saving…' : 'Saved' }}</span>
+            <span
+                class="topbar__state"
+                :class="{ 'topbar__state--pending': pendingCount > 0 }"
+                role="status"
+            >
+                {{
+                    pendingCount > 0
+                        ? `Offline — ${pendingCount} ${pendingCount === 1 ? 'change' : 'changes'} pending`
+                        : saving
+                          ? 'Saving…'
+                          : 'Saved'
+                }}
+            </span>
 
             <a v-if="publicUrl" class="topbar__view" :href="publicUrl" target="_blank" rel="noopener">
                 View page
@@ -110,6 +123,11 @@ button:disabled {
 .topbar__state {
     font-size: 12px;
     opacity: 0.7;
+}
+
+.topbar__state--pending {
+    opacity: 1;
+    color: #f0b45c;
 }
 
 .topbar__status {

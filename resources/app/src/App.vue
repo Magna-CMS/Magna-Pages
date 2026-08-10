@@ -12,6 +12,7 @@ import BuilderTopBar from './components/BuilderTopBar.vue'
 import { columnOf, exportAsLibraryAsset, primaryTextField } from './document/edits'
 import { locate } from './document/locate'
 import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
+import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
 import { useDocumentStore } from './stores/document'
 
@@ -362,8 +363,13 @@ function startHeartbeat() {
         }
         try {
             await api.heartbeat()
-        } catch {
-            store.lockLost(null)
+        } catch (error) {
+            // Only a server ANSWER takes the lock away. A network failure
+            // means offline — the server-side TTL is the arbiter there, and
+            // the replay path surfaces the outcome when we reconnect.
+            if (classifyFailure(error) === 'refusal') {
+                store.lockLost(null)
+            }
         }
     }, 30_000)
 }
@@ -488,13 +494,24 @@ function onUnload() {
     }
 }
 
+/** Replay the send queue when the network returns, and on a slow tick. */
+let replayTimer: ReturnType<typeof setInterval> | null = null
+
+function onOnline() {
+    void store.replayQueue(api)
+}
+
 onMounted(async () => {
     if (frame.value) {
         bridge.attach(frame.value)
     }
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('pagehide', onUnload)
+    window.addEventListener('online', onOnline)
+    replayTimer = setInterval(() => void store.replayQueue(api), 15_000)
+
     await store.load(api)
+    await store.restoreQueue(api)
     void store.loadPatterns(api)
     void store.loadLibrary(api)
     void loadStyles()
@@ -504,8 +521,12 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeydown)
     window.removeEventListener('pagehide', onUnload)
+    window.removeEventListener('online', onOnline)
     if (heartbeatTimer !== null) {
         clearInterval(heartbeatTimer)
+    }
+    if (replayTimer !== null) {
+        clearInterval(replayTimer)
     }
     bridge.destroy()
 })
@@ -529,6 +550,7 @@ onBeforeUnmount(() => {
             "
             :can-request-publish="store.capabilities.content"
             :publish-requested="store.approval !== null"
+            :pending-count="store.sendQueue.length"
             @undo="onUndo"
             @redo="onRedo"
             @remove="onDelete"
