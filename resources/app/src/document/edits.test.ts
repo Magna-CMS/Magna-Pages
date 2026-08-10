@@ -61,6 +61,21 @@ describe('blockFrom', () => {
         expect(block.data).toEqual({ text: 'New heading' })
         expect(block.id).toHaveLength(26)
     })
+
+    it('placeholders a required text field that has no default, so the block is insertable', () => {
+        const definition = {
+            ...heading,
+            fields: [
+                { ...heading.fields[0], handle: 'text', required: true, default: null, label: 'Text' },
+                { ...heading.fields[0], handle: 'note', required: false, default: null, label: 'Note' },
+            ],
+        }
+
+        const block = blockFrom(definition)
+
+        // Required-without-default gets the label; optional stays absent.
+        expect(block.data).toEqual({ text: 'Text' })
+    })
 })
 
 describe('insertBlock', () => {

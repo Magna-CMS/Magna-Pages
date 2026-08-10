@@ -217,5 +217,10 @@ function shallowCopy<T>(container: T): T {
 }
 
 function clone<T>(value: T): T {
-    return structuredClone(value)
+    // JSON round-trip, NOT structuredClone: the store hands us Vue reactive
+    // proxies, which structuredClone refuses to clone — a failure no unit
+    // test saw (plain objects) and the first real browser session hit on
+    // its first edit. Documents are JSON by definition (they arrive from
+    // and return to a JSON API), so the round-trip is lossless here.
+    return JSON.parse(JSON.stringify(value)) as T
 }

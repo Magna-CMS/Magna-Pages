@@ -23,6 +23,7 @@ use Magna\Contracts\RegistersCommands;
 use Magna\Contracts\RegistersSettingsPages;
 use Magna\Pages\Builder\LivewireEditGuard;
 use Magna\Pages\Cache\PurgePageCache;
+use Magna\Pages\Console\E2eUserCommand;
 use Magna\Pages\Console\InstallDemoCommand;
 use Magna\Pages\Console\PruneCacheCommand;
 use Magna\Pages\Filament\Pages\MenusPage;
@@ -56,6 +57,7 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         return [
             InstallDemoCommand::class,
             PruneCacheCommand::class,
+            E2eUserCommand::class,
         ];
     }
 

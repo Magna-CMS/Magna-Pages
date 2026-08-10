@@ -15,13 +15,24 @@ import { sectionsOf, sectionsPointer } from './types'
  * round trip finished.
  */
 
-/** A block seeded with its definition's declared defaults. */
+/**
+ * A block seeded with its definition's declared defaults — plus a
+ * placeholder for any REQUIRED text field without one, because a fresh
+ * block must be insertable: the server validates required fields on every
+ * save, and "empty data" would make any block with a defaultless required
+ * text field (the core heading, for one) silently refuse insertion.
+ */
 export function blockFrom(definition: BlockDefinition): BlockNode {
     const data: Record<string, unknown> = {}
 
     for (const field of definition.fields) {
         if (field.default !== null && field.default !== undefined) {
             data[field.handle] = field.default
+        } else if (
+            field.required &&
+            (field.type === 'text' || field.type === 'textarea' || field.type === 'richtext')
+        ) {
+            data[field.handle] = field.label
         }
     }
 
