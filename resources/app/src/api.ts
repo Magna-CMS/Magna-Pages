@@ -122,6 +122,11 @@ export function createApi(pageId: string, base = '/pages-builder') {
             findings: { code: string; severity: string; nodeId: string | null; message: string }[]
         }> => request(`${base}/${pageId}/a11y`),
 
+        performance: (): Promise<{
+            metrics: Record<string, number>
+            notes: { code: string; message: string }[]
+        }> => request(`${base}/${pageId}/performance`),
+
         revisions: (): Promise<{
             revisions: { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[]
         }> => request(`${base}/${pageId}/revisions`),

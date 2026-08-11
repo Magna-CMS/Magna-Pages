@@ -10,6 +10,8 @@
 const props = defineProps<{
     a11yFindings: { code: string; severity: string; nodeId: string | null; message: string }[] | null
     a11yRunning: boolean
+    performance: { metrics: Record<string, number>; notes: { code: string; message: string }[] } | null
+    performanceRunning: boolean
     revisions: { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[] | null
     revisionsLoading: boolean
     canRestore: boolean
@@ -17,11 +19,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     runA11y: []
+    runPerformance: []
     loadRevisions: []
     previewRevision: [id: string]
     restoreRevision: [id: string]
     selectNode: [id: string]
 }>()
+
+function kb(bytes: number): string {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
 
 function onFinding(finding: { nodeId: string | null }) {
     if (finding.nodeId !== null) {
@@ -65,6 +72,29 @@ function formatWhen(iso: string): string {
                 </button>
             </li>
         </ul>
+
+        <button type="button" :disabled="performanceRunning" @click="$emit('runPerformance')">
+            {{ performanceRunning ? 'Measuring…' : 'Measure performance' }}
+        </button>
+
+        <dl v-if="performance !== null" class="tools__metrics">
+            <div><dt>Page weight</dt><dd>{{ kb(performance.metrics.gzippedBytes ?? 0) }} gzipped</dd></div>
+            <div><dt>Blocks</dt><dd>{{ performance.metrics.blockCount ?? 0 }} in {{ performance.metrics.sectionCount ?? 0 }} sections</dd></div>
+            <div><dt>Images</dt><dd>{{ performance.metrics.imageCount ?? 0 }}</dd></div>
+        </dl>
+
+        <ul v-if="performance !== null && performance.notes.length > 0" class="tools__findings">
+            <li v-for="(note, i) in performance.notes" :key="i" class="tools__finding" data-severity="warning">
+                <span class="tools__finding-body">
+                    <span class="tools__code">{{ note.code }}</span>
+                    {{ note.message }}
+                </span>
+            </li>
+        </ul>
+
+        <p v-if="performance !== null && performance.notes.length === 0" class="tools__ok" role="status">
+            Within every budget.
+        </p>
 
         <h2 class="tools__heading">History</h2>
 
@@ -165,6 +195,28 @@ button:disabled {
     display: block;
     font-size: 11px;
     font-weight: 600;
+}
+
+.tools__metrics {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+}
+
+.tools__metrics div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.tools__metrics dt {
+    opacity: 0.7;
+}
+
+.tools__metrics dd {
+    margin: 0;
 }
 
 .tools__revision {

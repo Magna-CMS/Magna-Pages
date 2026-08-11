@@ -489,6 +489,8 @@ const a11yFindings = ref<
     { code: string; severity: string; nodeId: string | null; message: string }[] | null
 >(null)
 const a11yRunning = ref(false)
+const perfReport = ref<{ metrics: Record<string, number>; notes: { code: string; message: string }[] } | null>(null)
+const perfRunning = ref(false)
 const revisions = ref<
     { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[] | null
 >(null)
@@ -503,6 +505,17 @@ async function onRunA11y() {
         store.error = 'The accessibility check failed to run.'
     } finally {
         a11yRunning.value = false
+    }
+}
+
+async function onRunPerformance() {
+    perfRunning.value = true
+    try {
+        perfReport.value = await api.performance()
+    } catch {
+        store.error = 'The performance measurement failed to run.'
+    } finally {
+        perfRunning.value = false
     }
 }
 
@@ -657,10 +670,13 @@ onBeforeUnmount(() => {
                 <BuilderToolsPanel
                     :a11y-findings="a11yFindings"
                     :a11y-running="a11yRunning"
+                    :performance="perfReport"
+                    :performance-running="perfRunning"
                     :revisions="revisions"
                     :revisions-loading="revisionsLoading"
                     :can-restore="store.lock.mine && store.capabilities.content"
                     @run-a11y="onRunA11y"
+                    @run-performance="onRunPerformance"
                     @load-revisions="onLoadRevisions"
                     @preview-revision="previewedRevision = $event"
                     @restore-revision="onRestoreRevision"
