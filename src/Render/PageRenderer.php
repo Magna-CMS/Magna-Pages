@@ -11,6 +11,7 @@ use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Frontend\FrontendPage;
+use Magna\Pages\Consent\ConsentScripts;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Routing\LocalePrefix;
@@ -53,6 +54,7 @@ final class PageRenderer
         private readonly ConditionEvaluator $conditions,
         private readonly BindingResolver $bindings,
         private readonly LocalePrefix $localePrefix,
+        private readonly ConsentScripts $consent,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -120,11 +122,13 @@ final class PageRenderer
             // show two of it, one stale.
             'headerPartHtml' => $withParts ? $this->renderPart('header', $context) : null,
             'footerPartHtml' => $withParts ? $this->renderPart('footer', $context) : null,
-            // Published popup documents as dismissible overlays, printed by
-            // the layout before </body>. Never in the builder canvas (they
-            // would sit over the page being edited) and never when editing
-            // a popup document itself (withParts false).
-            'popupsHtml' => $withParts && ! $builderMode ? $this->renderPopups($context) : null,
+            // Published popup documents as dismissible overlays, plus the
+            // consent registry's scripts + banner — everything the layout
+            // prints before </body>. Never in the builder canvas and never
+            // when editing a popup document itself (withParts false).
+            'popupsHtml' => $withParts && ! $builderMode
+                ? ($this->renderPopups($context) ?? '').($this->consent->render() ?? '') ?: null
+                : null,
             // Inherited by the sections partial through @include, so a theme
             // layout needs no builder awareness of its own.
             'builderMode' => $builderMode,

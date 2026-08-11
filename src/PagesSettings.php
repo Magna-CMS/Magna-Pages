@@ -35,4 +35,15 @@ class PagesSettings extends Settings
      * @var list<array{type: string, prefix: string}>
      */
     public array $collection_mounts = [];
+
+    /**
+     * Third-party scripts on the public site, consent-gated (§F consent
+     * registry): {handle, label, category, src}. Category `necessary`
+     * loads always; `analytics` and `marketing` render INERT and only
+     * activate client-side after the visitor consents — consent is a
+     * per-browser fact, so cached pages stay shared.
+     *
+     * @var list<array{handle: string, label: string, category: string, src: string}>
+     */
+    public array $integrations = [];
 }

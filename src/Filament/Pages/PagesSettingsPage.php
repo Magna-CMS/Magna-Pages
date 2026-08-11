@@ -63,6 +63,7 @@ class PagesSettingsPage extends Page implements HasForms
             'not_found_page_id' => $settings->not_found_page_id,
             'maintenance_mode' => $settings->maintenance_mode,
             'collection_mounts' => $settings->collection_mounts,
+            'integrations' => $settings->integrations,
         ]);
     }
 
@@ -110,6 +111,39 @@ class PagesSettingsPage extends Page implements HasForms
                             ->addActionLabel('Mount a collection'),
                     ]),
 
+                Section::make('Integrations & consent')
+                    ->description('Third-party scripts on the public site. Necessary loads always; analytics and marketing stay inert until the visitor consents.')
+                    ->schema([
+                        Repeater::make('integrations')
+                            ->label('Registered scripts')
+                            ->schema([
+                                TextInput::make('handle')
+                                    ->label('Handle')
+                                    ->placeholder('plausible')
+                                    ->regex('/^[a-z0-9][a-z0-9-]*$/')
+                                    ->required(),
+                                TextInput::make('label')
+                                    ->label('Label')
+                                    ->placeholder('Plausible Analytics'),
+                                Select::make('category')
+                                    ->label('Consent category')
+                                    ->options([
+                                        'necessary' => 'Necessary (always loads)',
+                                        'analytics' => 'Analytics (consent)',
+                                        'marketing' => 'Marketing (consent)',
+                                    ])
+                                    ->required(),
+                                TextInput::make('src')
+                                    ->label('Script URL')
+                                    ->placeholder('https://plausible.io/js/script.js')
+                                    ->url()
+                                    ->required(),
+                            ])
+                            ->columns(2)
+                            ->defaultItems(0)
+                            ->addActionLabel('Register a script'),
+                    ]),
+
                 Section::make('Availability')
                     ->schema([
                         Toggle::make('maintenance_mode')
@@ -126,6 +160,7 @@ class PagesSettingsPage extends Page implements HasForms
         $settings->not_found_page_id = $this->stringOrNull($this->data['not_found_page_id'] ?? null);
         $settings->maintenance_mode = (bool) ($this->data['maintenance_mode'] ?? false);
         $settings->collection_mounts = $this->cleanMounts($this->data['collection_mounts'] ?? []);
+        $settings->integrations = $this->cleanIntegrations($this->data['integrations'] ?? []);
 
         app(SettingsRepository::class)->persist($settings);
 
@@ -184,6 +219,38 @@ class PagesSettingsPage extends Page implements HasForms
         ksort($options);
 
         return $options;
+    }
+
+    /**
+     * @return list<array{handle: string, label: string, category: string, src: string}>
+     */
+    private function cleanIntegrations(mixed $integrations): array
+    {
+        if (! is_array($integrations)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($integrations as $integration) {
+            if (is_array($integration)
+                && is_string($integration['handle'] ?? null)
+                && preg_match('/^[a-z0-9][a-z0-9-]*$/', $integration['handle']) === 1
+                && is_string($integration['src'] ?? null)
+                && str_starts_with($integration['src'], 'https://')
+                && in_array($integration['category'] ?? null, ['necessary', 'analytics', 'marketing'], true)
+            ) {
+                $clean[] = [
+                    'handle' => $integration['handle'],
+                    'label' => is_string($integration['label'] ?? null) && $integration['label'] !== ''
+                        ? $integration['label']
+                        : $integration['handle'],
+                    'category' => $integration['category'],
+                    'src' => $integration['src'],
+                ];
+            }
+        }
+
+        return $clean;
     }
 
     /**
