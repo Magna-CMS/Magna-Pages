@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Filament\Pages;
 
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -60,6 +62,7 @@ class PagesSettingsPage extends Page implements HasForms
             'home_page_id' => $settings->home_page_id,
             'not_found_page_id' => $settings->not_found_page_id,
             'maintenance_mode' => $settings->maintenance_mode,
+            'collection_mounts' => $settings->collection_mounts,
         ]);
     }
 
@@ -86,6 +89,27 @@ class PagesSettingsPage extends Page implements HasForms
                             ->nullable(),
                     ]),
 
+                Section::make('Collections on the site')
+                    ->description('Mount a content type at a URL prefix: the prefix serves its archive, prefix/slug each entry. Only types whose schema declares publiclyRenderable are offered.')
+                    ->schema([
+                        Repeater::make('collection_mounts')
+                            ->label('Mounted collections')
+                            ->schema([
+                                Select::make('type')
+                                    ->label('Content type')
+                                    ->options($this->renderableTypeOptions())
+                                    ->required(),
+                                TextInput::make('prefix')
+                                    ->label('URL prefix')
+                                    ->placeholder('blog')
+                                    ->regex('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/')
+                                    ->required(),
+                            ])
+                            ->columns(2)
+                            ->defaultItems(0)
+                            ->addActionLabel('Mount a collection'),
+                    ]),
+
                 Section::make('Availability')
                     ->schema([
                         Toggle::make('maintenance_mode')
@@ -101,6 +125,7 @@ class PagesSettingsPage extends Page implements HasForms
         $settings->home_page_id = $this->stringOrNull($this->data['home_page_id'] ?? null);
         $settings->not_found_page_id = $this->stringOrNull($this->data['not_found_page_id'] ?? null);
         $settings->maintenance_mode = (bool) ($this->data['maintenance_mode'] ?? false);
+        $settings->collection_mounts = $this->cleanMounts($this->data['collection_mounts'] ?? []);
 
         app(SettingsRepository::class)->persist($settings);
 
@@ -141,5 +166,46 @@ class PagesSettingsPage extends Page implements HasForms
     private function stringOrNull(mixed $value): ?string
     {
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * Content types the schema allows on the public site (§C4).
+     *
+     * @return array<string, string>
+     */
+    private function renderableTypeOptions(): array
+    {
+        $options = [];
+        foreach (app(SchemaRegistry::class)->all() as $type) {
+            if ($type->publiclyRenderable && $type->handle !== 'page') {
+                $options[$type->handle] = $type->displayName;
+            }
+        }
+        ksort($options);
+
+        return $options;
+    }
+
+    /**
+     * @return list<array{type: string, prefix: string}>
+     */
+    private function cleanMounts(mixed $mounts): array
+    {
+        if (! is_array($mounts)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($mounts as $mount) {
+            if (is_array($mount)
+                && is_string($mount['type'] ?? null) && $mount['type'] !== ''
+                && is_string($mount['prefix'] ?? null)
+                && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/', $mount['prefix']) === 1
+            ) {
+                $clean[] = ['type' => $mount['type'], 'prefix' => $mount['prefix']];
+            }
+        }
+
+        return $clean;
     }
 }

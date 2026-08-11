@@ -6,6 +6,7 @@ namespace Magna\Pages\Render;
 
 use Magna\Blocks\DynamicTags\DynamicTagRegistry;
 use Magna\Content\Entry;
+use Magna\Content\SchemaRegistry;
 use Magna\Settings\GeneralSettings;
 use Throwable;
 
@@ -31,7 +32,10 @@ class BindingResolver
     /** Entry attributes a binding may read. */
     private const ENTRY_SOURCES = ['title', 'slug', 'path', 'published_at', 'updated_at'];
 
-    public function __construct(private readonly DynamicTagRegistry $tags) {}
+    public function __construct(
+        private readonly DynamicTagRegistry $tags,
+        private readonly SchemaRegistry $schemas,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -96,7 +100,9 @@ class BindingResolver
 
         if (str_starts_with($bind, 'entry.') && $entry !== null) {
             $attribute = substr($bind, 6);
-            if (! in_array($attribute, self::ENTRY_SOURCES, true)) {
+            if (! in_array($attribute, self::ENTRY_SOURCES, true)
+                && ! $this->fieldIsPublic($entry, $attribute)
+            ) {
                 return '';
             }
 
@@ -109,5 +115,23 @@ class BindingResolver
         }
 
         return '';
+    }
+
+    /**
+     * §C4: beyond the fixed allowlist, a binding may read a schema field
+     * ONLY when the entry's own type flags it publicOnFrontend — the lever
+     * that lets a collection single template show an article's body
+     * without turning bindings into a read primitive over model state.
+     */
+    private function fieldIsPublic(Entry $entry, string $attribute): bool
+    {
+        $handle = $entry->getHandle();
+        if ($handle === null) {
+            return false;
+        }
+
+        $field = $this->schemas->get($handle)?->getField($attribute);
+
+        return $field !== null && $field->publicOnFrontend();
     }
 }

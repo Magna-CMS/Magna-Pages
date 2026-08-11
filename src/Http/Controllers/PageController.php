@@ -6,6 +6,7 @@ namespace Magna\Pages\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Magna\Pages\Cache\PageCache;
+use Magna\Pages\Collections\CollectionResponder;
 use Magna\Pages\Frontend\FrontendPageResponder;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\Conditions\DocumentConditions;
@@ -29,6 +30,7 @@ final class PageController
         private readonly DocumentConditions $conditions,
         private readonly FrontendPageResponder $frontendPages,
         private readonly TemplatePartResolver $parts,
+        private readonly CollectionResponder $collections,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -64,6 +66,14 @@ final class PageController
         $entry = $this->resolver->resolve($request->path(), $settings);
 
         if ($entry === null) {
+            // Mounted collection (05-SITE-STRUCTURE §1): archive at the
+            // prefix, single at prefix/{slug}. After real pages — an exact
+            // page slug always wins — and before plugin pages.
+            $collectionResponse = $this->collections->respond($request->path(), $request);
+            if ($collectionResponse !== null) {
+                return $collectionResponse;
+            }
+
             // Plugin frontend page (§07-EXTENSIBILITY): after real pages —
             // the site owner's page outranks a plugin at the same path —
             // and before redirects, which only fire for dead paths.

@@ -24,4 +24,15 @@ class PagesSettings extends Settings
 
     /** When true, the public site serves the maintenance holding page. */
     public bool $maintenance_mode = false;
+
+    /**
+     * Content types mounted on the public site, as a list of
+     * {type, prefix} maps — e.g. [{"type": "article", "prefix": "blog"}]
+     * serves /blog (archive) and /blog/{slug} (single). Only types whose
+     * schema declares publiclyRenderable mount (§C4); CollectionMounts
+     * validates on read, so a stale row cannot expose a type.
+     *
+     * @var list<array{type: string, prefix: string}>
+     */
+    public array $collection_mounts = [];
 }
