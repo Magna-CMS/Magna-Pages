@@ -46,6 +46,15 @@
         @media (min-width: 1024px) { .magna-hide-desktop { display: none !important; } }
         @media (min-width: 768px) and (max-width: 1023.98px) { .magna-hide-tablet { display: none !important; } }
         @media (max-width: 767.98px) { .magna-hide-mobile { display: none !important; } }
+        /* Motion presets: CSS-only entry animations (settings.motion).
+           Reduced-motion preference wins unconditionally. */
+        @keyframes magna-motion-fade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes magna-motion-rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+        .magna-motion--fade { animation: magna-motion-fade 0.7s ease-out both; }
+        .magna-motion--rise { animation: magna-motion-rise 0.7s ease-out both; }
+        @media (prefers-reduced-motion: reduce) {
+            .magna-motion--fade, .magna-motion--rise { animation: none !important; }
+        }
     </style>
 @endonce
 @php
@@ -70,9 +79,11 @@
         }
         $anchor = $section->settings['anchor'] ?? '';
         $cssClass = $section->settings['cssClass'] ?? '';
+        $motion = $section->settings['motion'] ?? '';
+        $motionClass = in_array($motion, ['fade', 'rise'], true) ? ' magna-motion--'.$motion : '';
     @endphp
     <section
-        class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}"
+        class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}{{ $motionClass }}"
         @if(is_string($anchor) && $anchor !== '') id="{{ $anchor }}" @endif
         @if($styleAttr !== '') style="{{ $styleAttr }}" @endif
         @if($inBuilder) data-magna-node="{{ $section->id }}" data-magna-kind="section" @endif

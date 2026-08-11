@@ -118,6 +118,20 @@ function writeConditions(next: { audience?: string; from?: string; until?: strin
     emit('editSetting', props.located.pointer, 'conditions', rules)
 }
 
+/** Motion preset on the selected section (settings.motion, CSS-only). */
+const motion = computed<string>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+    const stored = settings?.motion
+
+    return stored === 'fade' || stored === 'rise' ? stored : ''
+})
+
+function writeMotion(preset: string) {
+    if (props.located) {
+        emit('editSetting', props.located.pointer, 'motion', preset === '' ? null : preset)
+    }
+}
+
 const data = computed<Record<string, unknown>>(() => {
     const node = props.located?.node as { data?: Record<string, unknown> } | undefined
 
@@ -339,6 +353,19 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
                     />
                 </label>
             </fieldset>
+
+            <label class="inspector__field inspector__stack">
+                Motion
+                <select
+                    :value="motion"
+                    :disabled="!capabilities.style"
+                    @change="writeMotion(($event.target as HTMLSelectElement).value)"
+                >
+                    <option value="">None</option>
+                    <option value="fade">Fade in</option>
+                    <option value="rise">Rise in</option>
+                </select>
+            </label>
 
             <p v-if="!capabilities.style" class="inspector__locked">
                 Visibility and conditions need the design permission.
