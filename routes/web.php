@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Magna\Pages\Http\Controllers\BuilderAccessibilityController;
 use Magna\Pages\Http\Controllers\BuilderApiController;
 use Magna\Pages\Http\Controllers\BuilderApprovalController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
@@ -57,6 +58,7 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::get('/edit/{id}', [BuilderSpaController::class, 'index'])->name('pages.builder.edit');
     Route::get('/{id}', [BuilderApiController::class, 'bootstrap'])->name('pages.builder.bootstrap');
     Route::patch('/{id}', [BuilderApiController::class, 'patch'])->name('pages.builder.patch');
+    Route::get('/{id}/a11y', [BuilderAccessibilityController::class, 'check'])->name('pages.builder.a11y');
     Route::get('/{id}/canvas', [BuilderCanvasController::class, 'canvas'])->name('pages.builder.canvas');
     Route::post('/{id}/fragment', [BuilderCanvasController::class, 'fragment'])->name('pages.builder.fragment');
     Route::post('/{id}/heartbeat', [BuilderApiController::class, 'heartbeat'])->name('pages.builder.heartbeat');
