@@ -7,6 +7,7 @@ use Magna\Pages\Http\Controllers\BuilderAccessibilityController;
 use Magna\Pages\Http\Controllers\BuilderApiController;
 use Magna\Pages\Http\Controllers\BuilderApprovalController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
+use Magna\Pages\Http\Controllers\BuilderCommentController;
 use Magna\Pages\Http\Controllers\BuilderLibraryController;
 use Magna\Pages\Http\Controllers\BuilderPatternController;
 use Magna\Pages\Http\Controllers\BuilderPerformanceController;
@@ -61,6 +62,9 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::get('/{id}', [BuilderApiController::class, 'bootstrap'])->name('pages.builder.bootstrap');
     Route::patch('/{id}', [BuilderApiController::class, 'patch'])->name('pages.builder.patch');
     Route::get('/{id}/a11y', [BuilderAccessibilityController::class, 'check'])->name('pages.builder.a11y');
+    Route::get('/{id}/comments', [BuilderCommentController::class, 'index'])->name('pages.builder.comments');
+    Route::post('/{id}/comments', [BuilderCommentController::class, 'store'])->name('pages.builder.comments.store');
+    Route::post('/{id}/comments/{commentId}/resolve', [BuilderCommentController::class, 'resolve'])->name('pages.builder.comments.resolve');
     Route::get('/{id}/performance', [BuilderPerformanceController::class, 'measure'])->name('pages.builder.performance');
     Route::get('/{id}/revisions', [BuilderRevisionController::class, 'index'])->name('pages.builder.revisions');
     Route::get('/{id}/revisions/{revisionId}/preview', [BuilderRevisionController::class, 'preview'])->name('pages.builder.revisions.preview');

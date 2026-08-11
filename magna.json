@@ -23,7 +23,22 @@
         "pages.settings"
     ],
     "uninstall": {
-        "tables": ["magna_entries_page", "magna_entries_pages_template"],
+        "tables": [
+            "magna_entries_page",
+            "magna_entries_pages_template",
+            "pages_redirects",
+            "pages_menus",
+            "pages_menu_items",
+            "pages_menu_revisions",
+            "pages_cache",
+            "pages_cache_keys",
+            "pages_document_locks",
+            "pages_patterns",
+            "pages_global_styles",
+            "pages_style_revisions",
+            "pages_publish_requests",
+            "pages_comments"
+        ],
         "contentTypes": ["page", "pages_template"]
     }
 }
