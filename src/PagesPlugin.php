@@ -32,12 +32,14 @@ use Magna\Pages\Blocks\LatestPagesSource;
 use Magna\Pages\Blocks\LoopBlockResolver;
 use Magna\Pages\Builder\LivewireEditGuard;
 use Magna\Pages\Cache\PurgePageCache;
+use Magna\Pages\Console\BlockCheckCommand;
 use Magna\Pages\Console\E2eUserCommand;
 use Magna\Pages\Console\InstallDemoCommand;
 use Magna\Pages\Console\PruneCacheCommand;
 use Magna\Pages\Console\SiteDiffCommand;
 use Magna\Pages\Console\SiteExportCommand;
 use Magna\Pages\Console\SiteSyncCommand;
+use Magna\Pages\Console\ThemeAddonMakeCommand;
 use Magna\Pages\Console\ThemeCheckCommand;
 use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesIndexPage;
@@ -91,6 +93,8 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             SiteDiffCommand::class,
             SiteSyncCommand::class,
             ThemeCheckCommand::class,
+            ThemeAddonMakeCommand::class,
+            BlockCheckCommand::class,
         ];
     }
 
