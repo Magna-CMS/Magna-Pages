@@ -38,6 +38,8 @@ class PagesIndexPage extends Page
 
     public string $newPartTitle = '';
 
+    public string $newPopupTitle = '';
+
     public static function canAccess(): bool
     {
         return auth()->user()?->can('pages.content') ?? false;
@@ -80,6 +82,28 @@ class PagesIndexPage extends Page
         $entry = $entries->create('pages_template', [
             'title' => $title,
             'kind' => 'part',
+            'blocks_data' => [],
+        ], auth()->id() !== null ? (string) auth()->id() : null);
+
+        $this->redirect(url('/pages-builder/edit/'.$entry->getKey()));
+    }
+
+    /**
+     * Create a popup document (renders site-wide as a dismissible overlay
+     * once published; its Show-when conditions decide who sees it).
+     */
+    public function createPopup(EntryManager $entries): void
+    {
+        $title = trim($this->newPopupTitle);
+        if ($title === '') {
+            Notification::make()->title('Give the popup a title first.')->warning()->send();
+
+            return;
+        }
+
+        $entry = $entries->create('pages_template', [
+            'title' => $title,
+            'kind' => 'popup',
             'blocks_data' => [],
         ], auth()->id() !== null ? (string) auth()->id() : null);
 

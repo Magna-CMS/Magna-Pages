@@ -79,6 +79,15 @@
                    class="w-64 rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
         </div>
         <x-filament::button color="gray" wire:click="createPart">Create part &amp; open builder</x-filament::button>
+        <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New popup</label>
+            <input type="text"
+                   wire:model="newPopupTitle"
+                   wire:keydown.enter="createPopup"
+                   placeholder="Summer sale"
+                   class="w-64 rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+        </div>
+        <x-filament::button color="gray" wire:click="createPopup">Create popup &amp; open builder</x-filament::button>
     </div>
 
     <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">

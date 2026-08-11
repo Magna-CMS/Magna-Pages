@@ -12,6 +12,7 @@ use Magna\Pages\Render\Conditions\DocumentConditions;
 use Magna\Pages\Render\PageRenderer;
 use Magna\Pages\Routing\PageRouteResolver;
 use Magna\Pages\Routing\RedirectManager;
+use Magna\Pages\Templates\TemplatePartResolver;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -27,6 +28,7 @@ final class PageController
         private readonly PageCache $cache,
         private readonly DocumentConditions $conditions,
         private readonly FrontendPageResponder $frontendPages,
+        private readonly TemplatePartResolver $parts,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -92,14 +94,18 @@ final class PageController
 
         $html = $this->renderer->render($entry);
 
-        // §C9: the document's conditions get a veto on caching. A condition
+        // §C9: the conditions in everything this URL renders get a veto on
+        // caching — the page document AND every site-wide popup. A condition
         // we cannot evaluate makes the page uncacheable outright; a schedule
         // shortens the cached copy's life to its next boundary, so the cache
         // never serves yesterday's banner past its `until`.
         if ($cacheable) {
             $document = $entry->getAttribute('blocks_data');
-            $verdict = $this->conditions->cacheVerdict(
-                is_array($document) ? $document : [],
+            $verdict = $this->conditions->cacheVerdictAll(
+                [
+                    is_array($document) ? $document : [],
+                    ...array_column($this->parts->popups(), 'document'),
+                ],
                 $request->user(),
                 now(),
             );

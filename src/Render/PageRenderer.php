@@ -116,6 +116,11 @@ final class PageRenderer
             // show two of it, one stale.
             'headerPartHtml' => $withParts ? $this->renderPart('header', $context) : null,
             'footerPartHtml' => $withParts ? $this->renderPart('footer', $context) : null,
+            // Published popup documents as dismissible overlays, printed by
+            // the layout before </body>. Never in the builder canvas (they
+            // would sit over the page being edited) and never when editing
+            // a popup document itself (withParts false).
+            'popupsHtml' => $withParts && ! $builderMode ? $this->renderPopups($context) : null,
             // Inherited by the sections partial through @include, so a theme
             // layout needs no builder awareness of its own.
             'builderMode' => $builderMode,
@@ -135,6 +140,58 @@ final class PageRenderer
                 $this->bindings->resolve($block->data, $context),
             ),
         ])->render();
+    }
+
+    /**
+     * Every published popup document as a dismissible overlay, or null when
+     * none renders. Each popup's own §C9 conditions decide visibility (a
+     * fully hidden popup emits nothing); a dismissed popup stays dismissed
+     * per browser via localStorage. Self-contained: style + script ship
+     * inline with the first popup.
+     */
+    private function renderPopups(?Entry $context = null): ?string
+    {
+        $overlays = '';
+        foreach ($this->parts->popups() as $popup) {
+            $tree = PageTree::fromArray($popup['document']);
+
+            // Every root section conditioned away for this visitor = no
+            // popup at all, not an empty white box. Checked BEFORE the
+            // partial renders: its @once utility style would otherwise
+            // make the output non-empty even with zero sections shown.
+            $anyVisible = false;
+            foreach ($tree->sections as $section) {
+                if (! $section->isRef()
+                    && $this->conditions->evaluate($section->settings, auth()->user(), now())->visible
+                ) {
+                    $anyVisible = true;
+                    break;
+                }
+            }
+            if (! $anyVisible) {
+                continue;
+            }
+
+            $sections = view('magna-pages::partials.sections', [
+                'tree' => $tree,
+                'registry' => $this->registry,
+                'resolver' => $this->resolver,
+                'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
+                'conditionsPass' => fn (array $settings): bool => $this->conditions
+                    ->evaluate($settings, auth()->user(), now())->visible,
+                'resolveBindings' => fn (BlockNode $block): BlockNode => $block->withData(
+                    $this->bindings->resolve($block->data, $context),
+                ),
+            ])->render();
+
+            $overlays .= view('magna-pages::partials.popup', [
+                'slug' => $popup['slug'],
+                'title' => $popup['title'],
+                'sectionsHtml' => $sections,
+            ])->render();
+        }
+
+        return $overlays === '' ? null : $overlays;
     }
 
     /**

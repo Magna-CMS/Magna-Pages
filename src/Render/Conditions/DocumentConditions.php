@@ -32,6 +32,32 @@ class DocumentConditions
     ) {}
 
     /**
+     * The combined verdict for everything a URL renders — the page document
+     * plus every site-wide popup document. One uncacheable document makes
+     * the whole response uncacheable; the earliest expiry wins.
+     *
+     * @param  list<array<mixed, mixed>>  $documents
+     * @return array{cacheable: bool, expiresAt: Carbon|null}
+     */
+    public function cacheVerdictAll(array $documents, ?Authenticatable $user, Carbon $now): array
+    {
+        $cacheable = true;
+        $expiresAt = null;
+
+        foreach ($documents as $document) {
+            $verdict = $this->cacheVerdict($document, $user, $now);
+            $cacheable = $cacheable && $verdict['cacheable'];
+            if ($verdict['expiresAt'] !== null
+                && ($expiresAt === null || $verdict['expiresAt']->lessThan($expiresAt))
+            ) {
+                $expiresAt = $verdict['expiresAt'];
+            }
+        }
+
+        return ['cacheable' => $cacheable, 'expiresAt' => $expiresAt];
+    }
+
+    /**
      * @param  array<mixed, mixed>  $document
      * @return array{cacheable: bool, expiresAt: Carbon|null}
      */

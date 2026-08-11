@@ -54,6 +54,45 @@ class TemplatePartResolver
     }
 
     /**
+     * Every published popup document, for site-wide overlay rendering and
+     * the page-cache verdict. Shape: id, slug, title, document (raw
+     * blocks_data — the §C9 conditions inside it gate visibility and
+     * cacheability like any other document).
+     *
+     * @return list<array{id: string, slug: string, title: string, document: array<mixed, mixed>}>
+     */
+    public function popups(): array
+    {
+        if (! $this->schemaRegistry->has('pages_template')) {
+            return [];
+        }
+
+        $popups = [];
+        foreach (Entry::type('pages_template')
+            ->where('kind', 'popup')
+            ->where('status', EntryStatus::Published->value)
+            ->orderBy('slug')
+            ->get() as $entry) {
+            $id = $entry->getKey();
+            $slug = $entry->getAttribute('slug');
+            if (! is_string($id) || ! is_string($slug) || $slug === '') {
+                continue;
+            }
+
+            $document = $entry->getAttribute('blocks_data');
+            $title = $entry->getAttribute('title');
+            $popups[] = [
+                'id' => $id,
+                'slug' => $slug,
+                'title' => is_string($title) ? $title : '',
+                'document' => is_array($document) ? $document : [],
+            ];
+        }
+
+        return $popups;
+    }
+
+    /**
      * Expand `ref` sections in a document by splicing the referenced part's
      * sections in place. Refs inside a referenced part are ignored (depth 1)
      * — reusable sections compose pages, they do not compose each other yet.

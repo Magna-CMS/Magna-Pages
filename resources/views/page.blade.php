@@ -40,5 +40,9 @@
     <footer>{!! $footerPartHtml !!}</footer>
 @endif
 
+@if(!empty($popupsHtml))
+    {!! $popupsHtml !!}
+@endif
+
 </body>
 </html>
