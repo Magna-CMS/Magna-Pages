@@ -38,6 +38,7 @@ use Magna\Pages\Console\PruneCacheCommand;
 use Magna\Pages\Console\SiteDiffCommand;
 use Magna\Pages\Console\SiteExportCommand;
 use Magna\Pages\Console\SiteSyncCommand;
+use Magna\Pages\Console\ThemeCheckCommand;
 use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesIndexPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
@@ -89,6 +90,7 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             SiteExportCommand::class,
             SiteDiffCommand::class,
             SiteSyncCommand::class,
+            ThemeCheckCommand::class,
         ];
     }
 
