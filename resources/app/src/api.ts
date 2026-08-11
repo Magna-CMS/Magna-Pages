@@ -118,6 +118,20 @@ export function createApi(pageId: string, base = '/pages-builder') {
         patternInstance: (id: string): Promise<{ kind: string; node: Record<string, unknown> }> =>
             request(`${base}/patterns/${id}/instance`),
 
+        a11y: (): Promise<{
+            findings: { code: string; severity: string; nodeId: string | null; message: string }[]
+        }> => request(`${base}/${pageId}/a11y`),
+
+        revisions: (): Promise<{
+            revisions: { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[]
+        }> => request(`${base}/${pageId}/revisions`),
+
+        revisionPreviewUrl: (revisionId: string): string =>
+            `${base}/${pageId}/revisions/${revisionId}/preview`,
+
+        restoreRevision: (revisionId: string): Promise<{ restored: string }> =>
+            request(`${base}/${pageId}/revisions/${revisionId}/restore`, { method: 'POST' }),
+
         heartbeat: (): Promise<{ held: boolean }> =>
             request(`${base}/${pageId}/heartbeat`, { method: 'POST' }),
 

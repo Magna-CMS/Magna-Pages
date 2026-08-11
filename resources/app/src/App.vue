@@ -8,6 +8,7 @@ import BuilderCommandPalette from './components/BuilderCommandPalette.vue'
 import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
+import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import { columnOf, exportAsLibraryAsset, primaryTextField } from './document/edits'
 import { locate } from './document/locate'
@@ -483,6 +484,57 @@ async function onSavePattern() {
     await store.saveAsPattern(api, name)
 }
 
+/** Checks & History panel state (pull surfaces — loaded on demand). */
+const a11yFindings = ref<
+    { code: string; severity: string; nodeId: string | null; message: string }[] | null
+>(null)
+const a11yRunning = ref(false)
+const revisions = ref<
+    { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[] | null
+>(null)
+const revisionsLoading = ref(false)
+const previewedRevision = ref<string | null>(null)
+
+async function onRunA11y() {
+    a11yRunning.value = true
+    try {
+        a11yFindings.value = (await api.a11y()).findings
+    } catch {
+        store.error = 'The accessibility check failed to run.'
+    } finally {
+        a11yRunning.value = false
+    }
+}
+
+async function onLoadRevisions() {
+    revisionsLoading.value = true
+    try {
+        revisions.value = (await api.revisions()).revisions
+    } catch {
+        store.error = 'Could not load the revision history.'
+    } finally {
+        revisionsLoading.value = false
+    }
+}
+
+async function onRestoreRevision(revisionId: string) {
+    if (!window.confirm('Restore this revision? The current state is snapshotted first, so this is reversible.')) {
+        return
+    }
+
+    try {
+        await api.restoreRevision(revisionId)
+    } catch (failure) {
+        store.error = failure instanceof Error ? failure.message : 'Restore failed.'
+
+        return
+    }
+
+    // The document changed out from under every piece of client state —
+    // undo stack, canvas, inspector. A clean reload is the honest reset.
+    window.location.reload()
+}
+
 async function onTakeOver() {
     await store.takeOver(api)
     reloadCanvas()
@@ -601,6 +653,19 @@ onBeforeUnmount(() => {
                     @preview="onStylePreview"
                     @save="onStyleSave"
                 />
+
+                <BuilderToolsPanel
+                    :a11y-findings="a11yFindings"
+                    :a11y-running="a11yRunning"
+                    :revisions="revisions"
+                    :revisions-loading="revisionsLoading"
+                    :can-restore="store.lock.mine && store.capabilities.content"
+                    @run-a11y="onRunA11y"
+                    @load-revisions="onLoadRevisions"
+                    @preview-revision="previewedRevision = $event"
+                    @restore-revision="onRestoreRevision"
+                    @select-node="store.select($event)"
+                />
             </aside>
 
             <main class="builder__canvas">
@@ -670,6 +735,39 @@ onBeforeUnmount(() => {
 
         <p v-if="store.error" class="builder__error" role="alert">{{ store.error }}</p>
 
+        <!-- Revision diff: the revision and the current page side by side,
+             both rendered by the one real renderer. -->
+        <div
+            v-if="previewedRevision"
+            class="builder__diff"
+            role="dialog"
+            aria-label="Revision comparison"
+        >
+            <div class="builder__diff-bar">
+                <span>Comparing revision against the current page</span>
+                <div class="builder__diff-actions">
+                    <button
+                        type="button"
+                        :disabled="!(store.lock.mine && store.capabilities.content)"
+                        @click="onRestoreRevision(previewedRevision)"
+                    >
+                        Restore this revision
+                    </button>
+                    <button type="button" @click="previewedRevision = null">Close</button>
+                </div>
+            </div>
+            <div class="builder__diff-panes">
+                <figure class="builder__diff-pane">
+                    <figcaption>Revision</figcaption>
+                    <iframe :src="api.revisionPreviewUrl(previewedRevision)" title="Revision preview" />
+                </figure>
+                <figure class="builder__diff-pane">
+                    <figcaption>Current</figcaption>
+                    <iframe :src="api.canvasUrl()" title="Current page" />
+                </figure>
+            </div>
+        </div>
+
         <BuilderCommandPalette
             :open="paletteOpen"
             :actions="paletteActions"
@@ -721,6 +819,75 @@ body {
 
 .builder__rail {
     border-right: 1px solid var(--builder-border);
+}
+
+.builder__diff {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    background: var(--builder-surface);
+}
+
+.builder__diff-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--builder-border);
+}
+
+.builder__diff-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.builder__diff-actions button {
+    padding: 4px 10px;
+    border: 1px solid var(--builder-border);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.builder__diff-actions button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.builder__diff-panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    flex: 1;
+    min-height: 0;
+    background: var(--builder-border);
+}
+
+.builder__diff-pane {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--builder-surface);
+}
+
+.builder__diff-pane figcaption {
+    padding: 4px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.7;
+}
+
+.builder__diff-pane iframe {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    background: #fff;
 }
 
 .builder__inspector {
