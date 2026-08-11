@@ -9,13 +9,16 @@ use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
+use Magna\Content\EntryStatus;
 use Magna\Frontend\FrontendPage;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
+use Magna\Pages\Routing\LocalePrefix;
 use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
 use Magna\Pages\Themes\ThemeViewResolver;
 use Magna\Settings\GeneralSettings;
+use Magna\Settings\LocalizationSettings;
 
 /**
  * Renders a page entry's block document to public HTML.
@@ -49,6 +52,7 @@ final class PageRenderer
         private readonly TemplatePartResolver $parts,
         private readonly ConditionEvaluator $conditions,
         private readonly BindingResolver $bindings,
+        private readonly LocalePrefix $localePrefix,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -139,7 +143,42 @@ final class PageRenderer
             'resolveBindings' => fn (BlockNode $block): BlockNode => $block->withData(
                 $this->bindings->resolve($block->data, $context),
             ),
+            // The current page's published translations, locale => URL —
+            // what the locale-switcher block renders. Empty off-page.
+            'localeAlternates' => $this->localeAlternates($context),
         ])->render();
+    }
+
+    /**
+     * @return array<string, string> locale => site-relative URL
+     */
+    private function localeAlternates(?Entry $context): array
+    {
+        $group = $context?->translation_group;
+        $handle = $context?->getHandle();
+        if (! is_string($group) || $group === '' || ! is_string($handle)) {
+            return [];
+        }
+
+        $fallback = LocalizationSettings::get()->fallback_locale;
+
+        $alternates = [];
+        foreach (Entry::type($handle)
+            ->where('translation_group', $group)
+            ->where('status', EntryStatus::Published->value)
+            ->orderBy('locale')
+            ->get() as $sibling) {
+            $locale = $sibling->getAttribute('locale');
+            // A row with no locale recorded IS the fallback locale
+            // (EntryManager stores '' when a create names none).
+            $locale = is_string($locale) && $locale !== '' ? $locale : $fallback;
+            $path = $sibling->getAttribute('path') ?? $sibling->getAttribute('slug');
+            if (is_string($path) && $path !== '') {
+                $alternates[$locale] = $this->localePrefix->urlFor($locale, $path);
+            }
+        }
+
+        return $alternates;
     }
 
     /**

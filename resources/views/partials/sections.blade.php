@@ -110,6 +110,9 @@
                                 {!! $mark(view($blockView, [
                                     'block' => $resolver->viewPayload($bound($block)),
                                     'definition' => $registry->get($block->block),
+                                    // Page-level context any block may use
+                                    // (the locale switcher reads it).
+                                    'localeAlternates' => $localeAlternates ?? [],
                                 ])->render(), $block->id, 'block') !!}
                             @endif
                         @endforeach

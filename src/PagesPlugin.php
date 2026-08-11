@@ -180,6 +180,13 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
                 ],
             ]),
             BlockDefinition::fromArray([
+                'handle' => 'locale-switcher',
+                'label' => 'Language switcher',
+                'icon' => 'heroicon-o-language',
+                'category' => 'site',
+                'fields' => [],
+            ]),
+            BlockDefinition::fromArray([
                 'handle' => 'nav',
                 'label' => 'Navigation',
                 'icon' => 'heroicon-o-bars-3',

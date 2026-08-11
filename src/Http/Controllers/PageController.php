@@ -11,6 +11,7 @@ use Magna\Pages\Frontend\FrontendPageResponder;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\Conditions\DocumentConditions;
 use Magna\Pages\Render\PageRenderer;
+use Magna\Pages\Routing\LocalePrefix;
 use Magna\Pages\Routing\PageRouteResolver;
 use Magna\Pages\Routing\RedirectManager;
 use Magna\Pages\Templates\TemplatePartResolver;
@@ -31,6 +32,7 @@ final class PageController
         private readonly FrontendPageResponder $frontendPages,
         private readonly TemplatePartResolver $parts,
         private readonly CollectionResponder $collections,
+        private readonly LocalePrefix $localePrefix,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -63,7 +65,15 @@ final class PageController
             }
         }
 
-        $entry = $this->resolver->resolve($request->path(), $settings);
+        // §A2 locale-prefix strategy: /fr/about serves the French
+        // translation and sets the app locale; bare paths serve the
+        // fallback locale. Cache stays URL-keyed, so locales never mix.
+        ['locale' => $locale, 'path' => $localizedPath] = $this->localePrefix->split($request->path());
+        if ($locale !== null) {
+            app()->setLocale($locale);
+        }
+
+        $entry = $this->resolver->resolve($localizedPath, $settings, $locale);
 
         if ($entry === null) {
             // Mounted collection (05-SITE-STRUCTURE §1): archive at the
