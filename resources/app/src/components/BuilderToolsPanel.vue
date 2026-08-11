@@ -7,6 +7,8 @@
  * fetch on open is wasted on the common editing session.
  */
 
+import { ref } from 'vue'
+
 const props = defineProps<{
     a11yFindings: { code: string; severity: string; nodeId: string | null; message: string }[] | null
     a11yRunning: boolean
@@ -15,6 +17,16 @@ const props = defineProps<{
     revisions: { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[] | null
     revisionsLoading: boolean
     canRestore: boolean
+    comments: {
+        id: string
+        nodeId: string | null
+        body: string
+        author: string | null
+        resolved: boolean
+        createdAt: string | null
+    }[] | null
+    commentsLoading: boolean
+    selectedNode: string | null
 }>()
 
 const emit = defineEmits<{
@@ -24,7 +36,22 @@ const emit = defineEmits<{
     previewRevision: [id: string]
     restoreRevision: [id: string]
     selectNode: [id: string]
+    loadComments: []
+    addComment: [body: string, nodeId: string | null]
+    resolveComment: [id: string]
 }>()
+
+const commentDraft = ref('')
+const anchorToSelection = ref(true)
+
+function submitComment() {
+    const body = commentDraft.value.trim()
+    if (body === '') {
+        return
+    }
+    emit('addComment', body, anchorToSelection.value ? props.selectedNode : null)
+    commentDraft.value = ''
+}
 
 function kb(bytes: number): string {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -95,6 +122,60 @@ function formatWhen(iso: string): string {
         <p v-if="performance !== null && performance.notes.length === 0" class="tools__ok" role="status">
             Within every budget.
         </p>
+
+        <h2 class="tools__heading">Comments</h2>
+
+        <button type="button" :disabled="commentsLoading" @click="$emit('loadComments')">
+            {{ commentsLoading ? 'Loading…' : comments === null ? 'Load comments' : 'Refresh comments' }}
+        </button>
+
+        <p v-if="comments !== null && comments.length === 0" class="tools__ok">No comments yet.</p>
+
+        <ul v-if="comments !== null && comments.length > 0" class="tools__findings">
+            <li
+                v-for="comment in comments"
+                :key="comment.id"
+                class="tools__comment"
+                :class="{ 'tools__comment--resolved': comment.resolved }"
+            >
+                <button
+                    type="button"
+                    class="tools__finding-body"
+                    :disabled="comment.nodeId === null"
+                    :title="comment.nodeId !== null ? 'Select the commented block' : undefined"
+                    @click="comment.nodeId !== null && $emit('selectNode', comment.nodeId)"
+                >
+                    <span class="tools__code">
+                        {{ comment.author ?? 'Someone' }}{{ comment.nodeId !== null ? ' · on a block' : '' }}
+                    </span>
+                    {{ comment.body }}
+                </button>
+                <button
+                    v-if="!comment.resolved"
+                    type="button"
+                    class="tools__resolve"
+                    @click="$emit('resolveComment', comment.id)"
+                >
+                    Resolve
+                </button>
+            </li>
+        </ul>
+
+        <div v-if="comments !== null" class="tools__addcomment">
+            <textarea
+                v-model="commentDraft"
+                rows="2"
+                placeholder="Leave a comment…"
+                @keydown.enter.exact.prevent="submitComment"
+            />
+            <label class="tools__anchor">
+                <input v-model="anchorToSelection" type="checkbox" :disabled="selectedNode === null" />
+                Anchor to selected block
+            </label>
+            <button type="button" :disabled="commentDraft.trim() === ''" @click="submitComment">
+                Comment
+            </button>
+        </div>
 
         <h2 class="tools__heading">History</h2>
 
@@ -217,6 +298,47 @@ button:disabled {
 
 .tools__metrics dd {
     margin: 0;
+}
+
+.tools__comment {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.tools__comment--resolved {
+    opacity: 0.45;
+}
+
+.tools__resolve {
+    flex: 0 0 auto;
+    font-size: 11px;
+}
+
+.tools__addcomment {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tools__addcomment textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--builder-border);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    resize: vertical;
+}
+
+.tools__anchor {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    opacity: 0.8;
 }
 
 .tools__revision {

@@ -496,6 +496,39 @@ const revisions = ref<
 >(null)
 const revisionsLoading = ref(false)
 const previewedRevision = ref<string | null>(null)
+const comments = ref<
+    { id: string; nodeId: string | null; body: string; author: string | null; resolved: boolean; createdAt: string | null }[] | null
+>(null)
+const commentsLoading = ref(false)
+
+async function onLoadComments() {
+    commentsLoading.value = true
+    try {
+        comments.value = (await api.comments()).comments
+    } catch {
+        store.error = 'Could not load comments.'
+    } finally {
+        commentsLoading.value = false
+    }
+}
+
+async function onAddComment(body: string, nodeId: string | null) {
+    try {
+        await api.addComment(body, nodeId)
+        await onLoadComments()
+    } catch (failure) {
+        store.error = failure instanceof Error ? failure.message : 'Could not add the comment.'
+    }
+}
+
+async function onResolveComment(commentId: string) {
+    try {
+        await api.resolveComment(commentId)
+        await onLoadComments()
+    } catch {
+        store.error = 'Could not resolve the comment.'
+    }
+}
 
 async function onRunA11y() {
     a11yRunning.value = true
@@ -675,12 +708,18 @@ onBeforeUnmount(() => {
                     :revisions="revisions"
                     :revisions-loading="revisionsLoading"
                     :can-restore="store.lock.mine && store.capabilities.content"
+                    :comments="comments"
+                    :comments-loading="commentsLoading"
+                    :selected-node="store.selectedNode"
                     @run-a11y="onRunA11y"
                     @run-performance="onRunPerformance"
                     @load-revisions="onLoadRevisions"
                     @preview-revision="previewedRevision = $event"
                     @restore-revision="onRestoreRevision"
                     @select-node="store.select($event)"
+                    @load-comments="onLoadComments"
+                    @add-comment="onAddComment"
+                    @resolve-comment="onResolveComment"
                 />
             </aside>
 

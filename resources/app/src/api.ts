@@ -122,6 +122,26 @@ export function createApi(pageId: string, base = '/pages-builder') {
             findings: { code: string; severity: string; nodeId: string | null; message: string }[]
         }> => request(`${base}/${pageId}/a11y`),
 
+        comments: (): Promise<{
+            comments: {
+                id: string
+                nodeId: string | null
+                body: string
+                author: string | null
+                resolved: boolean
+                createdAt: string | null
+            }[]
+        }> => request(`${base}/${pageId}/comments`),
+
+        addComment: (body: string, nodeId: string | null): Promise<{ comment: { id: string } }> =>
+            request(`${base}/${pageId}/comments`, {
+                method: 'POST',
+                body: JSON.stringify({ body, nodeId }),
+            }),
+
+        resolveComment: (commentId: string): Promise<{ resolved: boolean }> =>
+            request(`${base}/${pageId}/comments/${commentId}/resolve`, { method: 'POST' }),
+
         performance: (): Promise<{
             metrics: Record<string, number>
             notes: { code: string; message: string }[]
