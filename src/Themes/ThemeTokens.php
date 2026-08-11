@@ -54,6 +54,9 @@ class ThemeTokens
     /**
      * What the active theme itself declares, before site overrides — the
      * Design tab lists these and validates override names against them.
+     * Active addons contribute ADDITIVELY (§5: "additive tokens only"): an
+     * addon key the theme already declares is ignored, so an addon can add
+     * a chat-bubble color but never repaint the theme.
      *
      * @return array<string, string>
      */
@@ -64,7 +67,31 @@ class ThemeTokens
             return [];
         }
 
-        $tokensFile = $this->themes->pathFor($active->name).'/tokens.json';
+        $variables = $this->tokensFrom($active->name);
+        if ($variables === []) {
+            return [];
+        }
+
+        foreach ($this->themes->activeAddons() as $addon) {
+            foreach ($this->tokensFrom($addon->name) as $name => $value) {
+                if (! array_key_exists($name, $variables)) {
+                    $variables[$name] = $value;
+                }
+            }
+        }
+
+        return $variables;
+    }
+
+    /**
+     * One package's tokens.json compiled to CSS variables (empty when the
+     * file is missing or malformed).
+     *
+     * @return array<string, string>
+     */
+    private function tokensFrom(string $packageName): array
+    {
+        $tokensFile = $this->themes->pathFor($packageName).'/tokens.json';
         if (! is_file($tokensFile)) {
             return [];
         }
