@@ -27,6 +27,7 @@ use Magna\Contracts\RegistersDynamicTags;
 use Magna\Contracts\RegistersSettingsPages;
 use Magna\Pages\Blocks\CurrentYearTag;
 use Magna\Pages\Blocks\DataSourceOptions;
+use Magna\Pages\Blocks\EmbedBlockResolver;
 use Magna\Pages\Blocks\LatestPagesSource;
 use Magna\Pages\Blocks\LoopBlockResolver;
 use Magna\Pages\Builder\LivewireEditGuard;
@@ -107,6 +108,9 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // The Loop block: plugin data sources onto pages.
         app(BlockDataResolver::class)->register(app(LoopBlockResolver::class));
 
+        // The curated embed block: allowlisted providers only.
+        app(BlockDataResolver::class)->register(app(EmbedBlockResolver::class));
+
         // Light up the core block editor's live-preview pane (§E1 contract
         // seam — core shows the pane only when this binding exists).
         app()->singleton(ProvidesDocumentPreview::class, ThemedDocumentPreview::class);
@@ -163,6 +167,16 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
                         'optionsFrom' => DataSourceOptions::class,
                     ],
                     ['handle' => 'limit', 'type' => 'number', 'label' => 'Items', 'required' => false, 'default' => 6],
+                ],
+            ]),
+            BlockDefinition::fromArray([
+                'handle' => 'embed',
+                'label' => 'Embed',
+                'icon' => 'heroicon-o-play-circle',
+                'category' => 'media',
+                'fields' => [
+                    ['handle' => 'url', 'type' => 'link', 'label' => 'Video URL', 'required' => true],
+                    ['handle' => 'caption', 'type' => 'text', 'label' => 'Caption', 'required' => false],
                 ],
             ]),
             BlockDefinition::fromArray([
