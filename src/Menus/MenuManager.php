@@ -87,6 +87,63 @@ class MenuManager
     }
 
     /**
+     * The menu's item tree in syncItems() shape, but with page references
+     * expressed as SLUGS instead of ids — the site-kit's cross-environment
+     * form. SiteKit maps slugs back to local ids before syncing.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function exportTree(Menu $menu): array
+    {
+        $items = $menu->items()->get()->all();
+
+        $pageSlugs = [];
+        if ($this->schemaRegistry->has('page')) {
+            $ids = array_values(array_filter(array_map(
+                fn (MenuItem $i): ?string => $i->page_id,
+                $items,
+            )));
+            if ($ids !== []) {
+                foreach (Entry::type('page')->whereIn('id', $ids)->get() as $page) {
+                    $id = $page->getKey();
+                    $slug = $page->getAttribute('slug');
+                    if (is_string($id) && is_string($slug)) {
+                        $pageSlugs[$id] = $slug;
+                    }
+                }
+            }
+        }
+
+        $build = function (?string $parentId) use (&$build, $items, $pageSlugs): array {
+            $level = [];
+            foreach ($items as $item) {
+                if ($item->parent_id !== $parentId) {
+                    continue;
+                }
+                $node = [
+                    'label' => $item->label,
+                    'type' => $item->type,
+                    'url' => $item->url,
+                    'target' => $item->target,
+                    'settings' => $item->settings,
+                ];
+                if ($item->page_id !== null && isset($pageSlugs[$item->page_id])) {
+                    $node['page_slug'] = $pageSlugs[$item->page_id];
+                }
+                $children = $build($item->id);
+                if ($children !== []) {
+                    $node['children'] = $children;
+                }
+                $level[] = $node;
+            }
+
+            return $level;
+        };
+
+        return $build(null);
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $level
      */
     private function insertLevel(Menu $menu, array $level, ?string $parentId): void
