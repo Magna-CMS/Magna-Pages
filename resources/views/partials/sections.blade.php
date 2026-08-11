@@ -81,6 +81,13 @@
         $cssClass = $section->settings['cssClass'] ?? '';
         $motion = $section->settings['motion'] ?? '';
         $motionClass = in_array($motion, ['fade', 'rise'], true) ? ' magna-motion--'.$motion : '';
+
+        // Per-node custom CSS: validated declarations join the style
+        // attribute — the attribute IS the sandbox (no selectors possible).
+        $customCss = \Magna\Pages\Render\CustomCss::sanitize($section->settings['customCss'] ?? null);
+        if ($customCss !== '') {
+            $styleAttr = $styleAttr === '' ? $customCss : $styleAttr.';'.$customCss;
+        }
     @endphp
     <section
         class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}{{ $motionClass }}"

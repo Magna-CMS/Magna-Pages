@@ -132,6 +132,19 @@ function writeMotion(preset: string) {
     }
 }
 
+/** Custom declaration list on the selected section (settings.customCss). */
+const customCss = computed<string>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+
+    return typeof settings?.customCss === 'string' ? settings.customCss : ''
+})
+
+function writeCustomCss(value: string) {
+    if (props.located) {
+        emit('editSetting', props.located.pointer, 'customCss', value.trim() === '' ? null : value)
+    }
+}
+
 const data = computed<Record<string, unknown>>(() => {
     const node = props.located?.node as { data?: Record<string, unknown> } | undefined
 
@@ -367,6 +380,18 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
                 </select>
             </label>
 
+            <label class="inspector__field inspector__stack">
+                Custom CSS
+                <textarea
+                    rows="3"
+                    placeholder="margin-top: 2rem; letter-spacing: 0.1em"
+                    :value="customCss"
+                    :disabled="!capabilities.style"
+                    @change="writeCustomCss(($event.target as HTMLTextAreaElement).value)"
+                />
+                <span class="inspector__hint">Declarations only — they apply to this section's own element. Functions other than var(--token) are dropped at render.</span>
+            </label>
+
             <p v-if="!capabilities.style" class="inspector__locked">
                 Visibility and conditions need the design permission.
             </p>
@@ -487,6 +512,12 @@ select:disabled {
     margin-top: 4px;
     font-size: 12px;
     opacity: 0.85;
+}
+
+.inspector__hint {
+    font-size: 11px;
+    opacity: 0.6;
+    line-height: 1.4;
 }
 
 .inspector__empty,
