@@ -27,6 +27,9 @@ class MenuItem extends Model
 
     public const TYPE_PAGE = 'page';
 
+    /** A plugin frontend page (ProvidesFrontendPages), referenced by name in settings.frontend_page. */
+    public const TYPE_PLUGIN = 'plugin';
+
     protected $table = 'pages_menu_items';
 
     protected $fillable = [

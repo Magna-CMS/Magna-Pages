@@ -9,7 +9,9 @@ use Illuminate\Support\Str;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
+use Magna\Frontend\FrontendPageRegistry;
 use Magna\Pages\Cache\PageCache;
+use Magna\Pages\Frontend\FrontendPageVisibility;
 
 /**
  * Menu lifecycle + resolution.
@@ -23,7 +25,11 @@ use Magna\Pages\Cache\PageCache;
  */
 class MenuManager
 {
-    public function __construct(private readonly SchemaRegistry $schemaRegistry) {}
+    public function __construct(
+        private readonly SchemaRegistry $schemaRegistry,
+        private readonly FrontendPageRegistry $frontendPages,
+        private readonly FrontendPageVisibility $frontendVisibility,
+    ) {}
 
     public function create(string $handle, string $name): Menu
     {
@@ -91,16 +97,27 @@ class MenuManager
                 continue;
             }
 
+            $type = in_array($node['type'] ?? null, [MenuItem::TYPE_PAGE, MenuItem::TYPE_PLUGIN], true)
+                ? $node['type']
+                : MenuItem::TYPE_URL;
+
+            // A plugin item references its frontend page by NAME — stable
+            // across the plugin re-mounting the page at a different path.
+            $settings = is_array($node['settings'] ?? null) ? $node['settings'] : [];
+            if ($type === MenuItem::TYPE_PLUGIN && is_string($node['plugin_page'] ?? null)) {
+                $settings['frontend_page'] = $node['plugin_page'];
+            }
+
             $item = MenuItem::query()->create([
                 'menu_id' => $menu->id,
                 'parent_id' => $parentId,
                 'position' => $position++,
                 'label' => is_string($node['label'] ?? null) ? $node['label'] : '',
-                'type' => ($node['type'] ?? null) === MenuItem::TYPE_PAGE ? MenuItem::TYPE_PAGE : MenuItem::TYPE_URL,
+                'type' => $type,
                 'page_id' => is_string($node['page_id'] ?? null) ? $node['page_id'] : null,
                 'url' => is_string($node['url'] ?? null) ? $node['url'] : null,
                 'target' => is_string($node['target'] ?? null) ? $node['target'] : null,
-                'settings' => is_array($node['settings'] ?? null) ? $node['settings'] : null,
+                'settings' => $settings === [] ? null : $settings,
             ]);
 
             if (is_array($node['children'] ?? null)) {
@@ -123,18 +140,36 @@ class MenuManager
                 continue;
             }
 
-            $url = $item->type === MenuItem::TYPE_PAGE
-                ? ($pageUrls[$item->page_id ?? ''] ?? null)
-                : $item->url;
+            $label = $item->label;
 
-            // A page item whose page is gone or unpublished degrades by
-            // disappearing from the nav.
-            if ($item->type === MenuItem::TYPE_PAGE && $url === null) {
-                continue;
+            if ($item->type === MenuItem::TYPE_PLUGIN) {
+                // Plugin item: URL from the registered frontend page. Gone
+                // plugin degrades the item away; an auth-gated page hides
+                // from visitors who may not open it (cache-safe because
+                // only guest renders enter the shared page cache).
+                $name = is_string($item->settings['frontend_page'] ?? null)
+                    ? $item->settings['frontend_page']
+                    : '';
+                $page = $name === '' ? null : $this->frontendPages->get($name);
+                if ($page === null || ! $this->frontendVisibility->visibleTo($page, auth()->user())) {
+                    continue;
+                }
+                $url = '/'.$page->normalizedPath();
+                $label = $label !== '' ? $label : $page->title;
+            } else {
+                $url = $item->type === MenuItem::TYPE_PAGE
+                    ? ($pageUrls[$item->page_id ?? ''] ?? null)
+                    : $item->url;
+
+                // A page item whose page is gone or unpublished degrades by
+                // disappearing from the nav.
+                if ($item->type === MenuItem::TYPE_PAGE && $url === null) {
+                    continue;
+                }
             }
 
             $level[] = [
-                'label' => $item->label,
+                'label' => $label,
                 'url' => $url ?? '#',
                 'target' => $item->target,
                 'children' => $this->buildLevel($items, $item->id, $pageUrls),

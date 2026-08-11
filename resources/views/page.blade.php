@@ -28,7 +28,12 @@
 @endif
 
 <main>
-    @include('magna-pages::partials.sections')
+    @if(!empty($mainHtml))
+        {{-- Plugin frontend page: pre-rendered main slot. --}}
+        {!! $mainHtml !!}
+    @else
+        @include('magna-pages::partials.sections')
+    @endif
 </main>
 
 @if(!empty($footerPartHtml))

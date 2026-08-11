@@ -9,6 +9,7 @@ use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
+use Magna\Frontend\FrontendPage;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Templates\TemplatePartResolver;
@@ -65,13 +66,31 @@ final class PageRenderer
     }
 
     /**
+     * A plugin frontend page (ProvidesFrontendPages): its view rendered
+     * into the layout's main slot, with the same shell — header/footer
+     * parts, theme tokens, header menu — every real page gets.
+     */
+    public function renderFrontendPage(FrontendPage $page): string
+    {
+        $mode = $page->mode === FrontendPage::MODE_APP ? 'app' : 'content';
+        $mainHtml = '<div class="magna-frontend-page magna-frontend-page--'.$mode.'">'
+            .view($page->view)->render()
+            .'</div>';
+
+        return $this->renderDocument([], $page->title, mainHtml: $mainHtml);
+    }
+
+    /**
      * Render a raw block document through the full themed pipeline — used
      * for stored pages AND for unsaved editor state (live preview), so the
      * preview is byte-identical to what publishing would produce.
      *
+     * When $mainHtml is given it replaces the section tree in the layout's
+     * main slot (plugin frontend pages) — the shell still renders.
+     *
      * @param  array<mixed, mixed>  $document
      */
-    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null): string
     {
         // Ref sections splice their template part's sections in place
         // before parsing — parts compose pages, never the reverse.
@@ -80,6 +99,9 @@ final class PageRenderer
 
         return view($this->themeViews->layoutView(), [
             'title' => $title,
+            // Pre-rendered main-slot HTML (plugin frontend pages). A theme
+            // layout must print it instead of the section tree when set.
+            'mainHtml' => $mainHtml,
             'siteName' => is_string($siteName) && $siteName !== '' ? $siteName : 'Magna',
             'headerMenu' => $this->menus->resolve(self::HEADER_MENU_HANDLE),
             'tree' => $tree,

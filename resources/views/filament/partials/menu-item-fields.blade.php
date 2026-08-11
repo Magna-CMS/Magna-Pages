@@ -13,6 +13,9 @@
                 class="w-full rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
             <option value="url">Custom URL</option>
             <option value="page">Page</option>
+            @if($this->pluginPageOptions() !== [])
+                <option value="plugin">Plugin page</option>
+            @endif
         </select>
     </div>
 
@@ -24,6 +27,17 @@
                 <option value="">— choose —</option>
                 @foreach($this->pageOptions() as $pageId => $pageTitle)
                     <option value="{{ $pageId }}">{{ $pageTitle }}</option>
+                @endforeach
+            </select>
+        </div>
+    @elseif(($item['type'] ?? 'url') === 'plugin')
+        <div>
+            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Plugin page</label>
+            <select wire:model.blur="{{ $prefix }}.plugin_page"
+                    class="w-full rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                <option value="">— choose —</option>
+                @foreach($this->pluginPageOptions() as $pageName => $pageTitle)
+                    <option value="{{ $pageName }}">{{ $pageTitle }}</option>
                 @endforeach
             </select>
         </div>

@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
+use Magna\Frontend\FrontendPageRegistry;
 use Magna\Pages\Menus\Menu;
 use Magna\Pages\Menus\MenuItem;
 use Magna\Pages\Menus\MenuManager;
@@ -98,7 +99,7 @@ class MenusPage extends Page
 
     public function addItem(?int $parentIndex = null): void
     {
-        $item = ['label' => '', 'type' => 'url', 'page_id' => null, 'url' => '', 'target' => null, 'children' => []];
+        $item = ['label' => '', 'type' => 'url', 'page_id' => null, 'url' => '', 'target' => null, 'plugin_page' => null, 'children' => []];
 
         if ($parentIndex === null) {
             $this->items[] = $item;
@@ -186,6 +187,24 @@ class MenusPage extends Page
         return $options;
     }
 
+    /**
+     * Plugin frontend pages offered in the picker (menu-visible only).
+     *
+     * @return array<string, string>
+     */
+    public function pluginPageOptions(): array
+    {
+        $options = [];
+        foreach (app(FrontendPageRegistry::class)->all() as $name => $page) {
+            if ($page->menuVisible) {
+                $options[$name] = $page->title;
+            }
+        }
+        ksort($options);
+
+        return $options;
+    }
+
     // ── Internals ─────────────────────────────────────────────────────────────
 
     /** @return list<array<string, mixed>> */
@@ -223,6 +242,9 @@ class MenusPage extends Page
             'page_id' => $item->page_id,
             'url' => $item->url,
             'target' => $item->target,
+            'plugin_page' => is_string($item->settings['frontend_page'] ?? null)
+                ? $item->settings['frontend_page']
+                : null,
         ];
     }
 

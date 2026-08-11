@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Magna\Pages\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Magna\Pages\Cache\PageCache;
+use Magna\Pages\Frontend\FrontendPageResponder;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\Conditions\DocumentConditions;
 use Magna\Pages\Render\PageRenderer;
 use Magna\Pages\Routing\PageRouteResolver;
 use Magna\Pages\Routing\RedirectManager;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Public page controller — the fallback route for every URL nothing else
@@ -25,6 +26,7 @@ final class PageController
         private readonly RedirectManager $redirects,
         private readonly PageCache $cache,
         private readonly DocumentConditions $conditions,
+        private readonly FrontendPageResponder $frontendPages,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -60,6 +62,14 @@ final class PageController
         $entry = $this->resolver->resolve($request->path(), $settings);
 
         if ($entry === null) {
+            // Plugin frontend page (§07-EXTENSIBILITY): after real pages —
+            // the site owner's page outranks a plugin at the same path —
+            // and before redirects, which only fire for dead paths.
+            $pluginResponse = $this->frontendPages->respond($request->path(), $request);
+            if ($pluginResponse !== null) {
+                return $pluginResponse;
+            }
+
             // A live page always wins over a redirect; redirects only fire
             // for paths nothing resolves anymore.
             $redirect = $this->redirects->forPath($request->path());
