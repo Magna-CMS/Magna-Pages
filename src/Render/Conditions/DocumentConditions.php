@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Carbon;
 use Magna\Blocks\DynamicTags\DynamicTag;
 use Magna\Blocks\DynamicTags\DynamicTagRegistry;
+use Magna\Pages\Render\BindingResolver;
 
 /**
  * The document-level cache verdict: walk every node once and fold what it
@@ -90,6 +91,18 @@ class DocumentConditions
                         && ! $this->tagBindIsCacheSafe(substr($value['$bind'], 4))
                     ) {
                         $cacheable = false;
+                    }
+
+                    // Inline {tag:…} tokens inside text values carry the
+                    // same cacheability contract as field binds.
+                    if (is_string($value) && str_contains($value, '{tag:')
+                        && preg_match_all(BindingResolver::INLINE_TAG_PATTERN, $value, $matches) > 0
+                    ) {
+                        foreach ($matches[1] as $handle) {
+                            if (! $this->tagBindIsCacheSafe($handle)) {
+                                $cacheable = false;
+                            }
+                        }
                     }
                 }
             }

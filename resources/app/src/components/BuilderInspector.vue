@@ -165,6 +165,31 @@ function bindField(field: BlockFieldDefinition, source: string) {
         source === '' ? '' : { $bind: source },
     )
 }
+
+/** Dynamic tags, offered as inline {tag:…} inserts inside text values. */
+const tagSources = computed<Record<string, string>>(() => {
+    const tags: Record<string, string> = {}
+    for (const [source, label] of Object.entries(props.bindingSources)) {
+        if (source.startsWith('tag.')) {
+            tags[source.slice(4)] = label
+        }
+    }
+
+    return tags
+})
+
+/**
+ * Append an inline tag token to the field's current text. A content-tier
+ * edit like any typing — the token resolves at render, and the editor can
+ * move or delete it as plain text.
+ */
+function insertInlineTag(field: BlockFieldDefinition, handle: string) {
+    if (!props.located || handle === '') {
+        return
+    }
+
+    emit('edit', props.located.pointer, field.handle, valueFor(field) + `{tag:${handle}}`)
+}
 </script>
 
 <template>
@@ -195,14 +220,30 @@ function bindField(field: BlockFieldDefinition, source: string) {
                     </select>
                 </div>
 
-                <textarea
-                    v-else-if="field.type === 'textarea' || field.type === 'richtext'"
-                    :id="`field-${field.handle}`"
-                    rows="4"
-                    :value="valueFor(field)"
-                    :disabled="!editable"
-                    @change="onInput(field, $event)"
-                />
+                <template v-else-if="field.type === 'textarea' || field.type === 'richtext'">
+                    <textarea
+                        :id="`field-${field.handle}`"
+                        rows="4"
+                        :value="valueFor(field)"
+                        :disabled="!editable"
+                        @change="onInput(field, $event)"
+                    />
+                    <select
+                        v-if="editable && Object.keys(tagSources).length > 0"
+                        class="inspector__taginsert"
+                        title="Insert a dynamic tag — resolves when the page renders"
+                        :value="''"
+                        @change="
+                            insertInlineTag(field, ($event.target as HTMLSelectElement).value);
+                            ($event.target as HTMLSelectElement).value = ''
+                        "
+                    >
+                        <option value="" disabled selected>Insert dynamic tag…</option>
+                        <option v-for="(label, handle) in tagSources" :key="handle" :value="handle">
+                            {{ label }}
+                        </option>
+                    </select>
+                </template>
 
                 <select
                     v-else-if="field.type === 'select' || field.type === 'alignment'"
@@ -413,6 +454,12 @@ select:disabled {
 .inspector__bindpick {
     width: 40px !important;
     flex: 0 0 auto;
+}
+
+.inspector__taginsert {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.85;
 }
 
 .inspector__empty,

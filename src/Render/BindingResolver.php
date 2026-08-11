@@ -38,6 +38,13 @@ class BindingResolver
     ) {}
 
     /**
+     * The inline-tag token an editor types INSIDE text: {tag:vendor.name}.
+     * Deliberately not a general expression syntax — one shape, resolving
+     * through the same allowlisted sources as field bindings.
+     */
+    public const INLINE_TAG_PATTERN = '/\{tag:([a-z0-9][a-z0-9._-]*)\}/';
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
@@ -46,6 +53,16 @@ class BindingResolver
         foreach ($data as $key => $value) {
             if (is_array($value) && array_key_exists('$bind', $value)) {
                 $data[$key] = $this->value($value['$bind'], $entry);
+            } elseif (is_string($value) && str_contains($value, '{tag:')) {
+                // Inline tags inside text values. The substituted value is
+                // plain text: views escape whole strings, and richtext runs
+                // the sanitizer AFTER substitution — either way a tag value
+                // cannot inject markup.
+                $data[$key] = (string) preg_replace_callback(
+                    self::INLINE_TAG_PATTERN,
+                    fn (array $m): string => $this->value('tag.'.$m[1], $entry),
+                    $value,
+                );
             }
         }
 
