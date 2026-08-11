@@ -6,6 +6,7 @@ namespace Magna\Pages\Library;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Magna\AccountCentre\AccountCentreSettings;
 use Magna\Marketplace\Marketplace;
 
 /**
@@ -77,13 +78,48 @@ class LibraryClient
      * The full asset, document included. Never cached — fetching IS the
      * download count, and an instance is about to be freshened anyway.
      *
+     * Stage 2: the site's Magna Account token (when connected) rides
+     * along, so a licence the account holds unlocks paid assets. A 402
+     * comes back as an explicit licenseRequired shape rather than null —
+     * "buy this" and "hub down" are different answers.
+     *
      * @return array<string, mixed>|null
      */
     public function asset(string $slug): ?array
     {
-        $payload = $this->get('/library/'.rawurlencode($slug));
+        try {
+            $request = Http::timeout(self::TIMEOUT_SECONDS)
+                ->withoutRedirecting()
+                ->acceptJson();
 
-        return isset($payload['document']) && is_array($payload['document']) ? $payload : null;
+            $settings = AccountCentreSettings::get();
+            if ($settings->connected && is_string($settings->token) && $settings->token !== '') {
+                $request = $request->withToken($settings->token);
+            }
+
+            $response = $request->get(Marketplace::API_BASE.'/library/'.rawurlencode($slug));
+
+            if ($response->status() === 402) {
+                $productSlug = $response->json('productSlug');
+
+                return [
+                    'licenseRequired' => true,
+                    'productSlug' => is_string($productSlug) ? $productSlug : null,
+                ];
+            }
+
+            if (! $response->ok()) {
+                return null;
+            }
+
+            $payload = $response->json();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_array($payload) && isset($payload['document']) && is_array($payload['document'])
+            ? $payload
+            : null;
     }
 
     /**

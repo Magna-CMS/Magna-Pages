@@ -79,6 +79,15 @@ final class BuilderLibraryController
             throw new NotFoundHttpException('Library asset not found.');
         }
 
+        // Stage 2: a paid asset without a licence is a purchase prompt,
+        // not an error page.
+        if (($asset['licenseRequired'] ?? false) === true) {
+            return response()->json([
+                'message' => 'This asset needs a licence. Buy the product on the marketplace, and it unlocks here.',
+                'productSlug' => $asset['productSlug'] ?? null,
+            ], 402);
+        }
+
         /** @var array<mixed, mixed> $document */
         $document = $asset['document'];
 
