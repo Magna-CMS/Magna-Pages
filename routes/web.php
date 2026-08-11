@@ -9,6 +9,7 @@ use Magna\Pages\Http\Controllers\BuilderApprovalController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
 use Magna\Pages\Http\Controllers\BuilderLibraryController;
 use Magna\Pages\Http\Controllers\BuilderPatternController;
+use Magna\Pages\Http\Controllers\BuilderRevisionController;
 use Magna\Pages\Http\Controllers\BuilderSpaController;
 use Magna\Pages\Http\Controllers\BuilderStylesController;
 use Magna\Pages\Http\Controllers\PageController;
@@ -59,6 +60,9 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::get('/{id}', [BuilderApiController::class, 'bootstrap'])->name('pages.builder.bootstrap');
     Route::patch('/{id}', [BuilderApiController::class, 'patch'])->name('pages.builder.patch');
     Route::get('/{id}/a11y', [BuilderAccessibilityController::class, 'check'])->name('pages.builder.a11y');
+    Route::get('/{id}/revisions', [BuilderRevisionController::class, 'index'])->name('pages.builder.revisions');
+    Route::get('/{id}/revisions/{revisionId}/preview', [BuilderRevisionController::class, 'preview'])->name('pages.builder.revisions.preview');
+    Route::post('/{id}/revisions/{revisionId}/restore', [BuilderRevisionController::class, 'restore'])->name('pages.builder.revisions.restore');
     Route::get('/{id}/canvas', [BuilderCanvasController::class, 'canvas'])->name('pages.builder.canvas');
     Route::post('/{id}/fragment', [BuilderCanvasController::class, 'fragment'])->name('pages.builder.fragment');
     Route::post('/{id}/heartbeat', [BuilderApiController::class, 'heartbeat'])->name('pages.builder.heartbeat');
