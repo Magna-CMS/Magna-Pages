@@ -37,7 +37,9 @@
             "pages_global_styles",
             "pages_style_revisions",
             "pages_publish_requests",
-            "pages_comments"
+            "pages_comments",
+            "pages_changesets",
+            "pages_changeset_items"
         ],
         "contentTypes": ["page", "pages_template"]
     }
