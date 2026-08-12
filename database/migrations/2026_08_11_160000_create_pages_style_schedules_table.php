@@ -20,7 +20,11 @@ return new class extends Migration
             $table->string('theme');
             $table->string('label');
             $table->json('tokens');
-            $table->timestamp('starts_at');
+            // Defaulted rather than bare NOT NULL: MySQL turns a
+            // defaultless NOT NULL timestamp into a zero-date trap, which
+            // the architecture guard exists to catch. Callers always pass
+            // an explicit start.
+            $table->timestamp('starts_at')->useCurrent();
             $table->timestamp('ends_at')->nullable();
             $table->timestamps();
 
