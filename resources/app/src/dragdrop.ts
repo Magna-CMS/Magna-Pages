@@ -20,6 +20,13 @@ export interface DropTarget {
     indicator: { top: number; left: number; width: number }
 }
 
+/** Where a section-shaped payload would land: between two sections. */
+export interface SectionDropTarget {
+    /** Index in the document's section list. */
+    index: number
+    indicator: { top: number; left: number; width: number }
+}
+
 export interface ColumnLayout {
     column: string
     rect: NodeRect
@@ -100,6 +107,56 @@ export function dropTargetAt(columns: ColumnLayout[], x: number, y: number): Dro
         index: column.blocks.length,
         indicator: indicatorFor(last.top + last.height),
     }
+}
+
+/**
+ * Where a SECTION-shaped payload would land — a pattern, a template part,
+ * or a section being reordered.
+ *
+ * Sections stack vertically and span the canvas, so the rule is the
+ * mirror of the block rule with one difference: a pointer past the last
+ * section appends rather than returning nothing, because the area below
+ * the final section is the most natural place to aim for "put it at the
+ * end" and refusing there would feel broken.
+ */
+export function sectionDropTargetAt(
+    sections: NodeRect[],
+    y: number,
+    canvasWidth: number,
+): SectionDropTarget | null {
+    if (sections.length === 0) {
+        return { index: 0, indicator: { top: 0, left: 0, width: canvasWidth } }
+    }
+
+    const ordered = [...sections]
+
+    for (let index = 0; index < ordered.length; index++) {
+        const section = ordered[index]
+        const middle = section.top + section.height / 2
+
+        if (y < middle) {
+            return {
+                index,
+                indicator: { top: section.top, left: section.left, width: section.width },
+            }
+        }
+    }
+
+    const last = ordered[ordered.length - 1]
+
+    return {
+        index: ordered.length,
+        indicator: { top: last.top + last.height, left: last.left, width: last.width },
+    }
+}
+
+/** The section rects, in the document order the caller supplies. */
+export function sectionLayout(rects: NodeRect[], sectionIds: string[]): NodeRect[] {
+    const byNode = new Map(rects.map((rect) => [rect.node, rect]))
+
+    return sectionIds
+        .map((id) => byNode.get(id))
+        .filter((entry): entry is NodeRect => entry !== undefined)
 }
 
 /** A drag has to travel before it counts, or every click becomes a move. */

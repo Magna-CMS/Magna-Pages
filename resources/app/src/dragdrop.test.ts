@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { NodeRect } from './bridge'
-import { dropTargetAt, exceedsThreshold, layout } from './dragdrop'
+import { dropTargetAt, exceedsThreshold, layout, sectionDropTargetAt, sectionLayout } from './dragdrop'
 
 function rect(node: string, kind: NodeRect['kind'], top: number, height: number, left = 0, width = 600): NodeRect {
     return { node, kind, top, left, width, height }
@@ -61,6 +61,47 @@ describe('dropTargetAt', () => {
     it('draws the indicator where the block would land', () => {
         expect(dropTargetAt(columns, 100, 60)?.indicator).toEqual({ top: 100, left: 0, width: 300 })
         expect(dropTargetAt(columns, 100, 280)?.indicator).toEqual({ top: 200, left: 0, width: 300 })
+    })
+})
+
+describe('sectionDropTargetAt', () => {
+    const sections = sectionLayout(
+        [
+            rect('sec-1', 'section', 0, 200),
+            rect('sec-2', 'section', 200, 200),
+        ],
+        ['sec-1', 'sec-2'],
+    )
+
+    it('drops before a section when above its midpoint', () => {
+        expect(sectionDropTargetAt(sections, 50, 600)).toMatchObject({ index: 0 })
+    })
+
+    it('drops between sections', () => {
+        expect(sectionDropTargetAt(sections, 250, 600)).toMatchObject({ index: 1 })
+    })
+
+    it('appends below the last section rather than refusing', () => {
+        // The area under the final section is where people aim for "at the
+        // end"; returning null there would read as broken.
+        expect(sectionDropTargetAt(sections, 900, 600)).toMatchObject({ index: 2 })
+        expect(sectionDropTargetAt(sections, 900, 600)?.indicator.top).toBe(400)
+    })
+
+    it('accepts the first drop on an empty page', () => {
+        expect(sectionDropTargetAt([], 10, 600)).toEqual({
+            index: 0,
+            indicator: { top: 0, left: 0, width: 600 },
+        })
+    })
+
+    it('orders sections by the document, not by geometry', () => {
+        const ordered = sectionLayout(
+            [rect('sec-b', 'section', 0, 100), rect('sec-a', 'section', 100, 100)],
+            ['sec-a', 'sec-b'],
+        )
+
+        expect(ordered.map((entry) => entry.node)).toEqual(['sec-a', 'sec-b'])
     })
 })
 

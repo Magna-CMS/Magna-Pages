@@ -1,5 +1,12 @@
 import { locate, newId } from './locate'
-import type { BlockDefinition, BlockDocument, BlockNode, PatchOperation, SectionNode } from './types'
+import type {
+    BlockDefinition,
+    BlockDocument,
+    BlockNode,
+    ColumnNode,
+    PatchOperation,
+    SectionNode,
+} from './types'
 import { sectionsOf, sectionsPointer } from './types'
 
 /**
@@ -39,20 +46,246 @@ export function blockFrom(definition: BlockDefinition): BlockNode {
     return { id: newId(), block: definition.handle, settings: {}, data }
 }
 
-/** An empty full-width section, the scaffold every page starts from. */
-export function emptySection(): SectionNode {
-    return {
-        id: newId(),
-        type: 'section',
-        settings: {},
-        columns: [{ id: newId(), span: 12, settings: {}, blocks: [] }],
-    }
+/**
+ * The column structures the Add-Section picker offers, as span lists over
+ * the 12-column grid the format already uses. Presets rather than free
+ * numbers because "choose a layout" is the decision an editor is making;
+ * arbitrary spans are available afterwards on the section itself.
+ */
+export const COLUMN_PRESETS: { label: string; spans: number[] }[] = [
+    { label: '1 column', spans: [12] },
+    { label: '50 / 50', spans: [6, 6] },
+    { label: '33 / 33 / 33', spans: [4, 4, 4] },
+    { label: '25 × 4', spans: [3, 3, 3, 3] },
+    { label: '66 / 33', spans: [8, 4] },
+    { label: '33 / 66', spans: [4, 8] },
+    { label: '25 / 75', spans: [3, 9] },
+    { label: '75 / 25', spans: [9, 3] },
+]
+
+export function emptyColumn(span: number): ColumnNode {
+    return { id: newId(), span: clampSpan(span), settings: {}, blocks: [] }
+}
+
+/**
+ * An empty section with the given column structure. Defaults to one
+ * full-width column — the shape every page started from before the
+ * structure picker existed, so existing callers are unchanged.
+ */
+export function emptySection(spans: number[] = [12]): SectionNode {
+    const columns = (spans.length > 0 ? spans : [12]).map(emptyColumn)
+
+    return { id: newId(), type: 'section', settings: {}, columns }
 }
 
 export function appendSection(document: BlockDocument, section: SectionNode): PatchOperation[] {
     const prefix = sectionsPointer(document)
 
     return [{ op: 'add', path: `${prefix}/-`, value: section }]
+}
+
+/**
+ * Insert sections at a position. `index` beyond the end appends, which is
+ * what a drop below the last section means.
+ */
+export function insertSectionsAt(
+    document: BlockDocument,
+    sections: SectionNode[],
+    index: number,
+): PatchOperation[] {
+    const prefix = sectionsPointer(document)
+    const total = sectionsOf(document).length
+    const at = Math.max(0, Math.min(total, index))
+
+    // Later sections insert after earlier ones, so each subsequent op
+    // targets one position further along.
+    return sections.map((section, offset) => ({
+        op: 'add' as const,
+        path: `${prefix}/${at + offset}`,
+        value: section,
+    }))
+}
+
+/** Move a section to another position in the document's section list. */
+export function moveSection(
+    document: BlockDocument,
+    sectionId: string,
+    index: number,
+): PatchOperation[] | null {
+    const source = locate(document, sectionId)
+    if (!source || source.kind !== 'section') {
+        return null
+    }
+
+    const prefix = sectionsPointer(document)
+    const from = Number(source.pointer.slice(prefix.length + 1).split('/')[0])
+    if (Number.isNaN(from)) {
+        return null
+    }
+
+    // Same remove-then-add arithmetic as a block move: a section travelling
+    // forward lands one short unless the removal is accounted for.
+    const destination = from < index ? index - 1 : index
+    if (destination === from) {
+        return []
+    }
+
+    return [{ op: 'move', from: source.pointer, path: `${prefix}/${destination}` }]
+}
+
+/** Add a column to a section, splitting the room evenly. */
+export function addColumn(document: BlockDocument, sectionId: string): PatchOperation[] | null {
+    const found = locate(document, sectionId)
+    if (!found || found.kind !== 'section') {
+        return null
+    }
+
+    const columns = ((found.node as SectionNode).columns ?? []).length
+    if (columns >= 12) {
+        return null
+    }
+
+    const spans = evenSpans(columns + 1)
+
+    return [
+        { op: 'add', path: `${found.pointer}/columns/-`, value: emptyColumn(spans[columns]) },
+        ...respan(found.pointer, spans.slice(0, columns)),
+    ]
+}
+
+/**
+ * Remove a column and give its room back to the others.
+ *
+ * Refuses the last column: a section with no columns can hold nothing and
+ * renders as an empty band, which reads as a bug rather than a choice.
+ */
+export function removeColumn(
+    document: BlockDocument,
+    sectionId: string,
+    columnId: string,
+): PatchOperation[] | null {
+    const section = locate(document, sectionId)
+    const column = locate(document, columnId)
+    if (!section || section.kind !== 'section' || !column || column.kind !== 'column') {
+        return null
+    }
+
+    const columns = (section.node as SectionNode).columns ?? []
+    if (columns.length <= 1) {
+        return null
+    }
+
+    const remaining = columns.filter((entry) => entry.id !== columnId)
+
+    return [
+        { op: 'remove', path: column.pointer },
+        ...respan(section.pointer, evenSpans(remaining.length)),
+    ]
+}
+
+/** Set explicit spans on a section's columns, clamped and summing to 12. */
+export function setSpans(
+    document: BlockDocument,
+    sectionId: string,
+    spans: number[],
+): PatchOperation[] | null {
+    const found = locate(document, sectionId)
+    if (!found || found.kind !== 'section') {
+        return null
+    }
+
+    const columns = ((found.node as SectionNode).columns ?? []).length
+    if (columns === 0 || spans.length !== columns) {
+        return null
+    }
+
+    return respan(found.pointer, balance(spans))
+}
+
+/** A deep copy of a node with every id replaced — the paste/duplicate primitive. */
+export function withFreshIds<T>(node: T): T {
+    if (Array.isArray(node)) {
+        return node.map((entry) => withFreshIds(entry)) as unknown as T
+    }
+
+    if (node !== null && typeof node === 'object') {
+        const copy: Record<string, unknown> = {}
+        for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+            copy[key] = key === 'id' && typeof value === 'string' ? newId() : withFreshIds(value)
+        }
+
+        return copy as unknown as T
+    }
+
+    return node
+}
+
+/**
+ * Duplicate any node next to itself. Fresh ids throughout: two nodes
+ * sharing an id would make every pointer ambiguous.
+ */
+export function duplicateNode(document: BlockDocument, nodeId: string): PatchOperation[] | null {
+    const found = locate(document, nodeId)
+    if (!found) {
+        return null
+    }
+
+    const pointer = found.pointer
+    const separator = pointer.lastIndexOf('/')
+    const index = Number(pointer.slice(separator + 1))
+    if (Number.isNaN(index)) {
+        return null
+    }
+
+    return [
+        {
+            op: 'add',
+            path: `${pointer.slice(0, separator)}/${index + 1}`,
+            value: withFreshIds(found.node),
+        },
+    ]
+}
+
+function respan(sectionPointer: string, spans: number[]): PatchOperation[] {
+    return spans.map((span, index) => ({
+        op: 'replace' as const,
+        path: `${sectionPointer}/columns/${index}/span`,
+        value: span,
+    }))
+}
+
+function clampSpan(span: number): number {
+    return Math.max(1, Math.min(12, Math.round(Number.isFinite(span) ? span : 12)))
+}
+
+/** Twelve columns split as evenly as they divide, remainder to the left. */
+function evenSpans(count: number): number[] {
+    const safe = Math.max(1, Math.min(12, count))
+    const base = Math.floor(12 / safe)
+    const spans = Array.from({ length: safe }, () => base)
+
+    for (let i = 0; i < 12 - base * safe; i++) {
+        spans[i] += 1
+    }
+
+    return spans
+}
+
+/**
+ * Clamp each span and make the row sum to 12 — a row that sums to
+ * anything else lays out wrong, so the UI is never allowed to write one.
+ */
+function balance(spans: number[]): number[] {
+    const clamped = spans.map(clampSpan)
+    let total = clamped.reduce((sum, span) => sum + span, 0)
+
+    for (let i = clamped.length - 1; i >= 0 && total !== 12; i--) {
+        const room = total > 12 ? -(Math.min(total - 12, clamped[i] - 1)) : 12 - total
+        clamped[i] = clampSpan(clamped[i] + room)
+        total = clamped.reduce((sum, span) => sum + span, 0)
+    }
+
+    return clamped
 }
 
 /**
