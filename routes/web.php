@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Route;
 use Magna\Pages\Http\Controllers\BuilderAccessibilityController;
 use Magna\Pages\Http\Controllers\BuilderApiController;
@@ -14,6 +15,7 @@ use Magna\Pages\Http\Controllers\BuilderPerformanceController;
 use Magna\Pages\Http\Controllers\BuilderRevisionController;
 use Magna\Pages\Http\Controllers\BuilderSpaController;
 use Magna\Pages\Http\Controllers\BuilderStylesController;
+use Magna\Pages\Http\Controllers\ExperimentController;
 use Magna\Pages\Http\Controllers\PageController;
 use Magna\Pages\Http\Controllers\PagePreviewController;
 
@@ -77,5 +79,15 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::post('/{id}/publish', [BuilderApiController::class, 'publish'])->name('pages.builder.publish');
     Route::post('/{id}/request-publish', [BuilderApprovalController::class, 'requestPublish'])->name('pages.builder.request-publish');
 });
+
+/*
+ * A/B counters from the public page. Throttled per IP, and deliberately
+ * NOT CSRF-relevant: it carries no session meaning and writes only two
+ * integers on a row a document already declared.
+ */
+Route::post('/pages-experiments/track', [ExperimentController::class, 'track'])
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->middleware('throttle:60,1')
+    ->name('pages.experiments.track');
 
 Route::fallback(PageController::class)->name('pages.web.show');

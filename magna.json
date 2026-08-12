@@ -39,7 +39,8 @@
             "pages_publish_requests",
             "pages_comments",
             "pages_changesets",
-            "pages_changeset_items"
+            "pages_changeset_items",
+            "pages_experiment_stats"
         ],
         "contentTypes": ["page", "pages_template"]
     }

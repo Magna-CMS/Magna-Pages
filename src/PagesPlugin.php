@@ -41,6 +41,7 @@ use Magna\Pages\Console\SiteExportCommand;
 use Magna\Pages\Console\SiteSyncCommand;
 use Magna\Pages\Console\ThemeAddonMakeCommand;
 use Magna\Pages\Console\ThemeCheckCommand;
+use Magna\Pages\Filament\Pages\ExperimentsPage;
 use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesIndexPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
@@ -223,6 +224,8 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
                 ->can('pages.content'),
             NavItem::page('Review queue', route: 'filament.admin.pages.pages-review-queue')
                 ->can('pages.publish'),
+            NavItem::page('Experiments', route: 'filament.admin.pages.pages-experiments')
+                ->can('pages.publish'),
             NavItem::page('Menus', route: 'filament.admin.pages.pages-menus')
                 ->can('pages.settings'),
             NavItem::page('Site settings', route: 'filament.admin.pages.pages-settings')
@@ -235,6 +238,6 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
     {
         // First entry is what the Installed Plugins screen's "Settings"
         // button links to — keep the settings page first.
-        return [PagesSettingsPage::class, MenusPage::class, PagesIndexPage::class, ReviewQueuePage::class];
+        return [PagesSettingsPage::class, MenusPage::class, PagesIndexPage::class, ReviewQueuePage::class, ExperimentsPage::class];
     }
 }

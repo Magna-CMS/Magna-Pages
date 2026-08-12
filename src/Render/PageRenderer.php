@@ -12,6 +12,7 @@ use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Frontend\FrontendPage;
 use Magna\Pages\Consent\ConsentScripts;
+use Magna\Pages\Experiments\ExperimentTracker;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Routing\LocalePrefix;
@@ -55,6 +56,7 @@ final class PageRenderer
         private readonly BindingResolver $bindings,
         private readonly LocalePrefix $localePrefix,
         private readonly ConsentScripts $consent,
+        private readonly ExperimentTracker $experiments,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -102,6 +104,23 @@ final class PageRenderer
         // before parsing — parts compose pages, never the reverse.
         $tree = PageTree::fromArray($this->parts->expandRefs($document));
         $siteName = GeneralSettings::get()->site_name;
+
+        // A/B: register every variant this document declares, so an
+        // experiment appears in the results screen the moment it goes
+        // live. Idempotent, and skipped in the builder.
+        if (! $builderMode) {
+            $variants = [];
+            foreach ($tree->sections as $section) {
+                $experiment = $section->settings['experiment'] ?? null;
+                $variant = $section->settings['variant'] ?? null;
+                if (is_string($experiment) && is_string($variant) && $experiment !== '' && $variant !== '') {
+                    $variants[$experiment][] = $variant;
+                }
+            }
+            if ($variants !== []) {
+                $this->experiments->ensure($variants);
+            }
+        }
 
         return view($this->themeViews->layoutView(), [
             'title' => $title,

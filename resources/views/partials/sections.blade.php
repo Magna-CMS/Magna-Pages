@@ -88,12 +88,82 @@
         if ($customCss !== '') {
             $styleAttr = $styleAttr === '' ? $customCss : $styleAttr.';'.$customCss;
         }
+
+        // A/B: sections sharing an experiment id are variants of it. Both
+        // ship in the HTML — assignment is client-side and sticky, which
+        // is what keeps the page in the SHARED cache. The builder shows
+        // every variant; only the public site hides all but one.
+        $experiment = $section->settings['experiment'] ?? null;
+        $variant = $section->settings['variant'] ?? null;
+        $isVariant = ! $inBuilder
+            && is_string($experiment) && preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/i', $experiment) === 1
+            && is_string($variant) && preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/i', $variant) === 1;
     @endphp
+
+    @if($isVariant)
+        @once
+            <style>[data-magna-variant]{display:none}[data-magna-variant].magna-variant--on{display:block}</style>
+            <script>
+                (function () {
+                    var seen = {};
+                    document.addEventListener('DOMContentLoaded', function () {
+                        var nodes = document.querySelectorAll('[data-magna-variant]');
+                        var groups = {};
+                        nodes.forEach(function (node) {
+                            var name = node.getAttribute('data-magna-experiment');
+                            (groups[name] = groups[name] || []).push(node);
+                        });
+
+                        function track(experiment, variant, event) {
+                            try {
+                                fetch('/pages-experiments/track', {
+                                    method: 'POST', keepalive: true,
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ experiment: experiment, variant: variant, event: event }),
+                                });
+                            } catch (e) {}
+                        }
+
+                        Object.keys(groups).forEach(function (experiment) {
+                            var members = groups[experiment];
+                            var key = 'magna-ab:' + experiment;
+                            var chosen = null;
+                            try { chosen = window.localStorage.getItem(key); } catch (e) {}
+
+                            var names = members.map(function (n) { return n.getAttribute('data-magna-variant'); });
+                            if (names.indexOf(chosen) === -1) {
+                                // Sticky assignment: a visitor keeps their
+                                // variant, so the comparison stays honest.
+                                chosen = names[Math.floor(Math.random() * names.length)];
+                                try { window.localStorage.setItem(key, chosen); } catch (e) {}
+                            }
+
+                            members.forEach(function (node) {
+                                var name = node.getAttribute('data-magna-variant');
+                                if (name !== chosen) { node.remove(); return; }
+                                node.classList.add('magna-variant--on');
+                                if (!seen[experiment]) {
+                                    seen[experiment] = true;
+                                    track(experiment, name, 'exposure');
+                                }
+                                node.querySelectorAll('[data-magna-goal]').forEach(function (goal) {
+                                    goal.addEventListener('click', function () {
+                                        track(experiment, name, 'conversion');
+                                    }, { once: true });
+                                });
+                            });
+                        });
+                    });
+                })();
+            </script>
+        @endonce
+    @endif
     <section
         class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}{{ $motionClass }}"
         @if(is_string($anchor) && $anchor !== '') id="{{ $anchor }}" @endif
         @if($styleAttr !== '') style="{{ $styleAttr }}" @endif
         @if($inBuilder) data-magna-node="{{ $section->id }}" data-magna-kind="section" @endif
+        @if($isVariant) data-magna-experiment="{{ $experiment }}" data-magna-variant="{{ $variant }}" @endif
     >
         <div class="magna-section__inner">
             <div class="magna-columns">
