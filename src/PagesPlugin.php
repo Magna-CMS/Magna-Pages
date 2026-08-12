@@ -46,6 +46,7 @@ use Magna\Pages\Filament\Pages\MenusPage;
 use Magna\Pages\Filament\Pages\PagesIndexPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
 use Magna\Pages\Filament\Pages\ReviewQueuePage;
+use Magna\Pages\Filament\Pages\StyleSchedulesPage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
@@ -226,6 +227,8 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
                 ->can('pages.publish'),
             NavItem::page('Experiments', route: 'filament.admin.pages.pages-experiments')
                 ->can('pages.publish'),
+            NavItem::page('Scheduled design', route: 'filament.admin.pages.pages-style-schedules')
+                ->can('pages.design'),
             NavItem::page('Menus', route: 'filament.admin.pages.pages-menus')
                 ->can('pages.settings'),
             NavItem::page('Site settings', route: 'filament.admin.pages.pages-settings')
@@ -238,6 +241,6 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
     {
         // First entry is what the Installed Plugins screen's "Settings"
         // button links to — keep the settings page first.
-        return [PagesSettingsPage::class, MenusPage::class, PagesIndexPage::class, ReviewQueuePage::class, ExperimentsPage::class];
+        return [PagesSettingsPage::class, MenusPage::class, PagesIndexPage::class, ReviewQueuePage::class, ExperimentsPage::class, StyleSchedulesPage::class];
     }
 }

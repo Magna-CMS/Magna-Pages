@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Themes;
 
+use Illuminate\Support\Carbon;
 use Magna\Themes\ThemeManager;
 
 /**
@@ -43,6 +44,17 @@ class ThemeTokens
             if (array_key_exists($name, $variables)
                 && is_string($value) && $value !== ''
                 && ! str_contains($value, ';') && ! str_contains($value, '(')
+            ) {
+                $variables[$name] = $value;
+            }
+        }
+
+        // A scheduled design change wins over the standing overrides for
+        // as long as it runs — same declared-variables-only rule, so a
+        // schedule can retune the site but never invent variables.
+        foreach ($this->scheduledOverrides() as $name => $value) {
+            if (array_key_exists($name, $variables)
+                && $value !== '' && ! str_contains($value, ';') && ! str_contains($value, '(')
             ) {
                 $variables[$name] = $value;
             }
@@ -150,6 +162,49 @@ class ThemeTokens
         }
 
         return ':root{'.implode(';', $lines).'}';
+    }
+
+    /**
+     * When the design next changes by schedule, if ever. The page cache
+     * shortens its TTL to this so a scheduled palette cannot be served
+     * late from a copy cached before the boundary.
+     */
+    public function nextScheduledChange(): ?Carbon
+    {
+        $theme = $this->themes->active()?->name;
+        if ($theme === null) {
+            return null;
+        }
+
+        try {
+            return StyleSchedule::nextBoundary($theme, now());
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The token set of whichever schedule is running right now.
+     *
+     * @return array<string, string>
+     */
+    private function scheduledOverrides(): array
+    {
+        $theme = $this->themes->active()?->name;
+        if ($theme === null) {
+            return [];
+        }
+
+        try {
+            $schedule = StyleSchedule::activeFor($theme, now());
+        } catch (\Throwable) {
+            // Table not migrated yet: the site simply renders unscheduled.
+            return [];
+        }
+
+        $tokens = $schedule?->tokens ?? [];
+
+        return array_filter($tokens, 'is_string');
     }
 
     /** @return array<mixed, mixed> */

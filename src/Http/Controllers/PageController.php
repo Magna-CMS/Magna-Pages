@@ -15,6 +15,7 @@ use Magna\Pages\Routing\LocalePrefix;
 use Magna\Pages\Routing\PageRouteResolver;
 use Magna\Pages\Routing\RedirectManager;
 use Magna\Pages\Templates\TemplatePartResolver;
+use Magna\Pages\Themes\ThemeTokens;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -33,6 +34,7 @@ final class PageController
         private readonly TemplatePartResolver $parts,
         private readonly CollectionResponder $collections,
         private readonly LocalePrefix $localePrefix,
+        private readonly ThemeTokens $tokens,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -131,10 +133,18 @@ final class PageController
             );
             $cacheable = $verdict['cacheable'];
 
+            // A scheduled design change is another expiry boundary: the
+            // earliest of the two decides how long this copy may live.
+            $expiresAt = $verdict['expiresAt'];
+            $styleChange = $this->tokens->nextScheduledChange();
+            if ($styleChange !== null && ($expiresAt === null || $styleChange->lessThan($expiresAt))) {
+                $expiresAt = $styleChange;
+            }
+
             if ($cacheable) {
-                $ttl = $verdict['expiresAt'] === null
+                $ttl = $expiresAt === null
                     ? null
-                    : max(1, min(PageCache::DEFAULT_TTL_SECONDS, (int) now()->diffInSeconds($verdict['expiresAt'], false)));
+                    : max(1, min(PageCache::DEFAULT_TTL_SECONDS, (int) now()->diffInSeconds($expiresAt, false)));
 
                 $entryKey = $entry->getKey();
                 $this->cache->put($cacheUrl, $html, [

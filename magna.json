@@ -40,7 +40,8 @@
             "pages_comments",
             "pages_changesets",
             "pages_changeset_items",
-            "pages_experiment_stats"
+            "pages_experiment_stats",
+            "pages_style_schedules"
         ],
         "contentTypes": ["page", "pages_template"]
     }
