@@ -14,15 +14,47 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('[data-magna-popup]').forEach(function (popup) {
-            var key = 'magna-popup-dismissed:' + popup.getAttribute('data-magna-popup');
-            var dismissed = false;
-            try { dismissed = window.localStorage.getItem(key) === '1'; } catch (e) {}
-            if (dismissed) { return; }
-            popup.hidden = false;
+            var slug = popup.getAttribute('data-magna-popup');
+            var key = 'magna-popup-dismissed:' + slug;
+            var frequency = popup.getAttribute('data-magna-frequency') || 'once';
+            var delay = parseInt(popup.getAttribute('data-magna-delay') || '0', 10);
+            var scrollPercent = parseInt(popup.getAttribute('data-magna-scroll') || '0', 10);
+
+            // Frequency: `once` remembers forever, `session` for this tab,
+            // `always` never remembers. Path targeting already happened
+            // server-side, so it costs the cache nothing.
+            var store = frequency === 'session' ? window.sessionStorage : window.localStorage;
+            if (frequency !== 'always') {
+                var dismissed = false;
+                try { dismissed = store.getItem(key) === '1'; } catch (e) {}
+                if (dismissed) { return; }
+            }
+
+            function show() {
+                if (popup.hidden === false) { return; }
+                popup.hidden = false;
+            }
+
+            if (scrollPercent > 0) {
+                var onScroll = function () {
+                    var height = document.body.scrollHeight - window.innerHeight;
+                    var reached = height <= 0 || (window.scrollY / height) * 100 >= scrollPercent;
+                    if (reached) { show(); window.removeEventListener('scroll', onScroll); }
+                };
+                window.addEventListener('scroll', onScroll, { passive: true });
+                onScroll();
+            } else if (delay > 0) {
+                window.setTimeout(show, delay * 1000);
+            } else {
+                show();
+            }
+
             popup.querySelectorAll('[data-magna-popup-close]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     popup.hidden = true;
-                    try { window.localStorage.setItem(key, '1'); } catch (e) {}
+                    if (frequency !== 'always') {
+                        try { store.setItem(key, '1'); } catch (e) {}
+                    }
                 });
             });
         });
@@ -30,7 +62,11 @@
 </script>
 @endonce
 
-<div class="magna-popup" data-magna-popup="{{ $slug }}" role="dialog" aria-label="{{ $title !== '' ? $title : 'Announcement' }}" hidden>
+<div class="magna-popup" data-magna-popup="{{ $slug }}"
+     data-magna-frequency="{{ $frequency }}"
+     data-magna-delay="{{ $delay }}"
+     data-magna-scroll="{{ $scroll }}"
+     role="dialog" aria-label="{{ $title !== '' ? $title : 'Announcement' }}" hidden>
     <div class="magna-popup__panel">
         <button class="magna-popup__close" type="button" aria-label="Close" data-magna-popup-close>&times;</button>
         {!! $sectionsHtml !!}

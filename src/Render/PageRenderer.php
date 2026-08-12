@@ -16,6 +16,7 @@ use Magna\Pages\Experiments\ExperimentTracker;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Routing\LocalePrefix;
+use Magna\Pages\Templates\PopupTargeting;
 use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
 use Magna\Pages\Themes\ThemeViewResolver;
@@ -214,7 +215,15 @@ final class PageRenderer
     private function renderPopups(?Entry $context = null): ?string
     {
         $overlays = '';
+        $path = request()->path();
+
         foreach ($this->parts->popups() as $popup) {
+            // Path targeting is a server decision: the path is already in
+            // the cache key, so a page-limited popup costs nothing.
+            if (! PopupTargeting::matchesPath($popup['document'], $path)) {
+                continue;
+            }
+
             $tree = PageTree::fromArray($popup['document']);
 
             // Every root section conditioned away for this visitor = no
@@ -250,6 +259,7 @@ final class PageRenderer
                 'slug' => $popup['slug'],
                 'title' => $popup['title'],
                 'sectionsHtml' => $sections,
+                ...PopupTargeting::behaviour($popup['document']),
             ])->render();
         }
 
