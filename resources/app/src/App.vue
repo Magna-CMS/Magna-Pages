@@ -251,9 +251,23 @@ const targetColumn = computed<string | null>(() => {
         return null
     }
 
-    return selected.value.kind === 'column'
-        ? String((selected.value.node as { id: string }).id)
-        : columnOf(store.blocks, String((selected.value.node as { id: string }).id))
+    const id = String((selected.value.node as { id: string }).id)
+
+    if (selected.value.kind === 'column') {
+        return id
+    }
+
+    // A selected SECTION targets its first column, so "add a section, then
+    // add an element" works without a second click into the column — the
+    // approved flow is Add Section → Choose Columns → Drag Element, and
+    // making the middle step mandatory would break it.
+    if (selected.value.kind === 'section') {
+        const columns = (selected.value.node as { columns?: { id: string }[] }).columns ?? []
+
+        return columns.length > 0 ? String(columns[0].id) : null
+    }
+
+    return columnOf(store.blocks, id)
 })
 
 async function onAddBlock(handle: string) {
@@ -442,7 +456,11 @@ async function onInsertLibrary(slug: string) {
 }
 
 async function onInsertPattern(id: string) {
-    if (await store.insertPattern(api, id, targetColumn.value)) {
+    // Click-to-insert: a block pattern joins the column the selection is
+    // in, a section pattern appends. A drag supplies an exact target.
+    const at = targetColumn.value ? { column: targetColumn.value } : undefined
+
+    if (await store.insertPattern(api, id, at)) {
         reloadCanvas()
     }
 }

@@ -2,12 +2,20 @@ import { defineStore } from 'pinia'
 
 import type { BuilderApi } from '../api'
 import {
+    addColumn,
     appendSection,
     blockFrom,
+    columnOf,
+    duplicateNode,
     emptySection,
     insertBlock,
+    insertSectionsAt,
     moveNode,
+    moveSection,
+    removeColumn,
     removeNode,
+    setSpans,
+    withFreshIds,
 } from '../document/edits'
 import { locate } from '../document/locate'
 import { applyPatch } from '../document/patch'
@@ -21,7 +29,7 @@ import type {
     PatchOperation,
     SectionNode,
 } from '../document/types'
-import { sectionsOf } from '../document/types'
+import { sectionsOf, sectionsPointer } from '../document/types'
 
 /**
  * The document store: the single source of truth the canvas projects.
@@ -38,6 +46,20 @@ import { sectionsOf } from '../document/types'
  */
 
 const HISTORY_LIMIT = 100
+
+/** Shared across pages of the same site, so paste crosses documents. */
+const CLIPBOARD_KEY = 'magna-builder-clipboard'
+
+export interface ClipboardEntry {
+    kind: 'section' | 'column' | 'block'
+    node: Record<string, unknown>
+}
+
+/**
+ * Where an inserted instance goes. Omitting `index` appends, which is what
+ * click-to-insert means; a drag always knows its exact position.
+ */
+export type Placement = { column: string; index?: number } | { sectionIndex: number }
 
 interface HistoryEntry {
     label: string
@@ -91,6 +113,7 @@ interface State {
     /** Batches accepted locally but not yet acknowledged by the server. */
     sendQueue: QueuedBatch[]
     replaying: boolean
+    clipboard: ClipboardEntry | null
 }
 
 export const useDocumentStore = defineStore('document', {
@@ -117,6 +140,7 @@ export const useDocumentStore = defineStore('document', {
         loaded: false,
         sendQueue: [],
         replaying: false,
+        clipboard: null,
     }),
 
     getters: {
@@ -208,10 +232,18 @@ export const useDocumentStore = defineStore('document', {
         },
 
         /**
-         * Insert a cloud-library asset. Patterns and parts are one section;
-         * a page asset is a whole sections list, appended in order.
+         * Insert a cloud-library asset at a placement the caller resolved
+         * from the asset's kind (see document/placement.ts).
+         *
+         * `at` omitted means "wherever this kind goes by default" —
+         * appended — which is what click-to-insert and the keyboard path
+         * do. A drag supplies an exact target.
          */
-        async insertLibraryAsset(api: BuilderApi, slug: string): Promise<boolean> {
+        async insertLibraryAsset(
+            api: BuilderApi,
+            slug: string,
+            at?: Placement,
+        ): Promise<boolean> {
             this.error = null
 
             let instance: { kind: string; node: Record<string, unknown> }
@@ -223,21 +255,128 @@ export const useDocumentStore = defineStore('document', {
                 return false
             }
 
-            const nodes =
-                instance.kind === 'page' && Array.isArray(instance.node)
-                    ? (instance.node as unknown as Record<string, unknown>[])
-                    : [instance.node]
-
-            const operations = nodes.flatMap((node) => appendSection(this.blocks, node as never))
-
-            return this.edit(api, 'Insert from library', operations)
+            return this.placeInstance(api, 'Insert from library', instance, at)
         },
 
-        /** Insert a pattern instance: sections append, blocks join a column. */
+        /**
+         * Place a fetched instance — library asset or pattern — by shape.
+         *
+         * A block-shaped instance joins a column; a section-shaped one sits
+         * between sections; a list of sections splices in order. The server
+         * already handed back fresh ids, so nothing here can collide with
+         * what is on the page.
+         */
+        async placeInstance(
+            api: BuilderApi,
+            label: string,
+            instance: { kind: string; node: Record<string, unknown> },
+            at?: Placement,
+        ): Promise<boolean> {
+            // Shape decides, not the label: a node carrying a `block`
+            // handle is a block wherever it came from, and a kind string
+            // from the hub is advisory.
+            const isBlock =
+                !Array.isArray(instance.node) && typeof instance.node.block === 'string'
+
+            if (isBlock) {
+                const column =
+                    at && 'column' in at
+                        ? at.column
+                        : this.selectedNode
+                          ? columnOf(this.blocks, this.selectedNode)
+                          : null
+
+                if (column === null) {
+                    this.error = 'Choose a column for this block.'
+
+                    return false
+                }
+
+                const operations = insertBlock(
+                    this.blocks,
+                    column,
+                    instance.node as never,
+                    at && 'column' in at ? at.index : undefined,
+                )
+
+                return operations ? this.edit(api, label, operations) : false
+            }
+
+            const sections = Array.isArray(instance.node)
+                ? (instance.node as unknown as Record<string, unknown>[])
+                : [instance.node]
+
+            const operations =
+                at && 'sectionIndex' in at
+                    ? insertSectionsAt(this.blocks, sections as never, at.sectionIndex)
+                    : sections.flatMap((node) => appendSection(this.blocks, node as never))
+
+            return this.edit(api, label, operations)
+        },
+
+        /**
+         * Import a whole page asset. Deliberately not a drop: replacing a
+         * document is a decision, so the caller confirms first and states
+         * which mode it chose.
+         */
+        async importPageAsset(
+            api: BuilderApi,
+            slug: string,
+            mode: 'replace' | 'append',
+        ): Promise<boolean> {
+            this.error = null
+
+            let instance: { kind: string; node: Record<string, unknown> }
+            try {
+                instance = await api.libraryInstance(slug)
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : String(error)
+
+                return false
+            }
+
+            const incoming = (
+                Array.isArray(instance.node) ? instance.node : [instance.node]
+            ) as unknown as Record<string, unknown>[]
+
+            if (mode === 'append') {
+                return this.edit(
+                    api,
+                    'Import page',
+                    incoming.flatMap((node) => appendSection(this.blocks, node as never)),
+                )
+            }
+
+            // Replace: drop every existing section, then add the incoming
+            // ones. Removals run back-to-front so earlier indexes stay
+            // valid as the list shrinks.
+            const prefix = sectionsPointer(this.blocks)
+            const existing = sectionsOf(this.blocks)
+            const operations: PatchOperation[] = [
+                ...existing.map(
+                    (_, index): PatchOperation => ({
+                        op: 'remove',
+                        path: `${prefix}/${existing.length - 1 - index}`,
+                    }),
+                ),
+                ...incoming.map(
+                    (node): PatchOperation => ({ op: 'add', path: `${prefix}/-`, value: node }),
+                ),
+            ]
+
+            const ok = await this.edit(api, 'Import page', operations)
+            if (ok) {
+                this.select(null)
+            }
+
+            return ok
+        },
+
+        /** Insert a pattern instance: sections between sections, blocks into a column. */
         async insertPattern(
             api: BuilderApi,
             patternId: string,
-            targetColumn: string | null,
+            at?: Placement,
         ): Promise<boolean> {
             this.error = null
 
@@ -250,20 +389,7 @@ export const useDocumentStore = defineStore('document', {
                 return false
             }
 
-            const operations =
-                instance.kind === 'section'
-                    ? appendSection(this.blocks, instance.node as never)
-                    : targetColumn !== null
-                      ? insertBlock(this.blocks, targetColumn, instance.node as never)
-                      : null
-
-            if (!operations) {
-                this.error = 'Select a column to place this block pattern in.'
-
-                return false
-            }
-
-            return this.edit(api, 'Insert pattern', operations)
+            return this.placeInstance(api, 'Insert pattern', instance, at)
         },
 
         async publish(api: BuilderApi): Promise<boolean> {
@@ -472,10 +598,80 @@ export const useDocumentStore = defineStore('document', {
             return ok
         },
 
-        async addSection(api: BuilderApi): Promise<boolean> {
-            const section = emptySection()
+        /**
+         * Add a section with a chosen column structure. `index` places it
+         * (a drop between sections); omitted, it appends. Selecting the
+         * new section afterwards is what makes "add, then style it" one
+         * gesture instead of two.
+         */
+        async addSection(api: BuilderApi, spans?: number[], index?: number): Promise<boolean> {
+            const section = emptySection(spans)
+            const operations =
+                index === undefined
+                    ? appendSection(this.blocks, section)
+                    : insertSectionsAt(this.blocks, [section], index)
 
-            return this.edit(api, 'Add section', appendSection(this.blocks, section))
+            const ok = await this.edit(api, 'Add section', operations)
+            if (ok) {
+                this.select(section.id)
+            }
+
+            return ok
+        },
+
+        async moveSection(api: BuilderApi, sectionId: string, index: number): Promise<boolean> {
+            const operations = moveSection(this.blocks, sectionId, index)
+            if (!operations || operations.length === 0) {
+                return operations !== null
+            }
+
+            return this.edit(api, 'Move section', operations)
+        },
+
+        async addColumn(api: BuilderApi, sectionId: string): Promise<boolean> {
+            const operations = addColumn(this.blocks, sectionId)
+            if (!operations) {
+                this.error = 'This section already has the most columns a row can hold.'
+
+                return false
+            }
+
+            return this.edit(api, 'Add column', operations)
+        },
+
+        async removeColumn(api: BuilderApi, sectionId: string, columnId: string): Promise<boolean> {
+            const operations = removeColumn(this.blocks, sectionId, columnId)
+            if (!operations) {
+                this.error = 'A section keeps at least one column.'
+
+                return false
+            }
+
+            const ok = await this.edit(api, 'Remove column', operations)
+            if (ok && this.selectedNode === columnId) {
+                this.select(sectionId)
+            }
+
+            return ok
+        },
+
+        async setSpans(api: BuilderApi, sectionId: string, spans: number[]): Promise<boolean> {
+            const operations = setSpans(this.blocks, sectionId, spans)
+            if (!operations) {
+                return false
+            }
+
+            return this.edit(api, 'Resize columns', operations)
+        },
+
+        /** Duplicate any node in place — section, column or block. */
+        async duplicateNode(api: BuilderApi, nodeId: string): Promise<boolean> {
+            const operations = duplicateNode(this.blocks, nodeId)
+            if (!operations) {
+                return false
+            }
+
+            return this.edit(api, 'Duplicate', operations)
         },
 
         async removeNode(api: BuilderApi, nodeId: string): Promise<boolean> {
@@ -508,6 +704,106 @@ export const useDocumentStore = defineStore('document', {
 
         select(nodeId: string | null): void {
             this.selectedNode = nodeId
+        },
+
+        /**
+         * Copy the selection to the builder clipboard.
+         *
+         * Kept in localStorage rather than the system clipboard: a
+         * document node is JSON, not text, and asking for clipboard
+         * permission to move a heading between two tabs of the same app
+         * is a worse trade than a key nobody else reads. It also makes
+         * paste work between pages, which is the case people actually
+         * want.
+         */
+        copyNode(nodeId?: string | null): boolean {
+            const target = nodeId === undefined ? this.selectedNode : nodeId
+            if (target === null) {
+                return false
+            }
+
+            const found = locate(this.blocks, target)
+            if (!found) {
+                return false
+            }
+
+            this.clipboard = { kind: found.kind, node: found.node as Record<string, unknown> }
+            try {
+                window.localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(this.clipboard))
+            } catch {
+                // In-memory copy still works for this tab.
+            }
+
+            return true
+        },
+
+        /** Load a clipboard written by another page of the same site. */
+        restoreClipboard(): void {
+            if (this.clipboard !== null) {
+                return
+            }
+
+            try {
+                const raw = window.localStorage.getItem(CLIPBOARD_KEY)
+                if (raw === null) {
+                    return
+                }
+                const parsed = JSON.parse(raw) as { kind?: string; node?: unknown }
+                if (
+                    (parsed.kind === 'block' || parsed.kind === 'section' || parsed.kind === 'column') &&
+                    parsed.node !== null &&
+                    typeof parsed.node === 'object'
+                ) {
+                    this.clipboard = { kind: parsed.kind, node: parsed.node as Record<string, unknown> }
+                }
+            } catch {
+                // A corrupt clipboard is simply no clipboard.
+            }
+        },
+
+        /**
+         * Paste the clipboard next to the selection. Fresh ids throughout:
+         * pasting a node that kept its id would make every pointer to it
+         * ambiguous.
+         */
+        async pasteNode(api: BuilderApi): Promise<boolean> {
+            this.restoreClipboard()
+            const entry = this.clipboard
+            if (entry === null) {
+                return false
+            }
+
+            const node = withFreshIds(entry.node)
+
+            if (entry.kind === 'block') {
+                const column = this.selectedNode ? columnOf(this.blocks, this.selectedNode) : null
+                if (column === null) {
+                    this.error = 'Choose a column to paste into.'
+
+                    return false
+                }
+
+                const operations = insertBlock(this.blocks, column, node as never)
+
+                return operations ? this.edit(api, 'Paste', operations) : false
+            }
+
+            if (entry.kind === 'section') {
+                return this.edit(api, 'Paste', appendSection(this.blocks, node as never))
+            }
+
+            // A column pastes as a new column on the selected section — a
+            // column has no meaning outside one.
+            const section = this.selectedNode ? locate(this.blocks, this.selectedNode) : null
+            if (!section || section.kind !== 'section') {
+                this.error = 'Select a section to paste this column into.'
+
+                return false
+            }
+
+            return this.edit(api, 'Paste column', [
+                { op: 'add', path: `${section.pointer}/columns/-`, value: node },
+            ])
         },
 
         pushHistory(entry: HistoryEntry): void {
