@@ -82,6 +82,18 @@
         $motion = $section->settings['motion'] ?? '';
         $motionClass = in_array($motion, ['fade', 'rise'], true) ? ' magna-motion--'.$motion : '';
 
+        // Style controls (settings.style): an allowlisted vocabulary, so a
+        // key the renderer does not know emits nothing rather than becoming
+        // a way to write arbitrary CSS. Ahead of custom CSS in the
+        // attribute, so a hand-written declaration still wins.
+        $styleControls = \Magna\Pages\Render\StyleDescriptors::declarations(
+            $section->settings['style'] ?? null,
+            \Magna\Pages\Render\StyleDescriptors::SECTION,
+        );
+        if ($styleControls !== '') {
+            $styleAttr = $styleAttr === '' ? $styleControls : $styleAttr.';'.$styleControls;
+        }
+
         // Per-node custom CSS: validated declarations join the style
         // attribute — the attribute IS the sandbox (no selectors possible).
         $customCss = \Magna\Pages\Render\CustomCss::sanitize($section->settings['customCss'] ?? null);
@@ -168,9 +180,21 @@
         <div class="magna-section__inner">
             <div class="magna-columns">
                 @foreach($section->columns as $column)
+                    @php
+                        // The span is the column's job and is never editable
+                        // as a style; anything the editor set joins after it.
+                        $columnStyle = 'flex: '.$column->span.' '.$column->span.' 0%';
+                        $columnControls = \Magna\Pages\Render\StyleDescriptors::declarations(
+                            $column->settings['style'] ?? null,
+                            \Magna\Pages\Render\StyleDescriptors::COLUMN,
+                        );
+                        if ($columnControls !== '') {
+                            $columnStyle .= ';'.$columnControls;
+                        }
+                    @endphp
                     <div
                         class="magna-column"
-                        style="flex: {{ $column->span }} {{ $column->span }} 0%"
+                        style="{{ $columnStyle }}"
                         @if($inBuilder) data-magna-node="{{ $column->id }}" data-magna-kind="column" @endif
                     >
                         @foreach($column->blocks as $block)

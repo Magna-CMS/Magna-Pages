@@ -12,8 +12,11 @@ import { sectionsOf, sectionsPointer } from './types'
  * distinction, which changes the prefix of every pointer in the document.
  */
 
+/** What a located node is. Named so tables about nodes can speak of it. */
+export type NodeKind = 'section' | 'column' | 'block'
+
 export interface Located {
-    kind: 'section' | 'column' | 'block'
+    kind: NodeKind
     pointer: string
     node: SectionNode | BlockNode | Record<string, unknown>
 }

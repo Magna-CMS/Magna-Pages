@@ -2,8 +2,15 @@
 import { computed } from 'vue'
 
 import BuilderColumnControls from './BuilderColumnControls.vue'
+import BuilderStyleControls from './BuilderStyleControls.vue'
 import type { Located } from '../document/locate'
-import type { BlockDefinition, BlockFieldDefinition, Capabilities, SectionNode } from '../document/types'
+import type {
+    BlockDefinition,
+    BlockFieldDefinition,
+    Capabilities,
+    SectionNode,
+    StyleControl,
+} from '../document/types'
 import { useUiStore, type InspectTab } from '../stores/ui'
 
 /**
@@ -29,6 +36,8 @@ const props = defineProps<{
     bindingSources: Record<string, string>
     /** The row the selection belongs to — the section itself, or a column's parent. */
     layoutSection?: SectionNode | null
+    /** The style controls this node kind may use, as the server describes them. */
+    styleControls?: StyleControl[]
 }>()
 
 const emit = defineEmits<{
@@ -37,8 +46,23 @@ const emit = defineEmits<{
     addColumn: [sectionId: string]
     removeColumn: [sectionId: string, columnId: string]
     setSpans: [sectionId: string, spans: number[]]
+    setStyle: [pointer: string, key: string, value: string]
     select: [nodeId: string]
 }>()
+
+function onStyleSet(key: string, value: string) {
+    if (props.located) {
+        emit('setStyle', props.located.pointer, key, value)
+    }
+}
+
+/** The selected node's stored style set, whatever it currently holds. */
+const styleValues = computed<Record<string, unknown>>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+    const stored = settings?.style
+
+    return typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {}
+})
 
 const ui = useUiStore()
 
@@ -403,6 +427,14 @@ const title = computed<string>(() => {
                 @select="$emit('select', $event)"
             />
 
+            <BuilderStyleControls
+                v-if="styleControls && styleControls.length > 0"
+                :controls="styleControls"
+                :style="styleValues"
+                :can-edit="capabilities.style"
+                @set="onStyleSet"
+            />
+
             <p v-if="!capabilities.structure" class="inspector__locked">
                 Changing the row layout needs the layout permission.
             </p>
@@ -418,6 +450,14 @@ const title = computed<string>(() => {
                 @remove-column="$emit('removeColumn', layoutSection.id, $event)"
                 @set-spans="$emit('setSpans', layoutSection.id, $event)"
                 @select="$emit('select', $event)"
+            />
+
+            <BuilderStyleControls
+                v-if="styleControls && styleControls.length > 0"
+                :controls="styleControls"
+                :style="styleValues"
+                :can-edit="capabilities.style"
+                @set="onStyleSet"
             />
 
             <fieldset class="inspector__field inspector__devices">

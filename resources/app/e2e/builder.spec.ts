@@ -54,8 +54,12 @@ test('create, build, publish, view', async ({ page }) => {
 
     // The optimistic insert lands in the navigator immediately.
     await page.getByRole('button', { name: 'Navigator' }).click()
+    // Exact: the row's action button is labelled "Actions for this heading",
+    // which a substring match would also catch.
     await expect(
-        page.getByRole('navigation', { name: 'Page structure' }).getByRole('button', { name: 'heading' }),
+        page
+            .getByRole('navigation', { name: 'Page structure' })
+            .getByRole('button', { name: 'heading', exact: true }),
     ).toBeVisible()
     await page.getByRole('button', { name: 'Close' }).click()
     if (await builderError.isVisible().catch(() => false)) {

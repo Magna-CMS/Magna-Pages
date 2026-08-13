@@ -9,16 +9,24 @@ import BuilderDock from './components/BuilderDock.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderLibrary from './components/BuilderLibrary.vue'
+import BuilderNodeMenu from './components/BuilderNodeMenu.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
-import { columnOf, exportAsLibraryAsset, primaryTextField, sectionOf } from './document/edits'
-import { locate } from './document/locate'
+import {
+    columnOf,
+    exportAsLibraryAsset,
+    primaryTextField,
+    sectionOf,
+    styleOperations,
+} from './document/edits'
+import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
+import { locate, type NodeKind } from './document/locate'
 import { needsImportFlow, type DragSource } from './document/placement'
 import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
-import type { SectionNode } from './document/types'
+import type { SectionNode, StyleControl } from './document/types'
 import { useDocumentStore } from './stores/document'
 import { useUiStore, type Breakpoint } from './stores/ui'
 
@@ -100,6 +108,18 @@ const bridge = new CanvasBridge({
 
     onPointerUp: () => {
         void drag.finish()
+    },
+
+    onContextMenu: (node, at) => {
+        selectNode(node)
+        // The bridge reports viewport coordinates INSIDE the frame; the menu
+        // is positioned against the parent's viewport, so it needs the
+        // stage's offset added.
+        const box = stage.value?.getBoundingClientRect()
+        contextMenu.value = {
+            node,
+            at: { x: (box?.left ?? 0) + at.x, y: (box?.top ?? 0) + at.y },
+        }
     },
 
     onEditRequest: (node) => {
@@ -246,6 +266,17 @@ const layoutSection = computed<SectionNode | null>(() => {
         : null
 })
 
+/**
+ * The style controls for whatever is selected. Blocks get none: a block
+ * renders its own markup, and this step styles only the elements this
+ * plugin's partial owns.
+ */
+const styleControlsForSelection = computed<StyleControl[]>(() => {
+    const kind = selected.value?.kind
+
+    return kind === 'section' || kind === 'column' ? (store.styleControls[kind] ?? []) : []
+})
+
 /** What the panel's Edit tab is currently about. */
 const selectionLabel = computed<string | null>(() => {
     if (!selected.value) {
@@ -361,6 +392,30 @@ async function onDelete() {
     }
 }
 
+/**
+ * Write one style key on the selected node.
+ *
+ * JSON Patch `add` needs its parent to exist, so a node styled for the
+ * first time writes the whole `style` object; after that each key is its
+ * own operation. Clearing a value removes the key rather than storing an
+ * empty string — an absent key is what "not styled" means everywhere else
+ * in the document, and the renderer treats the two differently.
+ */
+async function onSetStyle(pointer: string, key: string, value: string) {
+    const node = selected.value?.node as { settings?: { style?: unknown } } | undefined
+    const operations = styleOperations(node?.settings?.style, pointer, key, value)
+
+    if (operations.length === 0) {
+        return
+    }
+
+    if (await store.edit(api, `Style ${key}`, operations)) {
+        // Styles land on the section or column wrapper, which the per-node
+        // fragment loop does not re-render.
+        reloadCanvas()
+    }
+}
+
 async function onAddColumn(sectionId: string) {
     if (await store.addColumn(api, sectionId)) {
         reloadCanvas()
@@ -403,6 +458,148 @@ async function onMoveSection(delta: number) {
     }
 
     if (await store.moveSection(api, id, target)) {
+        reloadCanvas()
+    }
+}
+
+/**
+ * Where a node sits among its siblings: sections among sections, blocks
+ * among their column's blocks. Both the move actions and their enabled
+ * state need it.
+ */
+function siblingsOf(nodeId: string): { list: string[]; index: number; column: string | null } {
+    for (const section of store.sections) {
+        if (section.id === nodeId) {
+            return {
+                list: store.sections.map((entry) => entry.id),
+                index: store.sections.findIndex((entry) => entry.id === nodeId),
+                column: null,
+            }
+        }
+
+        for (const column of section.columns ?? []) {
+            const blocks = (column.blocks ?? []).map((block) => block.id)
+            const index = blocks.indexOf(nodeId)
+            if (index >= 0) {
+                return { list: blocks, index, column: column.id }
+            }
+        }
+    }
+
+    return { list: [], index: -1, column: null }
+}
+
+/** Right-click on the canvas: the node's actions, where the pointer is. */
+const contextMenu = ref<{ node: string; at: { x: number; y: number } } | null>(null)
+
+const menuActions = computed<NodeAction[]>(() => {
+    if (!selected.value) {
+        return []
+    }
+
+    const position = siblingsOf(String((selected.value.node as { id: string }).id))
+
+    return nodeActions({
+        kind: selected.value.kind,
+        canStructure: store.capabilities.structure,
+        canContent: store.capabilities.content,
+        holdsLock: store.lock.mine,
+        hasClipboard: store.clipboard !== null,
+        isFirst: position.index <= 0,
+        isLast: position.index < 0 || position.index === position.list.length - 1,
+    })
+})
+
+/** The same table the canvas menu uses, for any node the navigator lists. */
+function actionsForNode(nodeId: string, kind: NodeKind): NodeAction[] {
+    const position = siblingsOf(nodeId)
+
+    return nodeActions({
+        kind,
+        canStructure: store.capabilities.structure,
+        canContent: store.capabilities.content,
+        holdsLock: store.lock.mine,
+        hasClipboard: store.clipboard !== null,
+        isFirst: position.index <= 0,
+        isLast: position.index < 0 || position.index === position.list.length - 1,
+    })
+}
+
+/**
+ * A navigator row acts on ITS node, which may not be the selected one —
+ * so select first, then run the action through the one dispatcher.
+ */
+async function onNavigatorAction(nodeId: string, key: NodeActionKey) {
+    if (store.selectedNode !== nodeId) {
+        selectNode(nodeId)
+    }
+
+    await onNodeAction(key)
+}
+
+async function onNodeAction(key: NodeActionKey) {
+    contextMenu.value = null
+
+    const node = store.selectedNode
+    if (node === null) {
+        return
+    }
+
+    if (key === 'copy') {
+        store.copyNode(node)
+
+        return
+    }
+    if (key === 'paste') {
+        if (await store.pasteNode(api)) {
+            reloadCanvas()
+        }
+
+        return
+    }
+    if (key === 'duplicate') {
+        await onDuplicate()
+
+        return
+    }
+    if (key === 'delete') {
+        await onDelete()
+
+        return
+    }
+    if (key === 'savePattern') {
+        await onSavePattern()
+
+        return
+    }
+
+    await onMoveNode(node, key === 'moveUp' ? -1 : 1)
+}
+
+/**
+ * Move a node one place among its siblings — the keyboard equivalent of
+ * dragging it, and the reason the navigator is a complete editing path.
+ */
+async function onMoveNode(nodeId: string, delta: number) {
+    const position = siblingsOf(nodeId)
+    if (position.index < 0) {
+        return
+    }
+
+    if (position.column === null) {
+        await onMoveSection(delta)
+
+        return
+    }
+
+    // The index is counted before the node is removed, so travelling
+    // forward aims one past the neighbour it is passing.
+    const target = delta < 0 ? position.index - 1 : position.index + 2
+    if (target < 0 || target > position.list.length) {
+        return
+    }
+
+    if (await store.moveBlock(api, nodeId, position.column, target)) {
         reloadCanvas()
     }
 }
@@ -479,6 +676,25 @@ function onKeydown(event: KeyboardEvent) {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault()
         void (event.shiftKey ? onRedo() : onUndo())
+
+        return
+    }
+
+    if (event.key === 'Escape' && contextMenu.value) {
+        contextMenu.value = null
+
+        return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && store.selectedNode) {
+        store.copyNode(store.selectedNode)
+
+        return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        event.preventDefault()
+        void onNodeAction('paste')
 
         return
     }
@@ -888,11 +1104,13 @@ onBeforeUnmount(() => {
                         :capabilities="store.capabilities"
                         :binding-sources="store.bindingSources"
                         :layout-section="layoutSection"
+                        :style-controls="styleControlsForSelection"
                         @edit="onFieldEdit"
                         @edit-setting="onSettingEdit"
                         @add-column="onAddColumn"
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
+                        @set-style="onSetStyle"
                         @select="selectNode($event)"
                     />
                 </template>
@@ -1021,7 +1239,9 @@ onBeforeUnmount(() => {
                 <BuilderLayers
                     :sections="store.sections"
                     :selected="store.selectedNode"
+                    :actions-for="actionsForNode"
                     @select="selectNode($event)"
+                    @act="onNavigatorAction"
                 />
             </template>
 
@@ -1145,6 +1365,17 @@ onBeforeUnmount(() => {
                 </div>
             </div>
         </div>
+
+        <!-- Right-click actions. The backdrop closes it; Escape does too. -->
+        <div v-if="contextMenu" class="builder__menubackdrop" @pointerdown="contextMenu = null" />
+        <BuilderNodeMenu
+            v-if="contextMenu"
+            :at="contextMenu.at"
+            :actions="menuActions"
+            :label="selectionLabel ?? 'Node'"
+            @pick="onNodeAction($event as NodeActionKey)"
+            @close="contextMenu = null"
+        />
 
         <BuilderCommandPalette
             :open="paletteOpen"
@@ -1454,6 +1685,12 @@ body {
     padding: 8px 12px;
     background: #4a1d1d;
     color: #ffd9d9;
+}
+
+.builder__menubackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 79;
 }
 
 .builder__modal {

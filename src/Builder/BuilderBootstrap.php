@@ -10,6 +10,7 @@ use Magna\Blocks\BlockField;
 use Magna\Blocks\BlockRegistry;
 use Magna\Content\Entry;
 use Magna\Pages\Render\BindingResolver;
+use Magna\Pages\Render\StyleDescriptors;
 use Magna\Pages\Themes\ThemeTokens;
 
 /**
@@ -53,6 +54,10 @@ final class BuilderBootstrap
             'capabilities' => $this->capabilities($actor),
             // What a $bind may point at, for the inspector's picker.
             'bindingSources' => $this->bindings->sources(),
+            // The style vocabulary, shipped rather than mirrored: the
+            // renderer decides what `settings.style` may say, and the
+            // inspector draws exactly those controls.
+            'styleControls' => StyleDescriptors::forBuilder(),
         ];
     }
 

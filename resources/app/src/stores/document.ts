@@ -12,6 +12,7 @@ import {
     insertSectionsAt,
     moveNode,
     moveSection,
+    pasteColumnOperations,
     removeColumn,
     removeNode,
     setSpans,
@@ -28,6 +29,7 @@ import type {
     LockState,
     PatchOperation,
     SectionNode,
+    StyleControls,
 } from '../document/types'
 import { sectionsOf, sectionsPointer } from '../document/types'
 
@@ -105,6 +107,7 @@ interface State {
     lock: LockState
     approval: ApprovalState | null
     bindingSources: Record<string, string>
+    styleControls: StyleControls
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -133,6 +136,7 @@ export const useDocumentStore = defineStore('document', {
         lock: { mine: false, holder: null },
         approval: null,
         bindingSources: {},
+        styleControls: {},
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -167,6 +171,7 @@ export const useDocumentStore = defineStore('document', {
             this.lock = payload.lock ?? { mine: true, holder: null }
             this.approval = payload.approval ?? null
             this.bindingSources = payload.bindingSources ?? {}
+            this.styleControls = payload.styleControls ?? {}
             this.loaded = true
         },
 
@@ -799,7 +804,9 @@ export const useDocumentStore = defineStore('document', {
             }
 
             // A column pastes as a new column on the selected section — a
-            // column has no meaning outside one.
+            // column has no meaning outside one. The row rebalances: the
+            // pasted column keeps its content, not its old width, because a
+            // row that does not sum to twelve lays out wrong.
             const section = this.selectedNode ? locate(this.blocks, this.selectedNode) : null
             if (!section || section.kind !== 'section') {
                 this.error = 'Select a section to paste this column into.'
@@ -807,9 +814,15 @@ export const useDocumentStore = defineStore('document', {
                 return false
             }
 
-            return this.edit(api, 'Paste column', [
-                { op: 'add', path: `${section.pointer}/columns/-`, value: node },
-            ])
+            const spans = ((section.node as { columns?: { span: number }[] }).columns ?? []).map(
+                (column) => column.span,
+            )
+
+            return this.edit(
+                api,
+                'Paste column',
+                pasteColumnOperations(section.pointer, spans, node as Record<string, unknown>),
+            )
         },
 
         pushHistory(entry: HistoryEntry): void {

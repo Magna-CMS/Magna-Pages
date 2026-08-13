@@ -336,6 +336,25 @@
         true,
     )
 
+    /*
+     * Right-click on a node. The browser's own menu is suppressed only over
+     * a node the editor can act on — elsewhere in the canvas (a link, an
+     * image, empty page chrome) the ordinary menu is still the useful one.
+     *
+     * Reported in VIEWPORT coordinates, without the scroll offset: the
+     * parent positions the menu against the frame on screen, not against
+     * the document inside it.
+     */
+    document.addEventListener('contextmenu', function (event) {
+        var id = nodeIdFrom(event.target)
+        if (id === null) {
+            return
+        }
+
+        event.preventDefault()
+        send('contextmenu', { node: id, x: event.clientX, y: event.clientY })
+    })
+
     document.addEventListener(
         'pointerup',
         function (event) {

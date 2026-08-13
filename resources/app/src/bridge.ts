@@ -34,6 +34,8 @@ export interface BridgeHandlers {
     onPointerDown?: (node: string, at: PointerPosition) => void
     onPointerMove?: (at: PointerPosition) => void
     onPointerUp?: (at: PointerPosition) => void
+    /** Right-click on a node, in viewport coordinates of the frame. */
+    onContextMenu?: (node: string, at: PointerPosition) => void
     onEditRequest?: (node: string) => void
     onTextCommit?: (node: string, text: string) => void
     onUneditable?: (node: string, reason: string) => void
@@ -104,6 +106,12 @@ export class CanvasBridge {
                 break
             case 'rects':
                 this.handlers.onRects?.(data.rects as NodeRect[], Number(data.height ?? 0))
+                break
+            case 'contextmenu':
+                this.handlers.onContextMenu?.(String(data.node), {
+                    x: Number(data.x ?? 0),
+                    y: Number(data.y ?? 0),
+                })
                 break
             case 'select':
                 this.handlers.onSelect?.(String(data.node))

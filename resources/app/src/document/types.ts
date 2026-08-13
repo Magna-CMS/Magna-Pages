@@ -89,10 +89,30 @@ export interface ApprovalState {
     requested_at: string | null
 }
 
+/**
+ * One style control, as the server describes it.
+ *
+ * The vocabulary is not mirrored here on purpose: the renderer decides
+ * which keys mean anything, so it is the renderer that says what the
+ * inspector may offer. A table in this file would be a second source of
+ * truth, and the day the two disagreed an editor would set a value that
+ * silently rendered as nothing.
+ */
+export interface StyleControl {
+    key: string
+    label: string
+    control: 'text' | 'color' | 'select'
+    group: string
+    options: string[]
+}
+
+export type StyleControls = Record<string, StyleControl[]>
+
 export interface BootstrapPayload {
     lock?: LockState
     approval?: ApprovalState | null
     bindingSources?: Record<string, string>
+    styleControls?: StyleControls
     document: {
         id: string
         title: string
