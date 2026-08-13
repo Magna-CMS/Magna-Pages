@@ -12,8 +12,10 @@ function context(overrides: Partial<NodeActionContext> = {}): NodeActionContext 
         kind: 'block',
         canStructure: true,
         canContent: true,
+        canStyle: true,
         holdsLock: true,
         hasClipboard: false,
+        hasStyles: false,
         isFirst: false,
         isLast: false,
         ...overrides,
@@ -28,12 +30,15 @@ function enabled(overrides: Partial<NodeActionContext> = {}): string[] {
 
 describe('nodeActions', () => {
     it('offers the full set to an editor with the lock and the permissions', () => {
-        expect(enabled({ hasClipboard: true })).toEqual([
+        expect(enabled({ hasClipboard: true, hasStyles: true, kind: 'section' })).toEqual([
             'moveUp',
             'moveDown',
             'duplicate',
+            'rename',
             'copy',
             'paste',
+            'copyStyles',
+            'pasteStyles',
             'savePattern',
             'delete',
         ])
@@ -41,17 +46,25 @@ describe('nodeActions', () => {
 
     it('disables every structural action without the lock', () => {
         // Nothing would save, so offering it is offering a failure.
-        expect(enabled({ holdsLock: false, hasClipboard: true })).toEqual(['copy', 'savePattern'])
+        // Copying is a read; naming and pasting are writes that would not save.
+        expect(enabled({ holdsLock: false, hasClipboard: true, hasStyles: true })).toEqual([
+            'copy',
+            'savePattern',
+        ])
     })
 
     it('disables structural actions without the layout permission', () => {
-        expect(enabled({ canStructure: false, hasClipboard: true })).toEqual(['copy', 'savePattern'])
+        expect(enabled({ canStructure: false, hasClipboard: true })).toEqual([
+            'rename',
+            'copy',
+            'savePattern',
+        ])
     })
 
     it('says why, rather than hiding the option', () => {
         const actions = nodeActions(context({ canStructure: false }))
 
-        expect(actions).toHaveLength(7)
+        expect(actions).toHaveLength(10)
         expect(actions.find((action) => action.key === 'delete')?.hint).toBe(
             'Needs the layout permission',
         )
@@ -84,6 +97,8 @@ describe('nodeActions', () => {
     it('lets a copy happen even when nothing may be written', () => {
         // Copying reads the document; it is not an edit, and a read-only
         // visitor taking a section to another page is a real workflow.
-        expect(enabled({ holdsLock: false, canStructure: false, canContent: false })).toEqual(['copy'])
+        expect(
+            enabled({ holdsLock: false, canStructure: false, canContent: false, canStyle: false }),
+        ).toEqual(['copy'])
     })
 })

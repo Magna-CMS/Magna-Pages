@@ -580,8 +580,10 @@ const menuActions = computed<NodeAction[]>(() => {
         kind: selected.value.kind,
         canStructure: store.capabilities.structure,
         canContent: store.capabilities.content,
+        canStyle: store.capabilities.style,
         holdsLock: store.lock.mine,
         hasClipboard: store.clipboard !== null,
+        hasStyles: store.styleClipboard !== null,
         isFirst: position.index <= 0,
         isLast: position.index < 0 || position.index === position.list.length - 1,
     })
@@ -595,8 +597,10 @@ function actionsForNode(nodeId: string, kind: NodeKind): NodeAction[] {
         kind,
         canStructure: store.capabilities.structure,
         canContent: store.capabilities.content,
+        canStyle: store.capabilities.style,
         holdsLock: store.lock.mine,
         hasClipboard: store.clipboard !== null,
+        hasStyles: store.styleClipboard !== null,
         isFirst: position.index <= 0,
         isLast: position.index < 0 || position.index === position.list.length - 1,
     })
@@ -624,6 +628,32 @@ async function onNodeAction(key: NodeActionKey) {
 
     if (key === 'copy') {
         store.copyNode(node)
+
+        return
+    }
+    if (key === 'rename') {
+        const found = locate(store.blocks, node)
+        const current = (found?.node as { settings?: { label?: unknown } } | undefined)?.settings?.label
+
+        const name = window.prompt(
+            'Name this layer',
+            typeof current === 'string' ? current : '',
+        )
+        if (name !== null) {
+            await store.renameNode(api, node, name)
+        }
+
+        return
+    }
+    if (key === 'copyStyles') {
+        store.copyStyles(node)
+
+        return
+    }
+    if (key === 'pasteStyles') {
+        if (await store.pasteStyles(api, node)) {
+            reloadCanvas()
+        }
 
         return
     }

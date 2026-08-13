@@ -51,6 +51,17 @@ function pick(nodeId: string, key: string) {
     emit('act', nodeId, key as NodeActionKey)
 }
 
+/**
+ * What a row is called. A named node keeps its name; everything else
+ * falls back to what it is, so an unnamed document reads exactly as it
+ * did before naming existed.
+ */
+function nameOf(settings: Record<string, unknown> | undefined, fallback: string): string {
+    const label = settings?.label
+
+    return typeof label === 'string' && label.trim() !== '' ? label : fallback
+}
+
 /** Badges say what the canvas cannot: this node is not what it appears. */
 function badges(settings: Record<string, unknown> | undefined): string[] {
     const marks: string[] = []
@@ -103,7 +114,7 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
                         :aria-current="selected === section.id ? 'true' : undefined"
                         @click="$emit('select', section.id)"
                     >
-                        Section
+                        {{ nameOf(section.settings, 'Section') }}
                         <span v-for="mark in badges(section.settings)" :key="mark" class="layers__badge">
                             {{ mark }}
                         </span>
@@ -146,7 +157,7 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
                                 :class="{ 'is-selected': selected === column.id }"
                                 @click="$emit('select', column.id)"
                             >
-                                Column ({{ column.span }})
+                                {{ nameOf(column.settings, `Column (${column.span})`) }}
                             </button>
 
                             <button
@@ -176,7 +187,7 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
                                         :class="{ 'is-selected': selected === block.id }"
                                         @click="$emit('select', block.id)"
                                     >
-                                        {{ block.block }}
+                                        {{ nameOf(block.settings, block.block) }}
                                         <span
                                             v-for="mark in badges(block.settings)"
                                             :key="mark"

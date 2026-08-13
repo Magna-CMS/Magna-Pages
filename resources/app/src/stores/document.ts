@@ -117,6 +117,8 @@ interface State {
     sendQueue: QueuedBatch[]
     replaying: boolean
     clipboard: ClipboardEntry | null
+    /** A copied style set, kept apart from the node clipboard. */
+    styleClipboard: Record<string, unknown> | null
 }
 
 export const useDocumentStore = defineStore('document', {
@@ -145,6 +147,7 @@ export const useDocumentStore = defineStore('document', {
         sendQueue: [],
         replaying: false,
         clipboard: null,
+        styleClipboard: null,
     }),
 
     getters: {
@@ -777,6 +780,64 @@ export const useDocumentStore = defineStore('document', {
          * pasting a node that kept its id would make every pointer to it
          * ambiguous.
          */
+        /**
+         * Name a node. Editorial metadata: it never reaches the page, so
+         * it is a content edit rather than a design one, and clearing it
+         * removes the key rather than storing an empty string.
+         */
+        async renameNode(api: BuilderApi, nodeId: string, label: string): Promise<boolean> {
+            const found = locate(this.blocks, nodeId)
+            if (!found) {
+                return false
+            }
+
+            const settings = (found.node as { settings?: Record<string, unknown> }).settings ?? {}
+            const trimmed = label.trim()
+
+            if (trimmed === '') {
+                return 'label' in settings
+                    ? this.edit(api, 'Rename', [{ op: 'remove', path: `${found.pointer}/settings/label` }])
+                    : false
+            }
+
+            return this.edit(api, 'Rename', [
+                { op: 'add', path: `${found.pointer}/settings/label`, value: trimmed },
+            ])
+        },
+
+        /** Copy a node's style set, so another node can wear the same one. */
+        copyStyles(nodeId: string): boolean {
+            const found = locate(this.blocks, nodeId)
+            const style = (found?.node as { settings?: { style?: unknown } } | undefined)?.settings?.style
+
+            if (typeof style !== 'object' || style === null) {
+                this.error = 'That node has no styles to copy.'
+
+                return false
+            }
+
+            this.styleClipboard = { ...(style as Record<string, unknown>) }
+
+            return true
+        },
+
+        /**
+         * Apply the copied style set, replacing whatever the target had.
+         * Replacing rather than merging: "paste styles" means the target
+         * ends up looking like the source, and a merge would leave the
+         * target's leftovers showing through.
+         */
+        async pasteStyles(api: BuilderApi, nodeId: string): Promise<boolean> {
+            const found = locate(this.blocks, nodeId)
+            if (!found || this.styleClipboard === null) {
+                return false
+            }
+
+            return this.edit(api, 'Paste styles', [
+                { op: 'add', path: `${found.pointer}/settings/style`, value: { ...this.styleClipboard } },
+            ])
+        },
+
         async pasteNode(api: BuilderApi): Promise<boolean> {
             this.restoreClipboard()
             const entry = this.clipboard

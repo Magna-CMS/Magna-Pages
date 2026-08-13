@@ -17,8 +17,11 @@ export type NodeActionKey =
     | 'moveUp'
     | 'moveDown'
     | 'duplicate'
+    | 'rename'
     | 'copy'
     | 'paste'
+    | 'copyStyles'
+    | 'pasteStyles'
     | 'savePattern'
     | 'delete'
 
@@ -33,12 +36,16 @@ export interface NodeActionContext {
     kind: NodeKind
     /** pages.layout — structural edits. */
     canStructure: boolean
-    /** pages.content — the tier that may save a pattern. */
+    /** pages.content — the tier that may save a pattern or name a node. */
     canContent: boolean
+    /** pages.design — the tier that may write styles. */
+    canStyle: boolean
     /** Whether this editor holds the lock; without it nothing saves. */
     holdsLock: boolean
     /** Whether anything is on the clipboard to paste. */
     hasClipboard: boolean
+    /** Whether a style set has been copied from another node. */
+    hasStyles: boolean
     /** Position among siblings, for the move options. */
     isFirst: boolean
     isLast: boolean
@@ -73,12 +80,38 @@ export function nodeActions(context: NodeActionContext): NodeAction[] {
             enabled: structural && context.kind !== 'column',
             hint: context.kind === 'column' ? 'Add a column instead' : structureHint,
         },
+        {
+            key: 'rename',
+            label: 'Rename',
+            // Naming a node is editorial, not structural: it never reaches
+            // the page, so the content tier is the right gate.
+            enabled: context.canContent && context.holdsLock,
+            hint: context.canContent ? lockHint : 'Needs the content permission',
+        },
         { key: 'copy', label: 'Copy', enabled: true },
         {
             key: 'paste',
             label: 'Paste',
             enabled: structural && context.hasClipboard,
             hint: context.hasClipboard ? structureHint : 'Nothing copied yet',
+        },
+        {
+            key: 'copyStyles',
+            label: 'Copy styles',
+            // Only the kinds that HAVE a style set: a block's styling lives
+            // in its own fields, not in settings.style.
+            enabled: context.kind !== 'block',
+            hint: context.kind === 'block' ? 'Blocks style through their own fields' : undefined,
+        },
+        {
+            key: 'pasteStyles',
+            label: 'Paste styles',
+            enabled: context.canStyle && context.holdsLock && context.hasStyles && context.kind !== 'block',
+            hint: context.hasStyles
+                ? context.canStyle
+                    ? lockHint
+                    : 'Needs the design permission'
+                : 'No styles copied yet',
         },
         {
             key: 'savePattern',

@@ -87,6 +87,12 @@ final class PatchClassifier
             if (in_array('locked', $segments, true)) {
                 return PatchKind::Lock;
             }
+            // A node's name is editorial metadata: it never reaches the
+            // page, and gating it behind the design permission would mean
+            // an editor cannot name the thing they are editing.
+            if (in_array('label', $segments, true)) {
+                return PatchKind::Content;
+            }
 
             return PatchKind::Style;
         }
