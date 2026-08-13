@@ -15,13 +15,9 @@ import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
-import {
-    columnOf,
-    exportAsLibraryAsset,
-    sectionOf,
-    styleOperations,
-} from './document/edits'
+import { columnOf, exportAsLibraryAsset, sectionOf } from './document/edits'
 import { inlineTarget, type InlineMode } from './document/inline'
+import { responsiveStyleOperations, type Breakpoint as ResponsiveBreakpoint } from './document/responsive'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
 import { locate, type NodeKind } from './document/locate'
 import { needsImportFlow, type DragSource } from './document/placement'
@@ -354,6 +350,14 @@ const styleControlsForSelection = computed<StyleControl[]>(() => {
     return kind === 'section' || kind === 'column' ? (store.styleControls[kind] ?? []) : []
 })
 
+/**
+ * The device preview decides which breakpoint a style edit writes. Desktop
+ * is the document's `base`: the value every width starts from.
+ */
+const styleBreakpoint = computed<ResponsiveBreakpoint>(() =>
+    ui.breakpoint === 'desktop' ? 'base' : ui.breakpoint,
+)
+
 /** What the panel's Edit tab is currently about. */
 const selectionLabel = computed<string | null>(() => {
     if (!selected.value) {
@@ -480,7 +484,13 @@ async function onDelete() {
  */
 async function onSetStyle(pointer: string, key: string, value: string) {
     const node = selected.value?.node as { settings?: { style?: unknown } } | undefined
-    const operations = styleOperations(node?.settings?.style, pointer, key, value)
+    const operations = responsiveStyleOperations(
+        node?.settings?.style,
+        pointer,
+        key,
+        styleBreakpoint.value,
+        value,
+    )
 
     if (operations.length === 0) {
         return
@@ -1212,6 +1222,7 @@ onBeforeUnmount(() => {
                         :binding-sources="store.bindingSources"
                         :layout-section="layoutSection"
                         :style-controls="styleControlsForSelection"
+                        :style-breakpoint="styleBreakpoint"
                         @edit="onFieldEdit"
                         @edit-setting="onSettingEdit"
                         @add-column="onAddColumn"

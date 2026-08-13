@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import BuilderColumnControls from './BuilderColumnControls.vue'
 import BuilderStyleControls from './BuilderStyleControls.vue'
 import type { Located } from '../document/locate'
+import type { Breakpoint } from '../document/responsive'
 import type {
     BlockDefinition,
     BlockFieldDefinition,
@@ -38,6 +39,8 @@ const props = defineProps<{
     layoutSection?: SectionNode | null
     /** The style controls this node kind may use, as the server describes them. */
     styleControls?: StyleControl[]
+    /** The device being previewed; style edits land on this breakpoint. */
+    styleBreakpoint: Breakpoint
 }>()
 
 const emit = defineEmits<{
@@ -432,6 +435,7 @@ const title = computed<string>(() => {
                 :controls="styleControls"
                 :style="styleValues"
                 :can-edit="capabilities.style"
+                :breakpoint="styleBreakpoint"
                 @set="onStyleSet"
             />
 
@@ -457,6 +461,7 @@ const title = computed<string>(() => {
                 :controls="styleControls"
                 :style="styleValues"
                 :can-edit="capabilities.style"
+                :breakpoint="styleBreakpoint"
                 @set="onStyleSet"
             />
 

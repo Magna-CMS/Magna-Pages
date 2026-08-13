@@ -126,7 +126,7 @@ final class StyleDescriptors
      * be a second thing to keep correct, and this one already refuses
      * functions other than var(--token).
      */
-    public static function declarations(mixed $style, string $kind): string
+    public static function declarations(mixed $style, string $kind, string $breakpoint = 'base'): string
     {
         if (! is_array($style) || $style === []) {
             return '';
@@ -138,7 +138,9 @@ final class StyleDescriptors
                 continue;
             }
 
-            $value = $style[$key] ?? null;
+            // A value may be a scalar or a per-device set; `base` reads a
+            // scalar unchanged, so nothing about a plain document changes.
+            $value = ResponsiveStyles::valueAt($style[$key] ?? null, $breakpoint);
             if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
                 continue;
             }

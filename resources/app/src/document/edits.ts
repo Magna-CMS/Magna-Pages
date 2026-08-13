@@ -484,37 +484,6 @@ export function blockHandlesIn(node: unknown): string[] {
     return [...handles]
 }
 
-/**
- * The operations that set one `settings.style` key on a node.
- *
- * JSON Patch `add` needs its parent to exist, so a node styled for the
- * first time writes the whole object. Clearing a value REMOVES the key
- * rather than storing an empty string: an absent key is what "not styled"
- * means everywhere else in the document, and the renderer reads the two
- * differently. Nothing to do returns an empty batch rather than a patch
- * the server would apply for no reason.
- */
-export function styleOperations(
-    current: unknown,
-    pointer: string,
-    key: string,
-    value: string,
-): PatchOperation[] {
-    const trimmed = value.trim()
-    const style = typeof current === 'object' && current !== null ? (current as Record<string, unknown>) : null
-
-    if (style === null) {
-        return trimmed === ''
-            ? []
-            : [{ op: 'add', path: `${pointer}/settings/style`, value: { [key]: trimmed } }]
-    }
-
-    if (trimmed === '') {
-        return key in style ? [{ op: 'remove', path: `${pointer}/settings/style/${key}` }] : []
-    }
-
-    return [{ op: 'add', path: `${pointer}/settings/style/${key}`, value: trimmed }]
-}
 
 /**
  * The section a column belongs to. Column controls act on the row, so the

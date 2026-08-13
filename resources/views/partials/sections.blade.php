@@ -58,6 +58,12 @@
     </style>
 @endonce
 @php
+    // Per-device style overrides, collected while the sections render and
+    // emitted once at the end. Nothing accumulates unless a node actually
+    // declares one, so a document that does not use them produces exactly
+    // the markup it produced before they existed.
+    $responsiveCss = '';
+
     // Display conditions: absent closure (older include sites) = show all.
     $passes = $conditionsPass ?? fn (array $settings): bool => true;
     // Bindings: absent closure = literals pass through untouched.
@@ -77,6 +83,17 @@
                 array_values($overrides),
             ));
         }
+        $sectionStyle = $section->settings['style'] ?? null;
+        $responsiveClass = '';
+        if (\Magna\Pages\Render\ResponsiveStyles::isResponsive($sectionStyle)) {
+            $responsiveClass = ' '.\Magna\Pages\Render\ResponsiveStyles::nodeClass($section->id);
+            $responsiveCss .= \Magna\Pages\Render\ResponsiveStyles::rulesFor(
+                $section->id,
+                $sectionStyle,
+                \Magna\Pages\Render\StyleDescriptors::SECTION,
+            );
+        }
+
         $anchor = $section->settings['anchor'] ?? '';
         $cssClass = $section->settings['cssClass'] ?? '';
         $motion = $section->settings['motion'] ?? '';
@@ -171,7 +188,7 @@
         @endonce
     @endif
     <section
-        class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}{{ $motionClass }}"
+        class="magna-section{{ is_string($cssClass) && $cssClass !== '' ? ' '.e($cssClass) : '' }}{{ $visibilityClasses($section->settings) }}{{ $motionClass }}{{ $responsiveClass }}"
         @if(is_string($anchor) && $anchor !== '') id="{{ $anchor }}" @endif
         @if($styleAttr !== '') style="{{ $styleAttr }}" @endif
         @if($inBuilder) data-magna-node="{{ $section->id }}" data-magna-kind="section" @endif
@@ -184,16 +201,27 @@
                         // The span is the column's job and is never editable
                         // as a style; anything the editor set joins after it.
                         $columnStyle = 'flex: '.$column->span.' '.$column->span.' 0%';
+                        $columnStyleSet = $column->settings['style'] ?? null;
                         $columnControls = \Magna\Pages\Render\StyleDescriptors::declarations(
-                            $column->settings['style'] ?? null,
+                            $columnStyleSet,
                             \Magna\Pages\Render\StyleDescriptors::COLUMN,
                         );
                         if ($columnControls !== '') {
                             $columnStyle .= ';'.$columnControls;
                         }
+
+                        $columnResponsive = '';
+                        if (\Magna\Pages\Render\ResponsiveStyles::isResponsive($columnStyleSet)) {
+                            $columnResponsive = ' '.\Magna\Pages\Render\ResponsiveStyles::nodeClass($column->id);
+                            $responsiveCss .= \Magna\Pages\Render\ResponsiveStyles::rulesFor(
+                                $column->id,
+                                $columnStyleSet,
+                                \Magna\Pages\Render\StyleDescriptors::COLUMN,
+                            );
+                        }
                     @endphp
                     <div
-                        class="magna-column"
+                        class="magna-column{{ $columnResponsive }}"
                         style="{{ $columnStyle }}"
                         @if($inBuilder) data-magna-node="{{ $column->id }}" data-magna-kind="column" @endif
                     >
@@ -216,3 +244,15 @@
         </div>
     </section>
 @endforeach
+
+{{--
+    Per-device overrides for the nodes on this page, as one stylesheet.
+
+    The renderer cannot choose a breakpoint — one cached body is served to
+    every visitor — so it emits all of them and lets the browser decide.
+    Every visitor gets identical bytes, which is what the shared cache
+    requires. A page with no per-device values emits nothing at all.
+--}}
+@if($responsiveCss !== '')
+    <style>{!! $responsiveCss !!}</style>
+@endif

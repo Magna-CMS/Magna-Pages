@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { declaredAt, effectiveAt, inheritsAt, type Breakpoint } from '../document/responsive'
 import type { StyleControl } from '../document/types'
 
 /**
@@ -11,6 +12,12 @@ import type { StyleControl } from '../document/types'
  * versus a column may use. That is the renderer's business, and it arrives
  * in the bootstrap payload — so adding a style key is a server change and
  * nothing here needs touching.
+ *
+ * Editing follows the canvas's device preview: with Tablet selected, a
+ * control writes the tablet value only. A control showing a value it
+ * inherited from a wider screen says so and offers to give it back, so
+ * "why is this greyed out" and "how do I undo this override" both have
+ * visible answers.
  */
 
 const props = defineProps<{
@@ -18,6 +25,8 @@ const props = defineProps<{
     /** The node's current `settings.style`, or an empty object. */
     style: Record<string, unknown>
     canEdit: boolean
+    /** The device being previewed; edits land on this breakpoint. */
+    breakpoint: Breakpoint
 }>()
 
 defineEmits<{ set: [key: string, value: string] }>()
@@ -35,10 +44,19 @@ const groups = computed(() => {
     return [...grouped.entries()]
 })
 
+/** What the control shows: this breakpoint's value, or the inherited one. */
 function valueOf(control: StyleControl): string {
-    const value = props.style[control.key]
+    return effectiveAt(props.style[control.key], props.breakpoint)
+}
 
-    return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+/** Whether this control is showing a value from a wider screen. */
+function inherited(control: StyleControl): boolean {
+    return inheritsAt(props.style[control.key], props.breakpoint)
+}
+
+/** Whether this breakpoint has an override worth offering to remove. */
+function overridden(control: StyleControl): boolean {
+    return props.breakpoint !== 'base' && declaredAt(props.style[control.key], props.breakpoint) !== ''
 }
 
 /**
@@ -58,8 +76,16 @@ function swatch(control: StyleControl): string {
     <section v-for="[group, entries] in groups" :key="group" class="styles__group">
         <h3 class="styles__heading">{{ group }}</h3>
 
-        <label v-for="control in entries" :key="control.key" class="styles__field">
-            <span>{{ control.label }}</span>
+        <label
+            v-for="control in entries"
+            :key="control.key"
+            class="styles__field"
+            :class="{ 'is-inherited': inherited(control) }"
+        >
+            <span>
+                {{ control.label }}
+                <small v-if="inherited(control)" :title="`Inherited from the wider screen`">↑</small>
+            </span>
 
             <select
                 v-if="control.control === 'select'"
@@ -97,6 +123,18 @@ function swatch(control: StyleControl): string {
                 :disabled="!canEdit"
                 @change="$emit('set', control.key, ($event.target as HTMLInputElement).value)"
             />
+
+            <button
+                v-if="overridden(control)"
+                type="button"
+                class="styles__reset"
+                :disabled="!canEdit"
+                title="Reset to the wider screen's value"
+                :aria-label="`Reset ${control.label} to the inherited value`"
+                @click="$emit('set', control.key, '')"
+            >
+                ↺
+            </button>
         </label>
     </section>
 </template>
@@ -155,5 +193,29 @@ function swatch(control: StyleControl): string {
 .styles__color input[type='color'] {
     flex: 0 0 30px;
     padding: 1px;
+}
+
+/* An inherited value is real — it is what the visitor sees — so it is
+   shown, not blanked; dimmed only to say "nothing here overrides it". */
+.styles__field.is-inherited input,
+.styles__field.is-inherited select {
+    opacity: 0.65;
+}
+
+.styles__reset {
+    flex: 0 0 auto;
+    width: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.styles__reset:hover:not(:disabled) {
+    opacity: 1;
 }
 </style>
