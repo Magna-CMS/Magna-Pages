@@ -1,33 +1,47 @@
 <script setup lang="ts">
 /**
- * Checks & History: the accessibility checker and the revision browser.
+ * Checks, comments and history.
  *
- * Both are pull surfaces — nothing runs until the editor asks, because a
- * check on every keystroke would teach people to ignore it and a history
+ * All three are pull surfaces — nothing runs until the editor asks, because
+ * a check on every keystroke would teach people to ignore it and a history
  * fetch on open is wasted on the common editing session.
+ *
+ * `groups` picks which of them this instance renders, so the dock can give
+ * comments their own drawer without a second component that would drift
+ * out of step with this one.
  */
 
 import { ref } from 'vue'
 
-const props = defineProps<{
-    a11yFindings: { code: string; severity: string; nodeId: string | null; message: string }[] | null
-    a11yRunning: boolean
-    performance: { metrics: Record<string, number>; notes: { code: string; message: string }[] } | null
-    performanceRunning: boolean
-    revisions: { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[] | null
-    revisionsLoading: boolean
-    canRestore: boolean
-    comments: {
-        id: string
-        nodeId: string | null
-        body: string
-        author: string | null
-        resolved: boolean
-        createdAt: string | null
-    }[] | null
-    commentsLoading: boolean
-    selectedNode: string | null
-}>()
+export type ToolGroup = 'checks' | 'comments' | 'history'
+
+const props = withDefaults(
+    defineProps<{
+        groups?: ToolGroup[]
+        a11yFindings: { code: string; severity: string; nodeId: string | null; message: string }[] | null
+        a11yRunning: boolean
+        performance: { metrics: Record<string, number>; notes: { code: string; message: string }[] } | null
+        performanceRunning: boolean
+        revisions: { id: string; kind: string; label: string | null; author: string | null; createdAt: string }[] | null
+        revisionsLoading: boolean
+        canRestore: boolean
+        comments: {
+            id: string
+            nodeId: string | null
+            body: string
+            author: string | null
+            resolved: boolean
+            createdAt: string | null
+        }[] | null
+        commentsLoading: boolean
+        selectedNode: string | null
+    }>(),
+    { groups: () => ['checks', 'comments', 'history'] },
+)
+
+function shows(group: ToolGroup): boolean {
+    return props.groups.includes(group)
+}
 
 const emit = defineEmits<{
     runA11y: []
@@ -70,6 +84,7 @@ function formatWhen(iso: string): string {
 
 <template>
     <section class="tools">
+        <template v-if="shows('checks')">
         <h2 class="tools__heading">Checks</h2>
 
         <button type="button" :disabled="a11yRunning" @click="$emit('runA11y')">
@@ -122,7 +137,9 @@ function formatWhen(iso: string): string {
         <p v-if="performance !== null && performance.notes.length === 0" class="tools__ok" role="status">
             Within every budget.
         </p>
+        </template>
 
+        <template v-if="shows('comments')">
         <h2 class="tools__heading">Comments</h2>
 
         <button type="button" :disabled="commentsLoading" @click="$emit('loadComments')">
@@ -176,7 +193,9 @@ function formatWhen(iso: string): string {
                 Comment
             </button>
         </div>
+        </template>
 
+        <template v-if="shows('history')">
         <h2 class="tools__heading">History</h2>
 
         <button type="button" :disabled="revisionsLoading" @click="$emit('loadRevisions')">
@@ -205,6 +224,7 @@ function formatWhen(iso: string): string {
                 </div>
             </li>
         </ul>
+        </template>
     </section>
 </template>
 

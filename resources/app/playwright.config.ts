@@ -13,7 +13,11 @@ import { defineConfig } from '@playwright/test'
  */
 export default defineConfig({
     testDir: './e2e',
-    timeout: 30_000,
+    // The build-and-publish flow is a dozen real round trips plus three
+    // canvas full-reloads. On an unwarmed local install that is comfortably
+    // past 30s, and a budget that tight fails on the machine rather than on
+    // the code — which is the one thing an E2E suite must never do.
+    timeout: 120_000,
     retries: 1,
     workers: 1, // one document lock, one session — parallel runs would fight it
     use: {

@@ -36,29 +36,28 @@ test('create, build, publish, view', async ({ page }) => {
     await expect(page.locator('.builder__frame')).toBeVisible()
     await expect(page.getByRole('status')).toHaveText(/Saved/)
 
-    // Structure: add a section, then a heading block into it.
-    await page.getByRole('button', { name: '+ Section' }).click()
+    // Structure: pick a row shape from the structure picker, then drop a
+    // heading into it — the approved workflow, start to finish.
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
     const builderError = page.locator('.builder__error')
     if (await builderError.isVisible().catch(() => false)) {
         throw new Error(`builder error: ${await builderError.textContent()}`)
     }
-    await expect(page.getByRole('button', { name: 'Section', exact: true })).toBeVisible()
 
-    // Block insertion targets a COLUMN — selecting the section is not
-    // enough, by design (the Add panel says so in words).
-    await page.getByRole('button', { name: /Column \(12\)/ }).click()
-
-    // Selecting the column re-renders the Add panel (disabled -> enabled);
-    // assert the ENABLED state first so the click resolves the fresh node,
-    // not the detached pre-render one.
+    // The new row's first column becomes the placement target, so the
+    // element list enables without a second click into the column. Assert
+    // the ENABLED state first so the click resolves the fresh node, not
+    // the detached pre-render one.
     const headingButton = page.getByRole('button', { name: 'Heading', exact: true })
     await expect(headingButton).toBeEnabled()
     await headingButton.click()
 
-    // The optimistic insert lands in the layers tree immediately.
+    // The optimistic insert lands in the navigator immediately.
+    await page.getByRole('button', { name: 'Navigator' }).click()
     await expect(
         page.getByRole('navigation', { name: 'Page structure' }).getByRole('button', { name: 'heading' }),
     ).toBeVisible()
+    await page.getByRole('button', { name: 'Close' }).click()
     if (await builderError.isVisible().catch(() => false)) {
         throw new Error(`builder error after heading: ${await builderError.textContent()}`)
     }

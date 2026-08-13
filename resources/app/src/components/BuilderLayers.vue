@@ -19,7 +19,7 @@ defineEmits<{ select: [node: string] }>()
 
 <template>
     <nav class="layers" aria-label="Page structure">
-        <h2 class="layers__heading">Layers</h2>
+        <h2 class="layers__heading">Navigator</h2>
 
         <ul class="layers__list">
             <li v-for="section in sections" :key="section.id">

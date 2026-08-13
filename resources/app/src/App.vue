@@ -3,11 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { createApi } from './api'
 import { CanvasBridge, debounceByKey, type NodeRect } from './bridge'
-import BuilderAddPanel from './components/BuilderAddPanel.vue'
 import BuilderCommandPalette from './components/BuilderCommandPalette.vue'
 import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
+import BuilderDock from './components/BuilderDock.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
+import BuilderLibrary from './components/BuilderLibrary.vue'
+import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import { columnOf, exportAsLibraryAsset, primaryTextField } from './document/edits'
@@ -16,9 +18,14 @@ import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragd
 import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
 import { useDocumentStore } from './stores/document'
+import { useUiStore, type Breakpoint } from './stores/ui'
 
 /**
- * The builder shell: left rail, canvas, inspector.
+ * The builder shell: one left panel, the canvas, a bottom dock.
+ *
+ * The panel switches between adding and editing rather than standing beside
+ * a second rail, and the occasional surfaces (navigator, checks, comments,
+ * design) live in dock drawers — width belongs to the page being built.
  *
  * The canvas is an iframe loading the real rendered page. Selection is drawn
  * as an overlay positioned from rects the bridge reports, rather than by
@@ -29,6 +36,7 @@ import { useDocumentStore } from './stores/document'
 const pageId = document.getElementById('magna-builder')?.dataset.page ?? ''
 const api = createApi(pageId)
 const store = useDocumentStore()
+const ui = useUiStore()
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const rects = ref<NodeRect[]>([])
@@ -41,8 +49,7 @@ const scrollY = ref(0)
  * page's own media queries decide what shows — the same rules the visitor's
  * browser applies, not an editor simulation of them.
  */
-const BREAKPOINTS = { desktop: '100%', tablet: '768px', mobile: '390px' } as const
-const breakpoint = ref<keyof typeof BREAKPOINTS>('desktop')
+const BREAKPOINTS: Record<Breakpoint, string> = { desktop: '100%', tablet: '768px', mobile: '390px' }
 
 const dragging = ref<string | null>(null)
 const dragOrigin = ref<{ x: number; y: number } | null>(null)
@@ -66,7 +73,7 @@ const bridge = new CanvasBridge({
         rects.value = next
         canvasHeight.value = height
     },
-    onSelect: (node) => store.select(node),
+    onSelect: (node) => selectNode(node),
     onHover: (node) => (hovered.value = node),
     onScroll: (y) => (scrollY.value = y),
 
@@ -204,6 +211,33 @@ const selected = computed(() =>
     store.selectedNode ? locate(store.blocks, store.selectedNode) : null,
 )
 
+/** What the panel's Edit tab is currently about. */
+const selectionLabel = computed<string | null>(() => {
+    if (!selected.value) {
+        return null
+    }
+
+    return selected.value.kind === 'block'
+        ? String((selected.value.node as { block?: string }).block ?? 'block')
+        : selected.value.kind
+})
+
+/**
+ * Selecting on the canvas or in the navigator moves the panel to that
+ * node's settings, the way Elementor does — a click that visibly does
+ * nothing reads as a broken editor.
+ *
+ * Deliberately NOT a watcher on the selection: adding a section also
+ * selects it, and that flow must stay in the library so the next step
+ * (drop an element into the new row) is one click away.
+ */
+function selectNode(node: string | null) {
+    store.select(node)
+    if (node !== null) {
+        ui.inspect(ui.inspectTab)
+    }
+}
+
 function overlayStyle(rect: NodeRect) {
     return {
         top: `${rect.top - scrollY.value}px`,
@@ -272,12 +306,16 @@ const targetColumn = computed<string | null>(() => {
 
 async function onAddBlock(handle: string) {
     if (targetColumn.value && (await store.addBlock(api, targetColumn.value, handle))) {
+        // A placed element is one the editor wants to fill in next.
+        ui.inspect('content')
         reloadCanvas()
     }
 }
 
-async function onAddSection() {
-    if (await store.addSection(api)) {
+async function onAddSection(spans: number[] = [12]) {
+    if (await store.addSection(api, spans)) {
+        // Stay in the library: the next step of the workflow is dropping an
+        // element into the row that just appeared.
         reloadCanvas()
     }
 }
@@ -308,7 +346,7 @@ const paletteActions = computed(() =>
             addBlock: (handle) => void onAddBlock(handle),
             addSection: () => void onAddSection(),
             insertPattern: (id) => void onInsertPattern(id),
-            setBreakpoint: (device) => (breakpoint.value = device as keyof typeof BREAKPOINTS),
+            setBreakpoint: (device) => (ui.breakpoint = device as Breakpoint),
             undo: () => void onUndo(),
             redo: () => void onRedo(),
             deleteSelection: () => void onDelete(),
@@ -688,58 +726,37 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="builder__body">
-            <aside class="builder__rail">
-                <BuilderLayers
-                    :sections="store.sections"
-                    :selected="store.selectedNode"
-                    @select="store.select($event)"
-                />
+            <BuilderPanel :selection-label="selectionLabel">
+                <template #library>
+                    <BuilderLibrary
+                        :registry="store.registry"
+                        :target-column="targetColumn"
+                        :capabilities="store.capabilities"
+                        :patterns="store.patterns"
+                        :library-assets="store.libraryAssets"
+                        :library-collections="store.libraryCollections"
+                        @add="onAddBlock"
+                        @add-section="onAddSection"
+                        @insert-pattern="onInsertPattern"
+                        @insert-library="onInsertLibrary"
+                    />
+                </template>
 
-                <BuilderAddPanel
-                    :registry="store.registry"
-                    :sections="store.sections"
-                    :target-column="targetColumn"
-                    :capabilities="store.capabilities"
-                    :patterns="store.patterns"
-                    :library-assets="store.libraryAssets"
-                    :library-collections="store.libraryCollections"
-                    @add="onAddBlock"
-                    @add-section="onAddSection"
-                    @insert-pattern="onInsertPattern"
-                    @insert-library="onInsertLibrary"
-                />
-
-                <BuilderDesignPanel
-                    :theme="themeTokens"
-                    :overrides="styleOverrides"
-                    :capabilities="store.capabilities"
-                    :saving="savingStyles"
-                    @preview="onStylePreview"
-                    @save="onStyleSave"
-                />
-
-                <BuilderToolsPanel
-                    :a11y-findings="a11yFindings"
-                    :a11y-running="a11yRunning"
-                    :performance="perfReport"
-                    :performance-running="perfRunning"
-                    :revisions="revisions"
-                    :revisions-loading="revisionsLoading"
-                    :can-restore="store.lock.mine && store.capabilities.content"
-                    :comments="comments"
-                    :comments-loading="commentsLoading"
-                    :selected-node="store.selectedNode"
-                    @run-a11y="onRunA11y"
-                    @run-performance="onRunPerformance"
-                    @load-revisions="onLoadRevisions"
-                    @preview-revision="previewedRevision = $event"
-                    @restore-revision="onRestoreRevision"
-                    @select-node="store.select($event)"
-                    @load-comments="onLoadComments"
-                    @add-comment="onAddComment"
-                    @resolve-comment="onResolveComment"
-                />
-            </aside>
+                <template #inspect>
+                    <BuilderInspector
+                        :located="selected"
+                        :definition="
+                            selected && 'block' in selected.node
+                                ? store.blockDefinition(String(selected.node.block))
+                                : undefined
+                        "
+                        :capabilities="store.capabilities"
+                        :binding-sources="store.bindingSources"
+                        @edit="onFieldEdit"
+                        @edit-setting="onSettingEdit"
+                    />
+                </template>
+            </BuilderPanel>
 
             <main class="builder__canvas">
                 <div class="builder__viewport-bar">
@@ -748,14 +765,14 @@ onBeforeUnmount(() => {
                         :key="device"
                         type="button"
                         class="builder__viewport"
-                        :class="{ 'is-active': breakpoint === device }"
-                        @click="breakpoint = device"
+                        :class="{ 'is-active': ui.breakpoint === device }"
+                        @click="ui.breakpoint = device"
                     >
                         {{ device }}
                     </button>
                 </div>
 
-                <div class="builder__stage" :style="{ width: BREAKPOINTS[breakpoint] }">
+                <div class="builder__stage" :style="{ width: BREAKPOINTS[ui.breakpoint] }">
                     <iframe
                         ref="frame"
                         class="builder__frame"
@@ -789,22 +806,78 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
             </main>
-
-            <aside class="builder__inspector">
-                <BuilderInspector
-                    :located="selected"
-                    :definition="
-                        selected && 'block' in selected.node
-                            ? store.blockDefinition(String(selected.node.block))
-                            : undefined
-                    "
-                    :capabilities="store.capabilities"
-                    :binding-sources="store.bindingSources"
-                    @edit="onFieldEdit"
-                    @edit-setting="onSettingEdit"
-                />
-            </aside>
         </div>
+
+        <BuilderDock :comment-count="comments?.filter((entry) => !entry.resolved).length ?? null">
+            <template #layers>
+                <BuilderLayers
+                    :sections="store.sections"
+                    :selected="store.selectedNode"
+                    @select="selectNode($event)"
+                />
+            </template>
+
+            <template #design>
+                <BuilderDesignPanel
+                    :theme="themeTokens"
+                    :overrides="styleOverrides"
+                    :capabilities="store.capabilities"
+                    :saving="savingStyles"
+                    @preview="onStylePreview"
+                    @save="onStyleSave"
+                />
+            </template>
+
+            <template #checks>
+                <BuilderToolsPanel
+                    :groups="['checks', 'history']"
+                    :a11y-findings="a11yFindings"
+                    :a11y-running="a11yRunning"
+                    :performance="perfReport"
+                    :performance-running="perfRunning"
+                    :revisions="revisions"
+                    :revisions-loading="revisionsLoading"
+                    :can-restore="store.lock.mine && store.capabilities.content"
+                    :comments="comments"
+                    :comments-loading="commentsLoading"
+                    :selected-node="store.selectedNode"
+                    @run-a11y="onRunA11y"
+                    @run-performance="onRunPerformance"
+                    @load-revisions="onLoadRevisions"
+                    @preview-revision="previewedRevision = $event"
+                    @restore-revision="onRestoreRevision"
+                    @select-node="selectNode($event)"
+                    @load-comments="onLoadComments"
+                    @add-comment="onAddComment"
+                    @resolve-comment="onResolveComment"
+                />
+            </template>
+
+            <template #comments>
+                <BuilderToolsPanel
+                    :groups="['comments']"
+                    :a11y-findings="a11yFindings"
+                    :a11y-running="a11yRunning"
+                    :performance="perfReport"
+                    :performance-running="perfRunning"
+                    :revisions="revisions"
+                    :revisions-loading="revisionsLoading"
+                    :can-restore="store.lock.mine && store.capabilities.content"
+                    :comments="comments"
+                    :comments-loading="commentsLoading"
+                    :selected-node="store.selectedNode"
+                    @run-a11y="onRunA11y"
+                    @run-performance="onRunPerformance"
+                    @load-revisions="onLoadRevisions"
+                    @preview-revision="previewedRevision = $event"
+                    @restore-revision="onRestoreRevision"
+                    @select-node="selectNode($event)"
+                    @load-comments="onLoadComments"
+                    @add-comment="onAddComment"
+                    @resolve-comment="onResolveComment"
+                />
+            </template>
+        </BuilderDock>
 
         <p v-if="store.error" class="builder__error" role="alert">{{ store.error }}</p>
 
@@ -851,8 +924,6 @@ onBeforeUnmount(() => {
 
 <style>
 :root {
-    --builder-rail: 260px;
-    --builder-inspector: 320px;
     --builder-accent: #3d8bfd;
     --builder-surface: #14161d;
     --builder-border: #272b36;
@@ -877,21 +948,9 @@ body {
 }
 
 .builder__body {
-    display: grid;
-    grid-template-columns: var(--builder-rail) 1fr var(--builder-inspector);
+    display: flex;
     flex: 1;
     min-height: 0;
-}
-
-.builder__rail,
-.builder__inspector {
-    overflow-y: auto;
-    padding: 12px;
-    background: var(--builder-surface);
-}
-
-.builder__rail {
-    border-right: 1px solid var(--builder-border);
 }
 
 .builder__diff {
@@ -963,15 +1022,13 @@ body {
     background: #fff;
 }
 
-.builder__inspector {
-    border-left: 1px solid var(--builder-border);
-}
-
 .builder__canvas {
     position: relative;
     display: flex;
+    flex: 1;
     flex-direction: column;
     align-items: center;
+    min-width: 0;
     background: #0b0c10;
 }
 

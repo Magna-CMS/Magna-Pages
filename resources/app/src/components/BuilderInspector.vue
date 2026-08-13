@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import type { Located } from '../document/locate'
 import type { BlockDefinition, BlockFieldDefinition, Capabilities } from '../document/types'
+import { useUiStore, type InspectTab } from '../stores/ui'
 
 /**
  * The inspector, driven entirely by the block's own field schema.
@@ -10,6 +11,10 @@ import type { BlockDefinition, BlockFieldDefinition, Capabilities } from '../doc
  * Nothing here is hardcoded per block type: a third-party block that ships a
  * block.json gets a working editor with no builder change, which is the same
  * promise the canvas makes by rendering through the production views.
+ *
+ * Settings are grouped Content / Style / Advanced, and a group with nothing
+ * in it does not get a tab: an empty tab teaches the editor that tabs are
+ * usually empty, and then they stop opening the full one too.
  *
  * Controls disable when the actor lacks the capability. That is a courtesy —
  * the server refuses the patch regardless (PatchAuthorizer) — but a UI that
@@ -27,6 +32,29 @@ const emit = defineEmits<{
     edit: [pointer: string, handle: string, value: unknown]
     editSetting: [pointer: string, key: string, value: unknown]
 }>()
+
+const ui = useUiStore()
+
+/** Which groups this selection actually has something to show. */
+const tabs = computed<InspectTab[]>(() => {
+    if (!props.located) {
+        return []
+    }
+
+    if (props.definition) {
+        return props.definition.fields.length > 0 ? ['content'] : []
+    }
+
+    return props.located.kind === 'section' ? ['style', 'advanced'] : []
+})
+
+/**
+ * The tab actually rendered. The store keeps the editor's last choice, but
+ * a selection that has no such group must not render a blank panel.
+ */
+const tab = computed<InspectTab | null>(() =>
+    tabs.value.includes(ui.inspectTab) ? ui.inspectTab : (tabs.value[0] ?? null),
+)
 
 /** Per-device visibility of the selected section (absent key = visible). */
 const visibility = computed<Record<string, boolean>>(() => {
@@ -217,17 +245,49 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
 
     emit('edit', props.located.pointer, field.handle, valueFor(field) + `{tag:${handle}}`)
 }
+
+/** What the selection is called at the top of the panel. */
+const title = computed<string>(() => {
+    if (!props.located) {
+        return ''
+    }
+    if (props.definition) {
+        return props.definition.label
+    }
+    if (props.located.kind === 'column') {
+        return `Column (${String((props.located.node as { span?: number }).span ?? 12)})`
+    }
+
+    return props.located.kind === 'section' ? 'Section' : 'Block'
+})
 </script>
 
 <template>
     <div class="inspector">
-        <h2 class="inspector__heading">Inspector</h2>
+        <p v-if="!located" class="inspector__empty">
+            Select something on the page, or use Add to place a new element.
+        </p>
 
-        <p v-if="!located" class="inspector__empty">Select something on the page.</p>
+        <template v-else>
+            <p class="inspector__block">{{ title }}</p>
 
-        <template v-else-if="definition">
-            <p class="inspector__block">{{ definition.label }}</p>
+            <div v-if="tabs.length > 1" class="inspector__tabs" role="tablist" aria-label="Settings group">
+                <button
+                    v-for="name in tabs"
+                    :key="name"
+                    type="button"
+                    role="tab"
+                    class="inspector__tab"
+                    :class="{ 'is-active': tab === name }"
+                    :aria-selected="tab === name"
+                    @click="ui.inspectTab = name"
+                >
+                    {{ name }}
+                </button>
+            </div>
+        </template>
 
+        <template v-if="located && definition && tab === 'content'">
             <div v-for="field in definition.fields" :key="field.handle" class="inspector__field">
                 <label :for="`field-${field.handle}`">
                     {{ field.label }}
@@ -314,9 +374,7 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
             </p>
         </template>
 
-        <template v-else-if="located.kind === 'section'">
-            <p class="inspector__block">Section</p>
-
+        <template v-else-if="located && located.kind === 'section' && tab === 'style'">
             <fieldset class="inspector__field inspector__devices">
                 <legend>Show on</legend>
                 <label v-for="device in ['desktop', 'tablet', 'mobile']" :key="device">
@@ -330,6 +388,25 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
                 </label>
             </fieldset>
 
+            <label class="inspector__field inspector__stack">
+                Motion
+                <select
+                    :value="motion"
+                    :disabled="!capabilities.style"
+                    @change="writeMotion(($event.target as HTMLSelectElement).value)"
+                >
+                    <option value="">None</option>
+                    <option value="fade">Fade in</option>
+                    <option value="rise">Rise in</option>
+                </select>
+            </label>
+
+            <p v-if="!capabilities.style" class="inspector__locked">
+                Visibility and motion need the design permission.
+            </p>
+        </template>
+
+        <template v-else-if="located && located.kind === 'section' && tab === 'advanced'">
             <fieldset class="inspector__field inspector__devices">
                 <legend>Show when</legend>
 
@@ -368,19 +445,6 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
             </fieldset>
 
             <label class="inspector__field inspector__stack">
-                Motion
-                <select
-                    :value="motion"
-                    :disabled="!capabilities.style"
-                    @change="writeMotion(($event.target as HTMLSelectElement).value)"
-                >
-                    <option value="">None</option>
-                    <option value="fade">Fade in</option>
-                    <option value="rise">Rise in</option>
-                </select>
-            </label>
-
-            <label class="inspector__field inspector__stack">
                 Custom CSS
                 <textarea
                     rows="3"
@@ -393,28 +457,45 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
             </label>
 
             <p v-if="!capabilities.style" class="inspector__locked">
-                Visibility and conditions need the design permission.
+                Conditions and custom CSS need the design permission.
             </p>
         </template>
 
-        <p v-else class="inspector__empty">
+        <p v-else-if="located && tabs.length === 0" class="inspector__empty">
             {{ located.kind === 'block' ? 'This block is not installed.' : 'No settings yet.' }}
         </p>
     </div>
 </template>
 
 <style scoped>
-.inspector__heading {
+.inspector__block {
     margin: 0 0 8px;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    opacity: 0.6;
+    font-weight: 600;
 }
 
-.inspector__block {
-    margin: 0 0 12px;
-    font-weight: 600;
+.inspector__tabs {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.inspector__tab {
+    flex: 1;
+    padding: 4px 6px;
+    border: 1px solid var(--builder-border);
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    text-transform: capitalize;
+    cursor: pointer;
+}
+
+.inspector__tab.is-active {
+    background: var(--builder-accent);
+    border-color: var(--builder-accent);
+    color: #fff;
 }
 
 .inspector__field {

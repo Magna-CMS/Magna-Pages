@@ -16,7 +16,7 @@ import { defineStore } from 'pinia'
 export type PanelMode = 'library' | 'inspect'
 export type LibraryTab = 'elements' | 'patterns' | 'cloud'
 export type InspectTab = 'content' | 'style' | 'advanced'
-export type Drawer = 'layers' | 'checks' | 'comments' | 'design' | 'shortcuts' | null
+export type Drawer = 'layers' | 'checks' | 'comments' | 'design' | null
 export type Breakpoint = 'desktop' | 'tablet' | 'mobile'
 
 const STORAGE_KEY = 'magna-builder-ui'
@@ -27,7 +27,12 @@ const MAX_WIDTH = 480
 interface Persisted {
     panelWidth: number
     panelCollapsed: boolean
-    openCategories: string[]
+    /**
+     * Categories the editor closed. Storing the CLOSED set rather than the
+     * open one means a newly installed plugin's category arrives expanded —
+     * a block nobody can find is a block nobody uses.
+     */
+    collapsedCategories: string[]
 }
 
 interface State extends Persisted {
@@ -40,7 +45,7 @@ interface State extends Persisted {
 }
 
 function loadPersisted(): Persisted {
-    const fallback: Persisted = { panelWidth: 300, panelCollapsed: false, openCategories: [] }
+    const fallback: Persisted = { panelWidth: 300, panelCollapsed: false, collapsedCategories: [] }
 
     try {
         const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -52,8 +57,8 @@ function loadPersisted(): Persisted {
         return {
             panelWidth: clampWidth(Number(parsed.panelWidth ?? fallback.panelWidth)),
             panelCollapsed: parsed.panelCollapsed === true,
-            openCategories: Array.isArray(parsed.openCategories)
-                ? parsed.openCategories.filter((entry): entry is string => typeof entry === 'string')
+            collapsedCategories: Array.isArray(parsed.collapsedCategories)
+                ? parsed.collapsedCategories.filter((entry): entry is string => typeof entry === 'string')
                 : [],
         }
     } catch {
@@ -81,27 +86,48 @@ export const useUiStore = defineStore('ui', {
         ...loadPersisted(),
     }),
 
+    getters: {
+        categoryOpen: (state) => (category: string): boolean =>
+            !state.collapsedCategories.includes(category),
+    },
+
     actions: {
-        /** Selecting a node moves the panel to its settings, as Elementor does. */
-        inspect(): void {
+        /**
+         * Selecting a node moves the panel to its settings, as Elementor
+         * does. A collapsed panel opens: the editor asked to see something.
+         */
+        inspect(tab: InspectTab = 'content'): void {
             this.mode = 'inspect'
-            this.inspectTab = 'content'
+            this.inspectTab = tab
+            this.panelCollapsed = false
+            this.persist()
         },
 
         /** Back to the element library, clearing the last search. */
-        browse(): void {
+        browse(tab?: LibraryTab): void {
             this.mode = 'library'
             this.search = ''
+            if (tab !== undefined) {
+                this.libraryTab = tab
+            }
         },
 
         toggleDrawer(drawer: Exclude<Drawer, null>): void {
             this.drawer = this.drawer === drawer ? null : drawer
         },
 
+        closeDrawer(): void {
+            this.drawer = null
+        },
+
         toggleCategory(category: string): void {
-            const open = new Set(this.openCategories)
-            open.has(category) ? open.delete(category) : open.add(category)
-            this.openCategories = [...open]
+            const closed = new Set(this.collapsedCategories)
+            if (closed.has(category)) {
+                closed.delete(category)
+            } else {
+                closed.add(category)
+            }
+            this.collapsedCategories = [...closed]
             this.persist()
         },
 
@@ -122,7 +148,7 @@ export const useUiStore = defineStore('ui', {
                     JSON.stringify({
                         panelWidth: this.panelWidth,
                         panelCollapsed: this.panelCollapsed,
-                        openCategories: this.openCategories,
+                        collapsedCategories: this.collapsedCategories,
                     }),
                 )
             } catch {
