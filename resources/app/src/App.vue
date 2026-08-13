@@ -339,16 +339,10 @@ const layoutSection = computed<SectionNode | null>(() => {
         : null
 })
 
-/**
- * The style controls for whatever is selected. Blocks get none: a block
- * renders its own markup, and this step styles only the elements this
- * plugin's partial owns.
- */
-const styleControlsForSelection = computed<StyleControl[]>(() => {
-    const kind = selected.value?.kind
-
-    return kind === 'section' || kind === 'column' ? (store.styleControls[kind] ?? []) : []
-})
+/** The style controls the server offers for whatever kind is selected. */
+const styleControlsForSelection = computed<StyleControl[]>(() =>
+    selected.value ? (store.styleControls[selected.value.kind] ?? []) : [],
+)
 
 /**
  * The device preview decides which breakpoint a style edit writes. Desktop

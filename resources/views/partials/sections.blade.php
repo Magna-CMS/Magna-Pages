@@ -227,15 +227,33 @@
                     >
                         @foreach($column->blocks as $block)
                             @continue(! $passes($block->settings))
-                            @php $blockView = $blockViewFor($block->block); @endphp
+                            @php
+                                $blockView = $blockViewFor($block->block);
+
+                                // A block renders its own markup, so its
+                                // styles reach it through a class merged
+                                // into that markup and a rule in the page
+                                // stylesheet — never a second class or
+                                // style attribute, which the parser would
+                                // resolve in our favour and against the
+                                // block's own.
+                                $blockStyle = $block->settings['style'] ?? null;
+                                $blockRules = \Magna\Pages\Render\ResponsiveStyles::rulesFor(
+                                    $block->id,
+                                    $blockStyle,
+                                    \Magna\Pages\Render\StyleDescriptors::BLOCK,
+                                    withBase: true,
+                                );
+                                $responsiveCss .= $blockRules;
+                            @endphp
                             @if($blockView !== null)
-                                {!! $mark(view($blockView, [
+                                {!! $mark(\Magna\Pages\Render\BlockStyleMarkup::withClass(view($blockView, [
                                     'block' => $resolver->viewPayload($bound($block)),
                                     'definition' => $registry->get($block->block),
                                     // Page-level context any block may use
                                     // (the locale switcher reads it).
                                     'localeAlternates' => $localeAlternates ?? [],
-                                ])->render(), $block->id, 'block') !!}
+                                ])->render(), $blockRules === '' ? '' : \Magna\Pages\Render\ResponsiveStyles::nodeClass($block->id)), $block->id, 'block') !!}
                             @endif
                         @endforeach
                     </div>

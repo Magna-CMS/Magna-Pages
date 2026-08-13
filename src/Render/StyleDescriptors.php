@@ -19,18 +19,21 @@ namespace Magna\Pages\Render;
  * hand) degrades to today's rendering instead of becoming a way to write
  * arbitrary CSS properties.
  *
- * Scope is deliberately sections and columns. Both are elements this
- * plugin's own partial renders, so a style attribute lands on markup we
- * control. A block renders its own markup, and injecting a style attribute
- * into it would silently win over one the block already had — block-level
- * styling needs the per-node class and stylesheet that responsive values
- * will bring, and belongs in that change rather than half-built here.
+ * Sections and columns are elements this plugin's own partial renders, so
+ * their declarations land in a style attribute on markup we control. A
+ * BLOCK renders its own markup, so its declarations go to the per-node
+ * stylesheet instead and reach it through a class merged into whatever
+ * element the block already rendered (see BlockStyleMarkup) — adding a
+ * second `class` or `style` attribute would silently beat the block's own,
+ * because the parser keeps the first and discards the rest.
  */
 final class StyleDescriptors
 {
     public const SECTION = 'section';
 
     public const COLUMN = 'column';
+
+    public const BLOCK = 'block';
 
     /**
      * key => [property, control, group, label, options, appliesTo].
@@ -41,21 +44,27 @@ final class StyleDescriptors
      * @var array<string, array{property: string, control: string, group: string, label: string, options: list<string>, appliesTo: list<string>}>
      */
     private const KEYS = [
-        'paddingTop' => ['property' => 'padding-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding top', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'paddingRight' => ['property' => 'padding-right', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding right', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'paddingBottom' => ['property' => 'padding-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'paddingLeft' => ['property' => 'padding-left', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding left', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'marginTop' => ['property' => 'margin-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin top', 'options' => [], 'appliesTo' => [self::SECTION]],
-        'marginBottom' => ['property' => 'margin-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin bottom', 'options' => [], 'appliesTo' => [self::SECTION]],
+        'paddingTop' => ['property' => 'padding-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding top', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'paddingRight' => ['property' => 'padding-right', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding right', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'paddingBottom' => ['property' => 'padding-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'paddingLeft' => ['property' => 'padding-left', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding left', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'marginTop' => ['property' => 'margin-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin top', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK]],
+        'marginBottom' => ['property' => 'margin-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK]],
 
-        'background' => ['property' => 'background-color', 'control' => 'color', 'group' => 'Background', 'label' => 'Background', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'color' => ['property' => 'color', 'control' => 'color', 'group' => 'Typography', 'label' => 'Text colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'textAlign' => ['property' => 'text-align', 'control' => 'select', 'group' => 'Typography', 'label' => 'Text align', 'options' => ['', 'left', 'center', 'right'], 'appliesTo' => [self::SECTION, self::COLUMN]],
+        'background' => ['property' => 'background-color', 'control' => 'color', 'group' => 'Background', 'label' => 'Background', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'color' => ['property' => 'color', 'control' => 'color', 'group' => 'Typography', 'label' => 'Text colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'textAlign' => ['property' => 'text-align', 'control' => 'select', 'group' => 'Typography', 'label' => 'Text align', 'options' => ['', 'left', 'center', 'right'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
 
-        'borderWidth' => ['property' => 'border-width', 'control' => 'text', 'group' => 'Border', 'label' => 'Border width', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'borderStyle' => ['property' => 'border-style', 'control' => 'select', 'group' => 'Border', 'label' => 'Border style', 'options' => ['', 'none', 'solid', 'dashed', 'dotted'], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'borderColor' => ['property' => 'border-color', 'control' => 'color', 'group' => 'Border', 'label' => 'Border colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'borderRadius' => ['property' => 'border-radius', 'control' => 'text', 'group' => 'Border', 'label' => 'Corner radius', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
+        'borderWidth' => ['property' => 'border-width', 'control' => 'text', 'group' => 'Border', 'label' => 'Border width', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'borderStyle' => ['property' => 'border-style', 'control' => 'select', 'group' => 'Border', 'label' => 'Border style', 'options' => ['', 'none', 'solid', 'dashed', 'dotted'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'borderColor' => ['property' => 'border-color', 'control' => 'color', 'group' => 'Border', 'label' => 'Border colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'borderRadius' => ['property' => 'border-radius', 'control' => 'text', 'group' => 'Border', 'label' => 'Corner radius', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+
+        'fontSize' => ['property' => 'font-size', 'control' => 'text', 'group' => 'Typography', 'label' => 'Font size', 'options' => [], 'appliesTo' => [self::BLOCK]],
+        'fontWeight' => ['property' => 'font-weight', 'control' => 'select', 'group' => 'Typography', 'label' => 'Weight', 'options' => ['', '300', '400', '500', '600', '700'], 'appliesTo' => [self::BLOCK]],
+        'lineHeight' => ['property' => 'line-height', 'control' => 'text', 'group' => 'Typography', 'label' => 'Line height', 'options' => [], 'appliesTo' => [self::BLOCK]],
+        'letterSpacing' => ['property' => 'letter-spacing', 'control' => 'text', 'group' => 'Typography', 'label' => 'Letter spacing', 'options' => [], 'appliesTo' => [self::BLOCK]],
+        'maxWidth' => ['property' => 'max-width', 'control' => 'text', 'group' => 'Layout', 'label' => 'Maximum width', 'options' => [], 'appliesTo' => [self::BLOCK]],
 
         'minHeight' => ['property' => 'min-height', 'control' => 'text', 'group' => 'Layout', 'label' => 'Minimum height', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
         'justifyContent' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Layout', 'label' => 'Horizontal align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between'], 'appliesTo' => [self::COLUMN]],
@@ -98,6 +107,7 @@ final class StyleDescriptors
         return [
             self::SECTION => self::forKind(self::SECTION),
             self::COLUMN => self::forKind(self::COLUMN),
+            self::BLOCK => self::forKind(self::BLOCK),
         ];
     }
 

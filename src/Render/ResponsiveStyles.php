@@ -89,14 +89,24 @@ final class ResponsiveStyles
      * The media-query rules a node needs, or an empty string when it
      * needs none.
      */
-    public static function rulesFor(string $nodeId, mixed $style, string $kind): string
+    public static function rulesFor(string $nodeId, mixed $style, string $kind, bool $withBase = false): string
     {
-        if (! self::isResponsive($style)) {
+        if (! $withBase && ! self::isResponsive($style)) {
             return '';
         }
 
         $selector = '.'.self::nodeClass($nodeId);
         $css = '';
+
+        // A block has no attribute of ours to carry its base declarations,
+        // so they ride the stylesheet as well — without !important, since
+        // nothing of the block's own is being overridden.
+        if ($withBase) {
+            $base = StyleDescriptors::declarations($style, $kind);
+            if ($base !== '') {
+                $css .= $selector.'{'.$base.'}';
+            }
+        }
 
         foreach (self::BREAKPOINTS as $breakpoint => $query) {
             $declarations = StyleDescriptors::declarations($style, $kind, $breakpoint);

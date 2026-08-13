@@ -76,7 +76,14 @@ const tabs = computed<InspectTab[]>(() => {
     }
 
     if (props.definition) {
-        return props.definition.fields.length > 0 ? ['content'] : []
+        const groups: InspectTab[] = props.definition.fields.length > 0 ? ['content'] : []
+        // A block styles itself through the same table sections use; the
+        // renderer decides which keys it offers.
+        if ((props.styleControls ?? []).length > 0) {
+            groups.push('style')
+        }
+
+        return groups
     }
     if (props.located.kind === 'section') {
         return ['style', 'advanced']
@@ -332,7 +339,22 @@ const title = computed<string>(() => {
             </div>
         </template>
 
-        <template v-if="located && definition && tab === 'content'">
+        <template v-if="located && definition && tab === 'style'">
+            <BuilderStyleControls
+                v-if="styleControls && styleControls.length > 0"
+                :controls="styleControls"
+                :style="styleValues"
+                :can-edit="capabilities.style"
+                :breakpoint="styleBreakpoint"
+                @set="onStyleSet"
+            />
+
+            <p v-if="!capabilities.style" class="inspector__locked">
+                Styling needs the design permission.
+            </p>
+        </template>
+
+        <template v-else-if="located && definition && tab === 'content'">
             <div v-for="field in definition.fields" :key="field.handle" class="inspector__field">
                 <label :for="`field-${field.handle}`">
                     {{ field.label }}
