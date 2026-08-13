@@ -12,11 +12,12 @@ import BuilderLibrary from './components/BuilderLibrary.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
-import { columnOf, exportAsLibraryAsset, primaryTextField } from './document/edits'
+import { columnOf, exportAsLibraryAsset, primaryTextField, sectionOf } from './document/edits'
 import { locate } from './document/locate'
 import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
 import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
+import type { SectionNode } from './document/types'
 import { useDocumentStore } from './stores/document'
 import { useUiStore, type Breakpoint } from './stores/ui'
 
@@ -211,6 +212,23 @@ const selected = computed(() =>
     store.selectedNode ? locate(store.blocks, store.selectedNode) : null,
 )
 
+/**
+ * The row whose layout the inspector may edit: the selected section, or
+ * the parent of the selected column.
+ */
+const layoutSection = computed<SectionNode | null>(() => {
+    if (!selected.value) {
+        return null
+    }
+    if (selected.value.kind === 'section') {
+        return selected.value.node as SectionNode
+    }
+
+    return selected.value.kind === 'column'
+        ? sectionOf(store.blocks, String((selected.value.node as { id: string }).id))
+        : null
+})
+
 /** What the panel's Edit tab is currently about. */
 const selectionLabel = computed<string | null>(() => {
     if (!selected.value) {
@@ -325,6 +343,73 @@ async function onDelete() {
         reloadCanvas()
     }
 }
+
+async function onAddColumn(sectionId: string) {
+    if (await store.addColumn(api, sectionId)) {
+        reloadCanvas()
+    }
+}
+
+async function onRemoveColumn(sectionId: string, columnId: string) {
+    if (await store.removeColumn(api, sectionId, columnId)) {
+        reloadCanvas()
+    }
+}
+
+async function onSetSpans(sectionId: string, spans: number[]) {
+    if (await store.setSpans(api, sectionId, spans)) {
+        reloadCanvas()
+    }
+}
+
+async function onDuplicate() {
+    if (store.selectedNode && (await store.duplicateNode(api, store.selectedNode))) {
+        reloadCanvas()
+    }
+}
+
+/**
+ * Move the selected section one place up or down. Only sections reorder
+ * from the toolbar — a block moves by dragging, where the target column is
+ * part of the gesture rather than guesswork.
+ */
+async function onMoveSection(delta: number) {
+    const id = store.selectedNode
+    const index = store.sections.findIndex((section) => section.id === id)
+    if (id === null || index < 0) {
+        return
+    }
+
+    const target = index + delta
+    if (target < 0 || target >= store.sections.length) {
+        return
+    }
+
+    if (await store.moveSection(api, id, target)) {
+        reloadCanvas()
+    }
+}
+
+/** Toolbar affordances for whatever is selected right now. */
+const TOOLBAR_HEIGHT = 26
+
+const toolbar = computed(() => {
+    const kind = selected.value?.kind ?? null
+    const structural = store.capabilities.structure && store.lock.mine
+    const rect = selectedRect.value
+    const top = rect ? rect.top - scrollY.value : 0
+
+    return {
+        show: kind !== null && rect !== null,
+        // Above the element normally; tucked inside its top edge when there
+        // is no room, rather than floating over whatever sits above it.
+        top: top >= TOOLBAR_HEIGHT ? top - TOOLBAR_HEIGHT : top + 2,
+        left: rect?.left ?? 0,
+        canDuplicate: structural && (kind === 'section' || kind === 'block'),
+        canDelete: structural && kind !== null,
+        canMove: structural && kind === 'section',
+    }
+})
 
 /** Command palette. */
 const paletteOpen = ref(false)
@@ -752,8 +837,13 @@ onBeforeUnmount(() => {
                         "
                         :capabilities="store.capabilities"
                         :binding-sources="store.bindingSources"
+                        :layout-section="layoutSection"
                         @edit="onFieldEdit"
                         @edit-setting="onSettingEdit"
+                        @add-column="onAddColumn"
+                        @remove-column="onRemoveColumn"
+                        @set-spans="onSetSpans"
+                        @select="selectNode($event)"
                     />
                 </template>
             </BuilderPanel>
@@ -803,6 +893,70 @@ onBeforeUnmount(() => {
                             width: `${dropTarget.indicator.width}px`,
                         }"
                     />
+                    </div>
+
+                    <!-- The element toolbar: the actions that belong to the
+                         thing under the cursor, next to it rather than in a
+                         panel the eye has to travel to. Drawn outside the
+                         frame like every other overlay. -->
+                    <div
+                        v-if="toolbar.show"
+                        class="builder__toolbar"
+                        :style="{ top: `${toolbar.top}px`, left: `${toolbar.left}px` }"
+                    >
+                        <span class="builder__toolbar-kind">{{ selectionLabel }}</span>
+
+                        <button
+                            v-if="toolbar.canMove"
+                            type="button"
+                            title="Move up"
+                            aria-label="Move section up"
+                            @click="onMoveSection(-1)"
+                        >
+                            ↑
+                        </button>
+                        <button
+                            v-if="toolbar.canMove"
+                            type="button"
+                            title="Move down"
+                            aria-label="Move section down"
+                            @click="onMoveSection(1)"
+                        >
+                            ↓
+                        </button>
+                        <button
+                            v-if="toolbar.canDuplicate"
+                            type="button"
+                            title="Duplicate"
+                            aria-label="Duplicate selection"
+                            @click="onDuplicate"
+                        >
+                            ⧉
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="!toolbar.canDelete"
+                            title="Delete"
+                            aria-label="Delete selection"
+                            @click="onDelete"
+                        >
+                            🗑
+                        </button>
+                    </div>
+
+                    <!-- An empty page with no instructions is where a first
+                         session stalls; the way forward is the first step of
+                         the workflow, not a decoration. -->
+                    <div v-if="store.loaded && store.sections.length === 0" class="builder__empty">
+                        <p>This page is empty.</p>
+                        <button
+                            type="button"
+                            :disabled="!store.capabilities.structure"
+                            @click="onAddSection([12])"
+                        >
+                            Add your first section
+                        </button>
+                        <small>Or pick a column structure in the Add panel.</small>
                     </div>
                 </div>
             </main>
@@ -1099,6 +1253,87 @@ body {
     border-radius: 2px;
     background: var(--builder-accent);
     box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.builder__toolbar {
+    position: absolute;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: var(--builder-accent);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.builder__toolbar-kind {
+    padding: 0 4px;
+    color: #fff;
+    font-size: 11px;
+    text-transform: capitalize;
+}
+
+.builder__toolbar button {
+    min-width: 20px;
+    padding: 1px 4px;
+    border: 0;
+    border-radius: 3px;
+    background: rgb(255 255 255 / 15%);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+.builder__toolbar button:hover:not(:disabled) {
+    background: rgb(255 255 255 / 30%);
+}
+
+.builder__toolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.builder__empty {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 28px;
+    border: 1px dashed var(--builder-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--builder-surface) 92%, transparent);
+    text-align: center;
+}
+
+.builder__empty p {
+    margin: 0;
+    font-weight: 600;
+}
+
+.builder__empty small {
+    opacity: 0.65;
+}
+
+.builder__empty button {
+    padding: 5px 14px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--builder-accent);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.builder__empty button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .builder__label {

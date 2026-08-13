@@ -8,6 +8,8 @@ import {
     insertSectionsAt,
     moveSection,
     removeColumn,
+    removeNode,
+    sectionOf,
     setSpans,
     withFreshIds,
 } from './edits'
@@ -153,6 +155,36 @@ describe('columns', () => {
 
     it('refuses a span list that does not match the columns', () => {
         expect(setSpans(doc(), 'sec-1', [6, 6])).toBeNull()
+    })
+})
+
+describe('removeNode on columns', () => {
+    it('takes the whole section when the column was its last', () => {
+        const result = apply(doc(), removeNode(doc(), 'col-1')) as SectionNode[]
+
+        expect(result.map((s) => s.id)).toEqual(['sec-2'])
+    })
+
+    it('takes only the column when the row has others', () => {
+        const two = apply(doc(), addColumn(doc(), 'sec-1')) as SectionNode[]
+        const extra = two[0].columns?.[1].id ?? ''
+
+        const result = apply(two, removeNode(two, extra)) as SectionNode[]
+
+        expect(result).toHaveLength(2)
+        expect(result[0].columns).toHaveLength(1)
+    })
+})
+
+describe('sectionOf', () => {
+    it('finds the row a column belongs to', () => {
+        expect(sectionOf(doc(), 'col-2')?.id).toBe('sec-2')
+    })
+
+    it('refuses anything that is not a column of this document', () => {
+        expect(sectionOf(doc(), 'blk-1')).toBeNull()
+        expect(sectionOf(doc(), 'sec-1')).toBeNull()
+        expect(sectionOf(doc(), 'nope')).toBeNull()
     })
 })
 

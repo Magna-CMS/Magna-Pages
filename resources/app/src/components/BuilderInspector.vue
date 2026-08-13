@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import BuilderColumnControls from './BuilderColumnControls.vue'
 import type { Located } from '../document/locate'
-import type { BlockDefinition, BlockFieldDefinition, Capabilities } from '../document/types'
+import type { BlockDefinition, BlockFieldDefinition, Capabilities, SectionNode } from '../document/types'
 import { useUiStore, type InspectTab } from '../stores/ui'
 
 /**
@@ -26,11 +27,17 @@ const props = defineProps<{
     definition?: BlockDefinition | undefined
     capabilities: Capabilities
     bindingSources: Record<string, string>
+    /** The row the selection belongs to — the section itself, or a column's parent. */
+    layoutSection?: SectionNode | null
 }>()
 
 const emit = defineEmits<{
     edit: [pointer: string, handle: string, value: unknown]
     editSetting: [pointer: string, key: string, value: unknown]
+    addColumn: [sectionId: string]
+    removeColumn: [sectionId: string, columnId: string]
+    setSpans: [sectionId: string, spans: number[]]
+    select: [nodeId: string]
 }>()
 
 const ui = useUiStore()
@@ -44,8 +51,12 @@ const tabs = computed<InspectTab[]>(() => {
     if (props.definition) {
         return props.definition.fields.length > 0 ? ['content'] : []
     }
+    if (props.located.kind === 'section') {
+        return ['style', 'advanced']
+    }
 
-    return props.located.kind === 'section' ? ['style', 'advanced'] : []
+    // A column's only settings are its row's layout, which it can edit.
+    return props.located.kind === 'column' && props.layoutSection ? ['style'] : []
 })
 
 /**
@@ -246,6 +257,13 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
     emit('edit', props.located.pointer, field.handle, valueFor(field) + `{tag:${handle}}`)
 }
 
+/** The selected column's id, when a column is what is selected. */
+const selectedColumnId = computed<string | null>(() =>
+    props.located?.kind === 'column'
+        ? String((props.located.node as { id?: string }).id ?? '')
+        : null,
+)
+
 /** What the selection is called at the top of the panel. */
 const title = computed<string>(() => {
     if (!props.located) {
@@ -374,7 +392,34 @@ const title = computed<string>(() => {
             </p>
         </template>
 
+        <template v-else-if="located && located.kind === 'column' && tab === 'style' && layoutSection">
+            <BuilderColumnControls
+                :section="layoutSection"
+                :selected-column="selectedColumnId"
+                :can-edit="capabilities.structure"
+                @add-column="$emit('addColumn', layoutSection.id)"
+                @remove-column="$emit('removeColumn', layoutSection.id, $event)"
+                @set-spans="$emit('setSpans', layoutSection.id, $event)"
+                @select="$emit('select', $event)"
+            />
+
+            <p v-if="!capabilities.structure" class="inspector__locked">
+                Changing the row layout needs the layout permission.
+            </p>
+        </template>
+
         <template v-else-if="located && located.kind === 'section' && tab === 'style'">
+            <BuilderColumnControls
+                v-if="layoutSection"
+                :section="layoutSection"
+                :selected-column="null"
+                :can-edit="capabilities.structure"
+                @add-column="$emit('addColumn', layoutSection.id)"
+                @remove-column="$emit('removeColumn', layoutSection.id, $event)"
+                @set-spans="$emit('setSpans', layoutSection.id, $event)"
+                @select="$emit('select', $event)"
+            />
+
             <fieldset class="inspector__field inspector__devices">
                 <legend>Show on</legend>
                 <label v-for="device in ['desktop', 'tablet', 'mobile']" :key="device">

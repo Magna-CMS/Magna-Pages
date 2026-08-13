@@ -314,6 +314,17 @@ export function removeNode(document: BlockDocument, nodeId: string): PatchOperat
         return null
     }
 
+    // Deleting a row's last column would leave a section holding nothing,
+    // which renders as an empty band and reads as a bug. `removeColumn`
+    // refuses that state, so the generic delete must not create it by
+    // another door: it takes the section instead.
+    if (found.kind === 'column') {
+        const section = sectionOf(document, nodeId)
+        if (section && (section.columns ?? []).length < 2) {
+            return removeNode(document, section.id)
+        }
+    }
+
     return [{ op: 'remove', path: found.pointer }]
 }
 
@@ -466,6 +477,22 @@ export function blockHandlesIn(node: unknown): string[] {
     walk(node)
 
     return [...handles]
+}
+
+/**
+ * The section a column belongs to. Column controls act on the row, so the
+ * inspector needs the parent from the child — the document is a tree with
+ * no upward links, and every caller re-deriving it is how those walks end
+ * up subtly different from each other.
+ */
+export function sectionOf(document: BlockDocument, columnId: string): SectionNode | null {
+    for (const section of sectionsOf(document)) {
+        if ((section.columns ?? []).some((column) => column.id === columnId)) {
+            return section
+        }
+    }
+
+    return null
 }
 
 /** The column a block currently sits in, for drag bookkeeping. */
