@@ -36,6 +36,8 @@ export interface BridgeHandlers {
     onPointerUp?: (at: PointerPosition) => void
     /** Right-click on a node, in viewport coordinates of the frame. */
     onContextMenu?: (node: string, at: PointerPosition) => void
+    /** A node's computed typography, for the rich-edit overlay to match. */
+    onMeasured?: (node: string, styles: Record<string, string>) => void
     onEditRequest?: (node: string) => void
     onTextCommit?: (node: string, text: string) => void
     onUneditable?: (node: string, reason: string) => void
@@ -81,6 +83,21 @@ export class CanvasBridge {
         this.post({ type: 'rects' })
     }
 
+    /** Ask the frame what a node's text looks like, so an overlay can match it. */
+    measure(node: string): void {
+        this.post({ type: 'measure', node })
+    }
+
+    /**
+     * Hide (or restore) a node while the parent edits it over the top.
+     * An inline style set and removed — the same category of change as the
+     * contenteditable attribute the plain path already sets, and nothing
+     * of it survives the edit.
+     */
+    mask(node: string, on: boolean): void {
+        this.post({ type: 'mask', node, on })
+    }
+
     private post(message: Record<string, unknown>): void {
         this.frame?.contentWindow?.postMessage({ magna: PROTOCOL, ...message }, this.origin)
     }
@@ -106,6 +123,12 @@ export class CanvasBridge {
                 break
             case 'rects':
                 this.handlers.onRects?.(data.rects as NodeRect[], Number(data.height ?? 0))
+                break
+            case 'measured':
+                this.handlers.onMeasured?.(
+                    String(data.node),
+                    (data.styles ?? {}) as Record<string, string>,
+                )
                 break
             case 'contextmenu':
                 this.handlers.onContextMenu?.(String(data.node), {

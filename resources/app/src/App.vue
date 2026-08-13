@@ -13,6 +13,7 @@ import BuilderNodeMenu from './components/BuilderNodeMenu.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
+import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
 import {
     columnOf,
@@ -20,7 +21,7 @@ import {
     sectionOf,
     styleOperations,
 } from './document/edits'
-import { inlineTarget } from './document/inline'
+import { inlineTarget, type InlineMode } from './document/inline'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
 import { locate, type NodeKind } from './document/locate'
 import { needsImportFlow, type DragSource } from './document/placement'
@@ -123,10 +124,32 @@ const bridge = new CanvasBridge({
     },
 
     onEditRequest: (node) => {
-        if (editableField(node) !== null) {
-            store.select(node)
-            bridge.setEditable(node, true)
+        const target = inlineTargetFor(node)
+        if (target === null) {
+            return
         }
+
+        store.select(node)
+
+        if (target.mode === 'plain') {
+            bridge.setEditable(node, true)
+
+            return
+        }
+
+        // Rich: the overlay needs the node's typography before it can look
+        // like the page, so opening waits for the frame's answer.
+        richEdit.value = { node, handle: target.handle, styles: {} }
+        bridge.measure(node)
+    },
+
+    onMeasured: (node, styles) => {
+        if (richEdit.value?.node !== node) {
+            return
+        }
+
+        richEdit.value = { ...richEdit.value, styles }
+        bridge.mask(node, true)
     },
 
     onTextCommit: (node, text) => {
@@ -143,7 +166,7 @@ const bridge = new CanvasBridge({
  * Fields with markup (richtext) are excluded — the bridge edits innerText,
  * and writing that over stored markup would destroy it.
  */
-function editableField(nodeId: string): string | null {
+function inlineTargetFor(nodeId: string): { handle: string; mode: InlineMode } | null {
     if (!store.capabilities.content || !store.lock.mine) {
         return null
     }
@@ -158,13 +181,69 @@ function editableField(nodeId: string): string | null {
         return null
     }
 
-    const target = inlineTarget(definition, (found.node as { data?: Record<string, unknown> }).data)
+    return inlineTarget(definition, (found.node as { data?: Record<string, unknown> }).data)
+}
 
-    // Only the plain path exists on the canvas today. A rich field read
-    // back as text would destroy its markup, so it stays panel-only until
-    // the rich editor lands — the table is what makes that distinction
-    // impossible to forget.
+/** The field the PLAIN path writes to, or null when this is not that. */
+function editableField(nodeId: string): string | null {
+    const target = inlineTargetFor(nodeId)
+
+    // The plain path reads the element's text back. A rich field read that
+    // way would lose its markup, so the two never share a commit.
     return target?.mode === 'plain' ? target.handle : null
+}
+
+/** The rich edit in flight: which node, which field, and how it looks. */
+const richEdit = ref<{ node: string; handle: string; styles: Record<string, string> } | null>(null)
+
+const richEditRect = computed(() => {
+    const rect = rects.value.find((entry) => entry.node === richEdit.value?.node)
+
+    return rect ? { ...rect, top: rect.top - scrollY.value } : null
+})
+
+/** The stored markup the overlay opens with. */
+const richEditHtml = computed<string>(() => {
+    if (!richEdit.value) {
+        return ''
+    }
+
+    const found = locate(store.blocks, richEdit.value.node)
+    const value = (found?.node as { data?: Record<string, unknown> } | undefined)?.data?.[
+        richEdit.value.handle
+    ]
+
+    return typeof value === 'string' ? value : ''
+})
+
+function closeRichEdit() {
+    if (richEdit.value) {
+        bridge.mask(richEdit.value.node, false)
+    }
+    richEdit.value = null
+}
+
+async function onRichCommit(html: string) {
+    const editing = richEdit.value
+    closeRichEdit()
+
+    if (!editing) {
+        return
+    }
+
+    const found = locate(store.blocks, editing.node)
+    if (!found) {
+        return
+    }
+
+    await store.edit(api, 'Edit text', [
+        { op: 'replace', path: `${found.pointer}/data/${editing.handle}`, value: html },
+    ])
+
+    // Re-render either way: on success the canvas shows the stored
+    // (sanitized) markup, which is what the server actually kept; on
+    // refusal it snaps back to the document's truth.
+    refreshFragment(editing.node)
 }
 
 async function commitText(nodeId: string, text: string) {
@@ -1213,6 +1292,17 @@ onBeforeUnmount(() => {
                             🗑
                         </button>
                     </div>
+
+                    <InlineRichEditor
+                        v-if="richEdit && richEditRect"
+                        :key="richEdit.node"
+                        :rect="richEditRect"
+                        :html="richEditHtml"
+                        :styles="richEdit.styles"
+                        :can-edit="store.capabilities.content && store.lock.mine"
+                        @commit="onRichCommit"
+                        @cancel="closeRichEdit"
+                    />
 
                     <!-- An empty page with no instructions is where a first
                          session stalls; the way forward is the first step of

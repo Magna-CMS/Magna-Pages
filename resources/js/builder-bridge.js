@@ -90,6 +90,53 @@
             return
         }
 
+        /*
+         * Rich editing happens in the PARENT, over an overlay — the frame
+         * must stay the production render. Two things the parent cannot
+         * work out on its own: what the text looks like here, and getting
+         * the original out of the way so the overlay is not drawn over it.
+         *
+         * The mask is an inline style set and then removed, in builder mode
+         * only, exactly like the contenteditable attribute the plain path
+         * already sets. Nothing is added to the DOM and nothing survives
+         * the edit.
+         */
+        if (data.type === 'measure' && typeof data.node === 'string') {
+            var measured = findNode(data.node)
+            if (measured) {
+                var computed = window.getComputedStyle(measured)
+                var copy = {}
+                var properties = [
+                    'font-family', 'font-size', 'font-weight', 'font-style',
+                    'line-height', 'letter-spacing', 'text-align', 'text-transform',
+                    'color', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+                ]
+                for (var i = 0; i < properties.length; i++) {
+                    copy[properties[i]] = computed.getPropertyValue(properties[i])
+                }
+
+                send('measured', { node: data.node, styles: copy })
+            }
+
+            return
+        }
+
+        if (data.type === 'mask' && typeof data.node === 'string') {
+            var masked = findNode(data.node)
+            if (masked) {
+                if (data.on === true) {
+                    masked.style.setProperty('visibility', 'hidden')
+                } else {
+                    masked.style.removeProperty('visibility')
+                    if (masked.getAttribute('style') === '') {
+                        masked.removeAttribute('style')
+                    }
+                }
+            }
+
+            return
+        }
+
         if (data.type === 'fragment' && typeof data.node === 'string' && typeof data.html === 'string') {
             var target = findNode(data.node)
             if (target) {

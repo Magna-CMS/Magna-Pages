@@ -76,6 +76,9 @@ final class BuilderBootstrap
                 'icon' => $block->icon,
                 'category' => $block->category,
                 'requiresPermission' => $block->requiresPermission,
+                // Which fields the canvas may edit in place, if this block
+                // says. Absent means the first eligible one.
+                'inlineFields' => $block->inlineFields,
                 'fields' => array_map($this->fieldPayload(...), $block->fields),
             ],
             array_values($registry->all()),
