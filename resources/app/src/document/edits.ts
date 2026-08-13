@@ -392,19 +392,6 @@ function adjustedIndex(sourcePointer: string, columnPointer: string, index: numb
     return Number.isNaN(sourceIndex) || sourceIndex >= index ? index : index - 1
 }
 
-/**
- * The field inline canvas editing writes to: the block's first required
- * plain-text field, else its first plain-text field at all. Only `text` and
- * `textarea` qualify — richtext holds markup, and inline editing's safety
- * argument is precisely that it carries plain text only.
- */
-export function primaryTextField(definition: BlockDefinition): string | null {
-    const textual = definition.fields.filter(
-        (field) => field.type === 'text' || field.type === 'textarea',
-    )
-
-    return (textual.find((field) => field.required) ?? textual[0])?.handle ?? null
-}
 
 export interface LibraryExport {
     name: string

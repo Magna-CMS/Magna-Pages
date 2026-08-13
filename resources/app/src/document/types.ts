@@ -66,6 +66,13 @@ export interface BlockDefinition {
     handle: string
     label: string
     icon: string
+    /**
+     * Field handles this block exposes for editing on the canvas, in the
+     * order it wants them offered. Absent means "the first eligible
+     * field", which is what every block did before the declaration
+     * existed — so no block.json has to change.
+     */
+    inlineFields?: string[]
     category: string
     requiresPermission: string | null
     fields: BlockFieldDefinition[]

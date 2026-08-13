@@ -17,10 +17,10 @@ import { useCanvasDrag, type DropPlacement } from './canvasDrag'
 import {
     columnOf,
     exportAsLibraryAsset,
-    primaryTextField,
     sectionOf,
     styleOperations,
 } from './document/edits'
+import { inlineTarget } from './document/inline'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
 import { locate, type NodeKind } from './document/locate'
 import { needsImportFlow, type DragSource } from './document/placement'
@@ -154,19 +154,17 @@ function editableField(nodeId: string): string | null {
     }
 
     const definition = store.blockDefinition(String((found.node as { block: string }).block))
-    const field = definition ? primaryTextField(definition) : null
-    if (!field) {
+    if (!definition) {
         return null
     }
 
-    // A bound field resolves at render; typing over the resolved output
-    // would silently replace the binding with a literal.
-    const value = (found.node as { data?: Record<string, unknown> }).data?.[field]
-    if (typeof value === 'object' && value !== null && '$bind' in value) {
-        return null
-    }
+    const target = inlineTarget(definition, (found.node as { data?: Record<string, unknown> }).data)
 
-    return field
+    // Only the plain path exists on the canvas today. A rich field read
+    // back as text would destroy its markup, so it stays panel-only until
+    // the rich editor lands — the table is what makes that distinction
+    // impossible to forget.
+    return target?.mode === 'plain' ? target.handle : null
 }
 
 async function commitText(nodeId: string, text: string) {

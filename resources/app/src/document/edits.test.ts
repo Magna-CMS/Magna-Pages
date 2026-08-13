@@ -8,7 +8,6 @@ import {
     exportAsLibraryAsset,
     insertBlock,
     moveNode,
-    primaryTextField,
     removeNode,
 } from './edits'
 import { applyPatch } from './patch'
@@ -162,41 +161,6 @@ describe('appendSection', () => {
     })
 })
 
-describe('primaryTextField', () => {
-    function definitionWith(fields: { handle: string; type: string; required: boolean }[]) {
-        return {
-            ...heading,
-            fields: fields.map((field) => ({
-                ...heading.fields[0],
-                ...field,
-            })),
-        }
-    }
-
-    it('prefers the first required plain-text field', () => {
-        const definition = definitionWith([
-            { handle: 'eyebrow', type: 'text', required: false },
-            { handle: 'title', type: 'text', required: true },
-        ])
-
-        expect(primaryTextField(definition)).toBe('title')
-    })
-
-    it('falls back to any plain-text field, skipping richtext', () => {
-        const definition = definitionWith([
-            { handle: 'body', type: 'richtext', required: true },
-            { handle: 'caption', type: 'textarea', required: false },
-        ])
-
-        expect(primaryTextField(definition)).toBe('caption')
-    })
-
-    it('returns null for a block with no plain-text field', () => {
-        const definition = definitionWith([{ handle: 'image', type: 'media', required: true }])
-
-        expect(primaryTextField(definition)).toBeNull()
-    })
-})
 
 describe('exportAsLibraryAsset', () => {
     it('exports a section as a pattern with computed required blocks', () => {
