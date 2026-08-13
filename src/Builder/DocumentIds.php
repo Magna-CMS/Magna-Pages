@@ -23,6 +23,17 @@ final class DocumentIds
      */
     public static function fresh(array $node): array
     {
+        // A list is a section list — the shape a `part` or `page` asset
+        // ships. Walking only keyed nodes would hand back the stored ids
+        // untouched, and importing the same asset twice would put two
+        // sections with one id on the page.
+        if (array_is_list($node)) {
+            return array_map(
+                fn (mixed $child): mixed => is_array($child) ? self::fresh($child) : $child,
+                $node,
+            );
+        }
+
         if (array_key_exists('id', $node)) {
             $node['id'] = strtolower((string) Str::ulid());
         }

@@ -578,14 +578,20 @@ export const useDocumentStore = defineStore('document', {
          * each is a no-op when the gesture does not apply to the current
          * document, rather than sending a patch that would be refused.
          */
-        async addBlock(api: BuilderApi, columnId: string, handle: string): Promise<boolean> {
+        async addBlock(
+            api: BuilderApi,
+            columnId: string,
+            handle: string,
+            index?: number,
+        ): Promise<boolean> {
             const definition = this.registry.find((entry) => entry.handle === handle)
             if (!definition) {
                 return false
             }
 
             const block = blockFrom(definition)
-            const operations = insertBlock(this.blocks, columnId, block)
+            // A click appends; a drop states exactly where the line was drawn.
+            const operations = insertBlock(this.blocks, columnId, block, index)
             if (!operations) {
                 return false
             }

@@ -105,10 +105,26 @@ final class BuilderCanvasController
      * unaware of the builder entirely — a theme cannot forget to include
      * it, and cannot include it on the public site by mistake. Loaded as a
      * separate file, not inlined, so it needs no CSP script-src exception.
+     *
+     * The stylesheet that travels with it gives EMPTY columns a hit area.
+     * A column with nothing in it is zero pixels tall, so the builder's
+     * drop-target search — which works from the rects this page reports —
+     * could never find one, and "drag an element into the empty column you
+     * just made" is the first thing anybody tries. It affects only the
+     * editor: the published page never loads this.
      */
     private function withBridge(string $html): string
     {
-        $tag = '<script src="'.e(url('/pages-builder/bridge.js')).'" defer></script>';
+        // Fingerprinted so the script can be cached hard: the canvas
+        // reloads on every structural edit, and a revalidation round trip
+        // per reload delays the handshake that selection and drag depend
+        // on. The stamp changes when the file does, so an updated plugin
+        // never serves a stale bridge.
+        $source = $this->bridgePath();
+        $stamp = is_file($source) ? (string) filemtime($source) : '0';
+
+        $tag = '<style>'.self::CANVAS_CSS.'</style>'
+            .'<script src="'.e(url('/pages-builder/bridge.js').'?v='.$stamp).'" defer></script>';
 
         $position = strripos($html, '</body>');
 
@@ -117,17 +133,34 @@ final class BuilderCanvasController
             : substr($html, 0, $position).$tag.substr($html, $position);
     }
 
+    /** Editor-only affordances for nodes that have no size of their own. */
+    private const CANVAS_CSS = <<<'CSS'
+        [data-magna-kind="column"]:not(:has(> *)) {
+            min-height: 72px;
+            outline: 1px dashed rgba(61, 139, 253, 0.55);
+            outline-offset: -4px;
+        }
+        CSS;
+
     /** The bridge script itself. */
     public function bridge(): Response
     {
         Gate::authorize('pages.content');
 
-        $path = dirname(__DIR__, 3).'/resources/js/builder-bridge.js';
+        $path = $this->bridgePath();
         $script = is_file($path) ? (string) file_get_contents($path) : '';
 
         return response($script, 200, [
             'Content-Type' => 'text/javascript; charset=utf-8',
-            'Cache-Control' => 'no-cache',
+            // Private: this is served behind an authorization check, so a
+            // shared cache must not hold it. The canvas URL carries a
+            // file-stamp, which is what makes a long max-age safe.
+            'Cache-Control' => 'private, max-age=86400',
         ]);
+    }
+
+    private function bridgePath(): string
+    {
+        return dirname(__DIR__, 3).'/resources/js/builder-bridge.js';
     }
 }

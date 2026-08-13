@@ -12,9 +12,10 @@ import BuilderLibrary from './components/BuilderLibrary.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
+import { useCanvasDrag, type DropPlacement } from './canvasDrag'
 import { columnOf, exportAsLibraryAsset, primaryTextField, sectionOf } from './document/edits'
 import { locate } from './document/locate'
-import { dropTargetAt, exceedsThreshold, layout, type DropTarget } from './dragdrop'
+import { needsImportFlow, type DragSource } from './document/placement'
 import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
 import type { SectionNode } from './document/types'
@@ -52,9 +53,7 @@ const scrollY = ref(0)
  */
 const BREAKPOINTS: Record<Breakpoint, string> = { desktop: '100%', tablet: '768px', mobile: '390px' }
 
-const dragging = ref<string | null>(null)
-const dragOrigin = ref<{ x: number; y: number } | null>(null)
-const dropTarget = ref<DropTarget | null>(null)
+const stage = ref<HTMLElement | null>(null)
 
 /** Block ids per column, so drop math orders by the document, not geometry. */
 const blocksByColumn = computed<Record<string, string[]>>(() => {
@@ -67,6 +66,17 @@ const blocksByColumn = computed<Record<string, string[]>>(() => {
     }
 
     return map
+})
+
+const sectionIds = computed(() => store.sections.map((section) => section.id))
+
+const drag = useCanvasDrag({
+    rects,
+    scrollY,
+    sectionIds,
+    blocksByColumn,
+    stage,
+    onDrop: (source, at) => onDrop(source, at),
 })
 
 const bridge = new CanvasBridge({
@@ -82,28 +92,14 @@ const bridge = new CanvasBridge({
         // Remember where a press started; it only becomes a drag once it
         // travels, so a click stays a click.
         if (store.capabilities.structure && locate(store.blocks, node)?.kind === 'block') {
-            dragging.value = node
-            dragOrigin.value = at
+            drag.pressInFrame(node, at)
         }
     },
 
-    onPointerMove: (at) => {
-        if (!dragging.value || !dragOrigin.value) {
-            return
-        }
-        if (!exceedsThreshold(dragOrigin.value, at)) {
-            return
-        }
-
-        dropTarget.value = dropTargetAt(
-            layout(rects.value, blocksByColumn.value),
-            at.x,
-            at.y,
-        )
-    },
+    onPointerMove: (at) => drag.moveInFrame(at),
 
     onPointerUp: () => {
-        void finishDrag()
+        void drag.finish()
     },
 
     onEditRequest: (node) => {
@@ -171,19 +167,40 @@ async function commitText(nodeId: string, text: string) {
     return ok
 }
 
-async function finishDrag() {
-    const node = dragging.value
-    const target = dropTarget.value
+/**
+ * A completed drop, whatever was dragged. The placement table already
+ * refused anything that cannot land here, so this only has to route the
+ * payload to the producer that knows how to insert it.
+ */
+async function onDrop(source: DragSource, at: DropPlacement) {
+    const inColumn = 'column' in at
 
-    dragging.value = null
-    dragOrigin.value = null
-    dropTarget.value = null
+    if (source.kind === 'move') {
+        if (inColumn && (await store.moveBlock(api, source.nodeId, at.column, at.index))) {
+            reloadCanvas()
+        }
 
-    if (!node || !target) {
         return
     }
 
-    if (await store.moveBlock(api, node, target.column, target.index)) {
+    if (source.kind === 'new') {
+        if (inColumn && (await store.addBlock(api, at.column, source.handle, at.index))) {
+            ui.inspect('content')
+            reloadCanvas()
+        }
+
+        return
+    }
+
+    if (source.kind === 'pattern') {
+        if (await store.insertPattern(api, source.id, at)) {
+            reloadCanvas()
+        }
+
+        return
+    }
+
+    if (confirmMissingBlocks(source.slug) && (await store.insertLibraryAsset(api, source.slug, at))) {
         reloadCanvas()
     }
 }
@@ -558,22 +575,54 @@ async function onStyleSave(tokens: Record<string, string>) {
     }
 }
 
+/**
+ * Missing blocks render as nothing on the public site — insertable, but
+ * never silently: the person choosing gets to decide with the facts.
+ */
+function confirmMissingBlocks(slug: string): boolean {
+    const asset = store.libraryAssets.find((entry) => entry.slug === slug)
+    if (!asset || asset.missingBlocks.length === 0) {
+        return true
+    }
+
+    return window.confirm(
+        `This site is missing: ${asset.missingBlocks.join(', ')}. ` +
+            'Those blocks will not display until their plugin is installed. Insert anyway?',
+    )
+}
+
+/** The page asset waiting on a replace-or-append decision. */
+const pendingImport = ref<{ slug: string; name: string } | null>(null)
+
 async function onInsertLibrary(slug: string) {
     const asset = store.libraryAssets.find((entry) => entry.slug === slug)
 
-    // Missing blocks render as nothing on the public site — insertable, but
-    // never silently: the person choosing gets to decide with the facts.
-    if (asset && asset.missingBlocks.length > 0) {
-        const proceed = window.confirm(
-            `This site is missing: ${asset.missingBlocks.join(', ')}. ` +
-                'Those blocks will not display until their plugin is installed. Insert anyway?',
-        )
-        if (!proceed) {
-            return
-        }
+    // A whole page is never inserted by a click: it would silently discard
+    // the document being edited. It gets an explicit decision instead.
+    if (asset && needsImportFlow({ kind: 'library', slug, assetKind: asset.kind })) {
+        pendingImport.value = { slug, name: asset.name }
+
+        return
     }
 
-    if (await store.insertLibraryAsset(api, slug)) {
+    if (!confirmMissingBlocks(slug)) {
+        return
+    }
+
+    // A click has no target of its own, so a block-shaped asset joins the
+    // end of the column the selection is in. A drag supplies an exact one.
+    const at = targetColumn.value ? { column: targetColumn.value } : undefined
+
+    if (await store.insertLibraryAsset(api, slug, at)) {
+        reloadCanvas()
+    }
+}
+
+async function onImportPage(mode: 'replace' | 'append') {
+    const asset = pendingImport.value
+    pendingImport.value = null
+
+    if (asset && confirmMissingBlocks(asset.slug) && (await store.importPageAsset(api, asset.slug, mode))) {
         reloadCanvas()
     }
 }
@@ -824,6 +873,7 @@ onBeforeUnmount(() => {
                         @add-section="onAddSection"
                         @insert-pattern="onInsertPattern"
                         @insert-library="onInsertLibrary"
+                        @drag-start="drag.pressInPanel"
                     />
                 </template>
 
@@ -862,10 +912,14 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
 
-                <div class="builder__stage" :style="{ width: BREAKPOINTS[ui.breakpoint] }">
+                <div ref="stage" class="builder__stage" :style="{ width: BREAKPOINTS[ui.breakpoint] }">
+                    <!-- The frame stops taking pointer events while a panel
+                         drag is in flight, so the parent keeps receiving the
+                         moves that cross over the canvas. -->
                     <iframe
                         ref="frame"
                         class="builder__frame"
+                        :class="{ 'is-inert': drag.active.value }"
                         :src="api.canvasUrl()"
                         title="Page canvas"
                     />
@@ -885,12 +939,12 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div
-                        v-if="dropTarget"
+                        v-if="drag.indicator.value"
                         class="builder__drop"
                         :style="{
-                            top: `${dropTarget.indicator.top - scrollY}px`,
-                            left: `${dropTarget.indicator.left}px`,
-                            width: `${dropTarget.indicator.width}px`,
+                            top: `${drag.indicator.value.top - scrollY}px`,
+                            left: `${drag.indicator.value.left}px`,
+                            width: `${drag.indicator.value.width}px`,
                         }"
                     />
                     </div>
@@ -1068,6 +1122,30 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
+        <!-- Importing a page is a decision, not a drop: it can replace
+             everything on the canvas, so it says so and asks. -->
+        <div
+            v-if="pendingImport"
+            class="builder__modal"
+            role="dialog"
+            aria-label="Import page"
+        >
+            <div class="builder__modal-box">
+                <h2>Import “{{ pendingImport.name }}”</h2>
+                <p>
+                    This asset is a whole page. Replace what is on the canvas, or add its
+                    sections to the end of this one?
+                </p>
+                <div class="builder__modal-actions">
+                    <button type="button" @click="onImportPage('append')">Add to this page</button>
+                    <button type="button" @click="onImportPage('replace')">
+                        Replace this page
+                    </button>
+                    <button type="button" @click="pendingImport = null">Cancel</button>
+                </div>
+            </div>
+        </div>
+
         <BuilderCommandPalette
             :open="paletteOpen"
             :actions="paletteActions"
@@ -1227,6 +1305,10 @@ body {
     background: #fff;
 }
 
+.builder__frame.is-inert {
+    pointer-events: none;
+}
+
 .builder__overlay {
     position: absolute;
     inset: 0;
@@ -1372,5 +1454,54 @@ body {
     padding: 8px 12px;
     background: #4a1d1d;
     color: #ffd9d9;
+}
+
+.builder__modal {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / 55%);
+}
+
+.builder__modal-box {
+    max-width: 420px;
+    padding: 18px 20px;
+    border: 1px solid var(--builder-border);
+    border-radius: 8px;
+    background: var(--builder-surface);
+}
+
+.builder__modal-box h2 {
+    margin: 0 0 8px;
+    font-size: 15px;
+}
+
+.builder__modal-box p {
+    margin: 0 0 14px;
+    opacity: 0.8;
+}
+
+.builder__modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.builder__modal-actions button {
+    padding: 5px 12px;
+    border: 1px solid var(--builder-border);
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.builder__modal-actions button:first-child {
+    background: var(--builder-accent);
+    border-color: var(--builder-accent);
+    color: #fff;
 }
 </style>

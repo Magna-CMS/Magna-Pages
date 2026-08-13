@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import { COLUMN_PRESETS } from '../document/edits'
+import { needsImportFlow, type DragSource } from '../document/placement'
 import type { BlockDefinition, Capabilities } from '../document/types'
 import type {
     LibraryAssetSummary,
@@ -37,6 +38,7 @@ defineEmits<{
     addSection: [spans: number[]]
     insertPattern: [id: string]
     insertLibrary: [slug: string]
+    dragStart: [source: DragSource, event: PointerEvent]
 }>()
 
 const ui = useUiStore()
@@ -95,6 +97,15 @@ function blocked(definition: BlockDefinition): string | null {
 /** A preset drawn as proportional bars, so the shape reads before the label. */
 function barStyle(span: number) {
     return { flex: `${span} 1 0%` }
+}
+
+/**
+ * A card is draggable when the actor may change the structure at all —
+ * where it is allowed to LAND is the placement table's business, not this
+ * component's, so a new asset kind needs no change here.
+ */
+function draggable(source: DragSource): boolean {
+    return props.capabilities.structure && !needsImportFlow(source)
 }
 </script>
 
@@ -175,9 +186,14 @@ function barStyle(span: number) {
                         <button
                             type="button"
                             class="library__card"
+                            :class="{ 'is-draggable': capabilities.structure }"
                             :disabled="!canPlace || blocked(definition) !== null"
-                            :title="blocked(definition) ?? definition.label"
+                            :title="blocked(definition) ?? `${definition.label} — drag onto a column`"
                             @click="$emit('add', definition.handle)"
+                            @pointerdown="
+                                capabilities.structure &&
+                                    $emit('dragStart', { kind: 'new', handle: definition.handle }, $event)
+                            "
                         >
                             {{ definition.label }}
                             <small v-if="blocked(definition)">{{ blocked(definition) }}</small>
@@ -199,12 +215,21 @@ function barStyle(span: number) {
                             !capabilities.structure ||
                             (pattern.kind === 'block' && targetColumn === null)
                         "
+                        :class="{ 'is-draggable': draggable({ kind: 'pattern', id: pattern.id, assetKind: pattern.kind }) }"
                         :title="
                             pattern.kind === 'block'
-                                ? 'Inserts into the selected column'
-                                : 'Appends a section'
+                                ? 'Drag onto a column, or click to use the selected one'
+                                : 'Drag between sections, or click to append'
                         "
                         @click="$emit('insertPattern', pattern.id)"
+                        @pointerdown="
+                            draggable({ kind: 'pattern', id: pattern.id, assetKind: pattern.kind }) &&
+                                $emit(
+                                    'dragStart',
+                                    { kind: 'pattern', id: pattern.id, assetKind: pattern.kind },
+                                    $event,
+                                )
+                        "
                     >
                         {{ pattern.name }}
                         <small>{{ pattern.kind }}</small>
@@ -224,12 +249,21 @@ function barStyle(span: number) {
                         type="button"
                         class="library__card"
                         :disabled="!capabilities.structure"
+                        :class="{ 'is-draggable': draggable({ kind: 'library', slug: asset.slug, assetKind: asset.kind }) }"
                         :title="
                             asset.missingBlocks.length > 0
                                 ? `This site is missing: ${asset.missingBlocks.join(', ')}`
                                 : (asset.description ?? asset.name)
                         "
                         @click="$emit('insertLibrary', asset.slug)"
+                        @pointerdown="
+                            draggable({ kind: 'library', slug: asset.slug, assetKind: asset.kind }) &&
+                                $emit(
+                                    'dragStart',
+                                    { kind: 'library', slug: asset.slug, assetKind: asset.kind },
+                                    $event,
+                                )
+                        "
                     >
                         {{ asset.name }}
                         <small>
@@ -402,6 +436,10 @@ function barStyle(span: number) {
 
 .library__card:hover:not(:disabled) {
     border-color: var(--builder-accent);
+}
+
+.library__card.is-draggable:not(:disabled) {
+    cursor: grab;
 }
 
 .library__card:disabled {

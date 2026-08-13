@@ -356,9 +356,25 @@
         new ResizeObserver(reportRects).observe(document.body)
     }
 
-    // The parent may not be listening yet; announce once loaded and let the
-    // handshake settle the origin.
-    window.addEventListener('load', function () {
+    // The parent may not be listening yet; announce and let the handshake
+    // settle the origin. Nothing this script sends leaves the frame before
+    // that handshake, so announcing late means a canvas that renders but
+    // does not respond — no rects, so no selection outline and nothing for
+    // a drag to aim at.
+    //
+    // `load` waits for every image, font and stylesheet, which on a real
+    // page is seconds after the document is usable. So announce as soon as
+    // the DOM is parsed AND again on load: the parent answers each one, and
+    // a second handshake costs one message.
+    function announce() {
         window.parent.postMessage({ magna: PROTOCOL, type: 'loaded' }, '*')
-    })
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', announce)
+    } else {
+        announce()
+    }
+
+    window.addEventListener('load', announce)
 })()
