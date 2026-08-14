@@ -5,6 +5,7 @@ import BuilderColumnControls from './BuilderColumnControls.vue'
 import BuilderStyleControls from './BuilderStyleControls.vue'
 import type { Located } from '../document/locate'
 import type { Breakpoint } from '../document/responsive'
+import { insertTag } from '../document/tags'
 import type {
     BlockDefinition,
     BlockFieldDefinition,
@@ -337,16 +338,52 @@ const tagSources = computed<Record<string, string>>(() => {
 })
 
 /**
- * Append an inline tag token to the field's current text. A content-tier
- * edit like any typing — the token resolves at render, and the editor can
- * move or delete it as plain text.
+ * Where the caret was in each text field, by handle.
+ *
+ * Kept because choosing from the tag picker moves focus out of the field, so
+ * by the time the insert runs the selection is gone. Recorded on the events
+ * that can move a caret rather than on input alone — a click or an arrow key
+ * moves it without changing a character.
+ *
+ * Not reactive: nothing renders from it, and making it reactive would redraw
+ * the inspector on every keystroke for a value only ever read once.
+ */
+const caretByField = new Map<string, { at: number; to: number }>()
+
+function rememberCaret(handle: string, event: Event): void {
+    const element = event.target as HTMLTextAreaElement | HTMLInputElement | null
+
+    if (element && typeof element.selectionStart === 'number') {
+        caretByField.set(handle, {
+            at: element.selectionStart,
+            to: element.selectionEnd ?? element.selectionStart,
+        })
+    }
+}
+
+/**
+ * Insert an inline tag token where the writer left the caret.
+ *
+ * A content-tier edit like any typing — the token resolves at render, and the
+ * editor moves or deletes it as plain text.
+ *
+ * This appended before, which is only ever right when the caret happens to be
+ * at the end: inserting a tag while editing the middle of a sentence put it
+ * after the full stop, and the writer had to cut and paste it back. With no
+ * remembered caret it still appends, which is the old behaviour and the safe
+ * reading of "we do not know where they were".
  */
 function insertInlineTag(field: BlockFieldDefinition, handle: string) {
     if (!props.located || handle === '') {
         return
     }
 
-    emit('edit', props.located.pointer, field.handle, valueFor(field) + `{tag:${handle}}`)
+    const value = valueFor(field)
+    const caret = caretByField.get(field.handle) ?? { at: value.length, to: value.length }
+
+    const { value: next } = insertTag(value, handle, caret.at, caret.to)
+
+    emit('edit', props.located.pointer, field.handle, next)
 }
 
 /** The selected column's id, when a column is what is selected. */
@@ -439,6 +476,10 @@ const title = computed<string>(() => {
                         :value="valueFor(field)"
                         :disabled="!editable"
                         @change="onInput(field, $event)"
+                        @blur="rememberCaret(field.handle, $event)"
+                        @select="rememberCaret(field.handle, $event)"
+                        @keyup="rememberCaret(field.handle, $event)"
+                        @click="rememberCaret(field.handle, $event)"
                     />
                     <select
                         v-if="editable && Object.keys(tagSources).length > 0"
