@@ -50,8 +50,35 @@
         )
     }
 
+    /*
+     * Rects are reported at most once per frame.
+     *
+     * Measuring every node forces layout, and the callers are exactly the
+     * things that fire in bursts: a ResizeObserver during a reflow, a
+     * window resize, a fragment swap. Unbatched, a 300-node document
+     * measured itself dozens of times for one visual change and posted the
+     * whole set each time. Coalescing costs at most a frame of staleness,
+     * which is the same frame the browser was going to paint anyway.
+     */
+    var rectsQueued = false
+
+    var nextFrame =
+        window.requestAnimationFrame
+            ? window.requestAnimationFrame.bind(window)
+            : function (callback) {
+                  return window.setTimeout(callback, 16)
+              }
+
     function reportRects() {
-        send('rects', { rects: nodes().map(rectFor), height: document.body.scrollHeight })
+        if (rectsQueued) {
+            return
+        }
+
+        rectsQueued = true
+        nextFrame(function () {
+            rectsQueued = false
+            send('rects', { rects: nodes().map(rectFor), height: document.body.scrollHeight })
+        })
     }
 
     function nodeIdFrom(target) {
