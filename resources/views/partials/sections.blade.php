@@ -57,12 +57,35 @@
         }
     </style>
 @endonce
+
+{{--
+    Builder-only affordance: an empty container is a real node with nothing
+    in it, so it lays out at zero height — invisible to the editor who just
+    added it, and impossible to aim a drop at. Given a floor and an outline
+    ONLY in the canvas; the published page renders the author's markup and
+    nothing of this.
+--}}
+@if($inBuilder)
+    @once
+        <style>
+            .magna-container--empty {
+                min-height: 48px;
+                outline: 1px dashed currentColor;
+                outline-offset: -1px;
+                opacity: 0.5;
+            }
+        </style>
+    @endonce
+@endif
 @php
     // Per-device style overrides, collected while the sections render and
     // emitted once at the end. Nothing accumulates unless a node actually
     // declares one, so a document that does not use them produces exactly
     // the markup it produced before they existed.
     $responsiveCss = '';
+    $collectCss = function (string $css) use (&$responsiveCss): void {
+        $responsiveCss .= $css;
+    };
 
     // Display conditions: absent closure (older include sites) = show all.
     $passes = $conditionsPass ?? fn (array $settings): bool => true;
@@ -239,34 +262,16 @@
                     >
                         @foreach($column->blocks as $block)
                             @continue(! $passes($block->settings))
-                            @php
-                                $blockView = $blockViewFor($block->block);
-
-                                // A block renders its own markup, so its
-                                // styles reach it through a class merged
-                                // into that markup and a rule in the page
-                                // stylesheet — never a second class or
-                                // style attribute, which the parser would
-                                // resolve in our favour and against the
-                                // block's own.
-                                $blockStyle = $block->settings['style'] ?? null;
-                                $blockRules = \Magna\Pages\Render\ResponsiveStyles::rulesFor(
-                                    $block->id,
-                                    $blockStyle,
-                                    \Magna\Pages\Render\StyleDescriptors::BLOCK,
-                                    withBase: true,
-                                );
-                                $responsiveCss .= $blockRules;
-                            @endphp
-                            @if($blockView !== null)
-                                {!! $mark(\Magna\Pages\Render\BlockStyleMarkup::withClass(view($blockView, [
-                                    'block' => $resolver->viewPayload($bound($block)),
-                                    'definition' => $registry->get($block->block),
-                                    // Page-level context any block may use
-                                    // (the locale switcher reads it).
-                                    'localeAlternates' => $localeAlternates ?? [],
-                                ])->render(), $blockRules === '' ? '' : \Magna\Pages\Render\ResponsiveStyles::nodeClass($block->id)), $block->id, 'block') !!}
-                            @endif
+                            @include('magna-pages::partials.block', [
+                                'block' => $block,
+                                'blockViewFor' => $blockViewFor,
+                                'registry' => $registry,
+                                'resolver' => $resolver,
+                                'mark' => $mark,
+                                'passes' => $passes,
+                                'bound' => $bound,
+                                'collectCss' => $collectCss,
+                            ])
                         @endforeach
                     </div>
                 @endforeach

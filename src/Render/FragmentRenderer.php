@@ -46,21 +46,34 @@ final class FragmentRenderer
             return null;
         }
 
-        $view = $this->themeViews->blockView($block->block);
-        if ($view === null) {
+        if ($this->themeViews->blockView($block->block) === null) {
             return null;
         }
 
-        // Same binding resolution as the full render — a fragment-swapped
-        // canvas and a freshly loaded one must be the same document.
-        $block = $block->withData($this->bindings->resolve($block->data, $context));
-
-        $html = view($view, [
-            'block' => $this->resolver->viewPayload($block),
-            'definition' => $this->registry->get($block->block),
+        // The SAME partial the full page render uses, so a fragment carries
+        // whatever that node carries there: its style class, its builder
+        // markers, its binding-resolved data — and, for a container, its
+        // children rendered through this same recursion. Rendering the
+        // block's view directly here (as this once did) made containers
+        // swap in empty and blocks lose their styling class.
+        return view('magna-pages::partials.block', [
+            'block' => $block,
+            'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
+            'registry' => $this->registry,
+            'resolver' => $this->resolver,
+            'mark' => $builderMode
+                ? fn (string $html, string $id, string $kind): string => $this->markup->mark($html, $id, $kind)
+                : fn (string $html, string $id, string $kind): string => $html,
+            // The builder shows every node — you cannot edit what you
+            // cannot see — matching PageRenderer's builder-mode stance.
+            'passes' => fn (array $settings): bool => true,
+            'bound' => fn (BlockNode $node): BlockNode => $node->withData(
+                $this->bindings->resolve($node->data, $context),
+            ),
+            // A fragment replaces one element; it cannot add rules to the
+            // page's stylesheet, which the full render already emitted.
+            'collectCss' => static function (string $css): void {},
         ])->render();
-
-        return $builderMode ? $this->markup->mark($html, $block->id, 'block') : $html;
     }
 
     private function findBlock(PageTree $tree, string $nodeId): ?BlockNode

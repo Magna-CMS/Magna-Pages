@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\BlockField;
 use Magna\Blocks\BlockRegistry;
+use Magna\Blocks\PageTreeValidator;
 use Magna\Content\Entry;
 use Magna\Pages\Render\BindingResolver;
 use Magna\Pages\Render\StyleDescriptors;
@@ -50,6 +51,10 @@ final class BuilderBootstrap
                 'blocks' => is_array($document) ? $document : [],
             ],
             'registry' => $this->registryPayload($this->blocks),
+            // How deep blocks may nest, so the builder refuses a drop the
+            // save would refuse anyway. Shipped rather than mirrored in
+            // TypeScript — the validator owns the number.
+            'maxBlockDepth' => PageTreeValidator::MAX_BLOCK_DEPTH,
             'tokens' => $this->tokens->cssVariables(),
             'capabilities' => $this->capabilities($actor),
             // What a $bind may point at, for the inspector's picker.
@@ -76,6 +81,11 @@ final class BuilderBootstrap
                 'icon' => $block->icon,
                 'category' => $block->category,
                 'requiresPermission' => $block->requiresPermission,
+                // Whether this block holds other blocks. The builder needs
+                // it to know what may be dropped INTO — asking the server
+                // rather than hardcoding handles is what lets a plugin ship
+                // a container of its own.
+                'container' => $block->container,
                 // Which fields the canvas may edit in place, if this block
                 // says. Absent means the first eligible one.
                 'inlineFields' => $block->inlineFields,

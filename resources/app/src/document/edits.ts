@@ -1,4 +1,5 @@
-import { locate, newId } from './locate'
+import { locate, newId, subtreeIds, type Located } from './locate'
+import { applyPatch } from './patch'
 import type {
     BlockDefinition,
     BlockDocument,
@@ -43,7 +44,16 @@ export function blockFrom(definition: BlockDefinition): BlockNode {
         }
     }
 
-    return { id: newId(), block: definition.handle, settings: {}, data }
+    const block: BlockNode = { id: newId(), block: definition.handle, settings: {}, data }
+
+    // A container starts with the list it holds. JSON Patch cannot add
+    // THROUGH a path that does not exist, so a container born without
+    // `children` would refuse its own first child.
+    if (definition.container === true) {
+        block.children = []
+    }
+
+    return block
 }
 
 /**
@@ -307,23 +317,60 @@ function balance(spans: number[]): number[] {
 }
 
 /**
- * Insert a block into a column. `index` is the position it should end up at;
- * omitting it appends.
+ * The pointer to the block list a node holds: a column's `blocks`, or a
+ * container block's `children`. Null for anything that holds no blocks.
+ *
+ * The one place the two are told apart. Everything above it — insert,
+ * move, paste, the navigator — asks for "the parent" and gets the same
+ * answer whichever kind it is, which is what keeps nesting from growing a
+ * parallel set of producers.
+ */
+function blockListPointer(parent: Located): string | null {
+    if (parent.kind === 'column') {
+        return `${parent.pointer}/blocks`
+    }
+
+    return parent.kind === 'block' ? `${parent.pointer}/children` : null
+}
+
+/** Whether a located container node has its `children` list yet. */
+function hasChildrenList(parent: Located): boolean {
+    return parent.kind !== 'block' || Array.isArray((parent.node as BlockNode).children)
+}
+
+/**
+ * Insert a block into a column or a container. `index` is the position it
+ * should end up at; omitting it appends.
+ *
+ * Container-ness is the caller's to check (the registry says which handles
+ * hold children); the server refuses the rest. What this guards is the
+ * shape: a container that has never held anything has no `children` key,
+ * and JSON Patch cannot add through a path that does not exist — so the
+ * first child creates the list.
  */
 export function insertBlock(
     document: BlockDocument,
-    columnId: string,
+    parentId: string,
     block: BlockNode,
     index?: number,
 ): PatchOperation[] | null {
-    const column = locate(document, columnId)
-    if (!column || column.kind !== 'column') {
+    const parent = locate(document, parentId)
+    if (!parent) {
         return null
+    }
+
+    const list = blockListPointer(parent)
+    if (list === null) {
+        return null
+    }
+
+    if (!hasChildrenList(parent)) {
+        return [{ op: 'add', path: `${parent.pointer}/children`, value: [block] }]
     }
 
     const at = index === undefined ? '-' : String(index)
 
-    return [{ op: 'add', path: `${column.pointer}/blocks/${at}`, value: block }]
+    return [{ op: 'add', path: `${list}/${at}`, value: block }]
 }
 
 export function removeNode(document: BlockDocument, nodeId: string): PatchOperation[] | null {
@@ -347,47 +394,89 @@ export function removeNode(document: BlockDocument, nodeId: string): PatchOperat
 }
 
 /**
- * Move a node to a new position.
+ * Move a block into a column or a container, at a position.
  *
- * The destination pointer is computed against the document as it is BEFORE
- * the move, which is what the server does too: a move is remove-then-add,
- * and an index that ignores the removal lands one position off whenever the
- * node travels forward inside the same list.
+ * A move is remove-then-add on BOTH sides, so the destination is addressed
+ * against the document as it will be once the node is lifted out. Two
+ * things shift under a removal and a pointer built before it gets both
+ * wrong: the index inside the node's own list, and — now that a container
+ * is a parent — the pointer of any target that is a LATER sibling of the
+ * node being moved.
+ *
+ * Refuses to put a node inside itself or inside its own subtree. That is
+ * not a UI nicety: the operation is expressible as a pointer, the server
+ * rejects it, and a client that sent it would show the editor a document
+ * that briefly contained a cycle.
  */
 export function moveNode(
     document: BlockDocument,
     nodeId: string,
-    targetColumnId: string,
+    parentId: string,
     index: number,
 ): PatchOperation[] | null {
     const source = locate(document, nodeId)
-    const column = locate(document, targetColumnId)
-
-    if (!source || source.kind !== 'block' || !column || column.kind !== 'column') {
+    if (!source || source.kind !== 'block') {
         return null
     }
 
-    const destination = `${column.pointer}/blocks/${adjustedIndex(source.pointer, column.pointer, index)}`
+    const target = locate(document, parentId)
+    if (!target) {
+        return null
+    }
 
-    if (destination === source.pointer) {
+    const listBefore = blockListPointer(target)
+    if (listBefore === null) {
+        return null
+    }
+
+    if (parentId === nodeId || subtreeIds(source.node).includes(parentId)) {
+        return null
+    }
+
+    // A container that has never held anything has no list to move into.
+    const seed: PatchOperation[] = hasChildrenList(target)
+        ? []
+        : [{ op: 'add', path: `${target.pointer}/children`, value: [] }]
+
+    const at = adjustedIndex(source.pointer, listBefore, index)
+
+    const lifted = applyPatch(document, [...seed, { op: 'remove', path: source.pointer }]).document
+    const relocated = locate(lifted, parentId)
+    if (!relocated) {
+        return null
+    }
+
+    const listAfter = blockListPointer(relocated)
+    if (listAfter === null) {
+        return null
+    }
+
+    const destination = `${listAfter}/${at}`
+    if (seed.length === 0 && destination === source.pointer) {
         return []
     }
 
-    return [{ op: 'move', from: source.pointer, path: destination }]
+    return [...seed, { op: 'move', from: source.pointer, path: destination }]
 }
 
 /**
- * When a block moves forward within its own column, the removal shifts every
+ * When a block moves forward within its own list, the removal shifts every
  * later sibling down one — so the caller's "drop at index 3" is index 2 by
  * the time the add runs.
  */
-function adjustedIndex(sourcePointer: string, columnPointer: string, index: number): number {
-    const prefix = `${columnPointer}/blocks/`
+function adjustedIndex(sourcePointer: string, listPointer: string, index: number): number {
+    const prefix = `${listPointer}/`
     if (!sourcePointer.startsWith(prefix)) {
         return index
     }
 
-    const sourceIndex = Number(sourcePointer.slice(prefix.length).split('/')[0])
+    const tail = sourcePointer.slice(prefix.length).split('/')
+    // Only a DIRECT member of this list shifts; a grandchild does not.
+    if (tail.length !== 1) {
+        return index
+    }
+
+    const sourceIndex = Number(tail[0])
 
     return Number.isNaN(sourceIndex) || sourceIndex >= index ? index : index - 1
 }
@@ -501,15 +590,3 @@ export function sectionOf(document: BlockDocument, columnId: string): SectionNod
     return null
 }
 
-/** The column a block currently sits in, for drag bookkeeping. */
-export function columnOf(document: BlockDocument, blockId: string): string | null {
-    for (const section of sectionsOf(document)) {
-        for (const column of section.columns ?? []) {
-            if ((column.blocks ?? []).some((block) => block.id === blockId)) {
-                return column.id
-            }
-        }
-    }
-
-    return null
-}

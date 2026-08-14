@@ -75,6 +75,12 @@ export interface BlockDefinition {
     inlineFields?: string[]
     category: string
     requiresPermission: string | null
+    /**
+     * Whether this block holds other blocks in `children`. Shipped by the
+     * server rather than inferred from the handle, so a plugin's own
+     * layout block is a drop target on exactly the same terms as core's.
+     */
+    container?: boolean
     fields: BlockFieldDefinition[]
 }
 
@@ -132,6 +138,14 @@ export interface BootstrapPayload {
     registry: BlockDefinition[]
     tokens: Record<string, string>
     capabilities: Capabilities
+    /**
+     * How deep blocks may nest, as the server counts it (a column-level
+     * block is depth 1). Shipped rather than mirrored: a constant copied
+     * into TypeScript is a second source of truth, and the day the two
+     * disagree the builder either forbids a legal drop or offers one the
+     * save will reject.
+     */
+    maxBlockDepth?: number
 }
 
 /** The sections of a document, whichever shape it arrived in. */

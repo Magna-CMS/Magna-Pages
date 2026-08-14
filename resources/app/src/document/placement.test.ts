@@ -16,6 +16,20 @@ describe('placement', () => {
         expect(canDrop({ kind: 'pattern', id: 'p1', assetKind: 'block' }, 'column')).toBe(true)
     })
 
+    it('lets anything a column accepts land in a container too', () => {
+        // A block is a block wherever it sits; the difference between a
+        // column and a container is where the drop lands, not whether it
+        // is allowed.
+        expect(canDrop({ kind: 'new', handle: 'heading' }, 'container')).toBe(true)
+        expect(canDrop({ kind: 'move', nodeId: 'blk-1' }, 'container')).toBe(true)
+        expect(canDrop({ kind: 'library', slug: 'cta', assetKind: 'block' }, 'container')).toBe(true)
+
+        // A section subtree still belongs between sections, never inside one.
+        expect(canDrop({ kind: 'library', slug: 'hero', assetKind: 'pattern' }, 'container')).toBe(
+            false,
+        )
+    })
+
     it('routes whole pages through the import flow instead of a drop', () => {
         const page = { kind: 'library', slug: 'landing', assetKind: 'page' } as const
 
@@ -24,6 +38,7 @@ describe('placement', () => {
         // silently discard the document being edited.
         expect(canDrop(page, 'canvas')).toBe(false)
         expect(canDrop(page, 'column')).toBe(false)
+        expect(canDrop(page, 'container')).toBe(false)
     })
 
     it('refuses unknown asset kinds rather than guessing a placement', () => {
@@ -31,6 +46,7 @@ describe('placement', () => {
 
         expect(placementOf(future)).toBeNull()
         expect(canDrop(future, 'column')).toBe(false)
+        expect(canDrop(future, 'container')).toBe(false)
         expect(canDrop(future, 'canvas')).toBe(false)
     })
 

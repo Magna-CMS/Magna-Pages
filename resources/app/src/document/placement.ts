@@ -12,8 +12,22 @@
  * branches on `kind`.
  */
 
-/** Where a payload is allowed to land. */
-export type Placement = 'column' | 'canvas' | 'import'
+/**
+ * Where a payload is allowed to land.
+ *
+ * `blocks` covers BOTH places a block can go — a column (sibling
+ * insertion) and a container block's children (container insertion) —
+ * because a block that may live in one may live in the other; the
+ * difference is where the drop lands, not whether it is allowed. `canvas`
+ * is root insertion, between sections.
+ */
+export type Placement = 'blocks' | 'canvas' | 'import'
+
+/** The two kinds of holder a `blocks` payload can land in. */
+export type BlockParentKind = 'column' | 'container'
+
+/** Every place a drop can be aimed at. */
+export type DropTargetKind = BlockParentKind | 'canvas'
 
 export type DragSource =
     /** A block from the element library, not yet in the document. */
@@ -30,8 +44,8 @@ export type DragSource =
  * entry; nothing else in the builder needs to know it exists.
  */
 export const ASSET_PLACEMENT: Record<string, Placement> = {
-    /** One block node — belongs inside a column. */
-    block: 'column',
+    /** One block node — belongs inside a column or a container. */
+    block: 'blocks',
     /** One section subtree — belongs between sections. */
     section: 'canvas',
     pattern: 'canvas',
@@ -50,7 +64,7 @@ export function placementOf(source: DragSource): Placement | null {
     switch (source.kind) {
         case 'new':
         case 'move':
-            return 'column'
+            return 'blocks'
         case 'pattern':
         case 'library':
             return ASSET_PLACEMENT[source.assetKind] ?? null
@@ -58,8 +72,10 @@ export function placementOf(source: DragSource): Placement | null {
 }
 
 /** Whether a drag can be dropped on a target of the given kind. */
-export function canDrop(source: DragSource, target: 'column' | 'canvas'): boolean {
-    return placementOf(source) === target
+export function canDrop(source: DragSource, target: DropTargetKind): boolean {
+    const placement = placementOf(source)
+
+    return placement === 'blocks' ? target !== 'canvas' : placement === target
 }
 
 /** A drag that must go through the import dialog rather than a drop. */

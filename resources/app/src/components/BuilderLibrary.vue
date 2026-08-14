@@ -26,7 +26,7 @@ import { useUiStore } from '../stores/ui'
 
 const props = defineProps<{
     registry: BlockDefinition[]
-    targetColumn: string | null
+    targetParent: string | null
     capabilities: Capabilities
     patterns: PatternSummary[]
     libraryAssets: LibraryAssetSummary[]
@@ -78,7 +78,7 @@ const visibleAssets = computed(() =>
     props.libraryAssets.filter((asset) => matches(asset.name, asset.description, asset.kind)),
 )
 
-const canPlace = computed(() => props.capabilities.structure && props.targetColumn !== null)
+const canPlace = computed(() => props.capabilities.structure && props.targetParent !== null)
 
 function blocked(definition: BlockDefinition): string | null {
     if (!props.capabilities.structure) {
@@ -87,7 +87,7 @@ function blocked(definition: BlockDefinition): string | null {
     if (definition.requiresPermission && !props.capabilities.style) {
         return `Needs ${definition.requiresPermission}`
     }
-    if (props.targetColumn === null) {
+    if (props.targetParent === null) {
         return 'Pick a column first'
     }
 
@@ -213,7 +213,7 @@ function draggable(source: DragSource): boolean {
                         class="library__card"
                         :disabled="
                             !capabilities.structure ||
-                            (pattern.kind === 'block' && targetColumn === null)
+                            (pattern.kind === 'block' && targetParent === null)
                         "
                         :class="{ 'is-draggable': draggable({ kind: 'pattern', id: pattern.id, assetKind: pattern.kind }) }"
                         :title="

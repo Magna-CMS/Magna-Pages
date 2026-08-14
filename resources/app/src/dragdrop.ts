@@ -1,4 +1,5 @@
 import type { NodeRect } from './bridge'
+import type { BlockParentKind } from './document/placement'
 
 /**
  * Where a drag would drop.
@@ -9,12 +10,18 @@ import type { NodeRect } from './bridge'
  * same function. Two implementations of that rule would eventually disagree,
  * and the user would watch a block land somewhere other than where the line
  * was drawn.
+ *
+ * A container block holds blocks exactly the way a column does, so it is a
+ * drop target on the same terms — one `ParentLayout` list covers both, and
+ * the innermost parent under the pointer wins. Anything else would make a
+ * container impossible to aim at: its rect is always inside its column's.
  */
 
 export interface DropTarget {
-    /** The column the block would land in. */
-    column: string
-    /** Index within that column, counted before the dragged node is removed. */
+    /** The node the block would land in: a column, or a container block. */
+    parent: string
+    kind: BlockParentKind
+    /** Index within that parent, counted before the dragged node is removed. */
     index: number
     /** Where to draw the insertion line. */
     indicator: { top: number; left: number; width: number }
@@ -27,86 +34,162 @@ export interface SectionDropTarget {
     indicator: { top: number; left: number; width: number }
 }
 
-export interface ColumnLayout {
-    column: string
+/** One place blocks can be dropped, as the document describes it. */
+export interface ParentInfo {
+    id: string
+    kind: BlockParentKind
+    /** Depth of blocks placed here — a column's blocks are depth 1. */
+    depth: number
+    /** Direct children, in document order. */
+    blockIds: string[]
+}
+
+export interface ParentLayout {
+    parent: string
+    kind: BlockParentKind
+    depth: number
     rect: NodeRect
     blocks: NodeRect[]
 }
 
 /**
- * Group reported rects into columns with their blocks, in document order.
+ * What the drag is carrying, and what the document will accept.
+ *
+ * Advisory only — the server refuses the same things through
+ * PageTreeValidator and PatchAuthorizer. This exists so the indicator is
+ * never drawn somewhere the drop would then be rejected, which reads as the
+ * builder losing the block.
+ */
+export interface DropRules {
+    /** Deepest block level the server stores (PageTreeValidator::MAX_BLOCK_DEPTH). */
+    maxDepth: number
+    /** Levels the payload itself occupies — 1 for a plain block. */
+    height: number
+    /** Parents the payload may not land in: itself and its descendants. */
+    forbidden: string[]
+}
+
+/**
+ * Group reported rects into the parents that hold them, in document order.
  *
  * Order comes from the caller's block-id lists rather than from geometry:
  * two blocks can share a vertical position (side-by-side floats, grid
  * children), and sorting those by `top` would silently reorder the document.
  */
-export function layout(
-    rects: NodeRect[],
-    blocksByColumn: Record<string, string[]>,
-): ColumnLayout[] {
+export function layout(rects: NodeRect[], parents: ParentInfo[]): ParentLayout[] {
     const byNode = new Map(rects.map((rect) => [rect.node, rect]))
 
-    return rects
-        .filter((rect) => rect.kind === 'column')
-        .map((rect) => ({
-            column: rect.node,
-            rect,
-            blocks: (blocksByColumn[rect.node] ?? [])
-                .map((id) => byNode.get(id))
-                .filter((entry): entry is NodeRect => entry !== undefined),
-        }))
+    return parents
+        .map((parent) => {
+            const rect = byNode.get(parent.id)
+            if (rect === undefined) {
+                return null
+            }
+
+            return {
+                parent: parent.id,
+                kind: parent.kind,
+                depth: parent.depth,
+                rect,
+                blocks: parent.blockIds
+                    .map((id) => byNode.get(id))
+                    .filter((entry): entry is NodeRect => entry !== undefined),
+            }
+        })
+        .filter((entry): entry is ParentLayout => entry !== null)
 }
 
 /**
  * The drop target for a pointer at (x, y) in canvas coordinates.
  *
- * Columns are matched by horizontal band, so dragging into an empty column
- * works — an empty column has no blocks to be "near", and a nearest-block
- * search would skip it entirely.
+ * Parents are matched by their box, so dragging into an EMPTY column or an
+ * empty container works — neither has blocks to be "near", and a
+ * nearest-block search would skip both entirely.
+ *
+ * The innermost matching parent wins: a container's box is inside its
+ * column's, so preferring the outer one would make containers unreachable.
  */
-export function dropTargetAt(columns: ColumnLayout[], x: number, y: number): DropTarget | null {
-    const column = columns.find(
-        (entry) =>
+export function dropTargetAt(
+    parents: ParentLayout[],
+    x: number,
+    y: number,
+    rules?: DropRules,
+): DropTarget | null {
+    let parent: ParentLayout | null = null
+
+    for (const entry of parents) {
+        const inside =
             x >= entry.rect.left &&
             x <= entry.rect.left + entry.rect.width &&
             y >= entry.rect.top &&
-            y <= entry.rect.top + entry.rect.height,
-    )
+            y <= entry.rect.top + entry.rect.height
 
-    if (!column) {
+        if (!inside || !accepts(entry, rules)) {
+            continue
+        }
+
+        if (parent === null || entry.depth >= parent.depth) {
+            parent = entry
+        }
+    }
+
+    if (!parent) {
         return null
     }
 
+    const holder = parent
     const indicatorFor = (top: number) => ({
         top,
-        left: column.rect.left,
-        width: column.rect.width,
+        left: holder.rect.left,
+        width: holder.rect.width,
     })
 
-    if (column.blocks.length === 0) {
+    if (holder.blocks.length === 0) {
         return {
-            column: column.column,
+            parent: holder.parent,
+            kind: holder.kind,
             index: 0,
-            indicator: indicatorFor(column.rect.top),
+            indicator: indicatorFor(holder.rect.top),
         }
     }
 
-    for (let index = 0; index < column.blocks.length; index++) {
-        const block = column.blocks[index]
+    for (let index = 0; index < holder.blocks.length; index++) {
+        const block = holder.blocks[index]
         const middle = block.top + block.height / 2
 
         if (y < middle) {
-            return { column: column.column, index, indicator: indicatorFor(block.top) }
+            return {
+                parent: holder.parent,
+                kind: holder.kind,
+                index,
+                indicator: indicatorFor(block.top),
+            }
         }
     }
 
-    const last = column.blocks[column.blocks.length - 1]
+    const last = holder.blocks[holder.blocks.length - 1]
 
     return {
-        column: column.column,
-        index: column.blocks.length,
+        parent: holder.parent,
+        kind: holder.kind,
+        index: holder.blocks.length,
         indicator: indicatorFor(last.top + last.height),
     }
+}
+
+/** Whether this parent may hold what the drag is carrying. */
+function accepts(parent: ParentLayout, rules?: DropRules): boolean {
+    if (!rules) {
+        return true
+    }
+
+    // Itself or one of its own descendants: a node cannot contain itself,
+    // and the server refuses the move outright.
+    if (rules.forbidden.includes(parent.parent)) {
+        return false
+    }
+
+    return parent.depth + rules.height - 1 <= rules.maxDepth
 }
 
 /**

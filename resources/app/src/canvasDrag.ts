@@ -7,7 +7,9 @@ import {
     layout,
     sectionDropTargetAt,
     sectionLayout,
+    type DropRules,
     type DropTarget,
+    type ParentInfo,
     type SectionDropTarget,
 } from './dragdrop'
 import { placementOf, type DragSource } from './document/placement'
@@ -28,16 +30,23 @@ import { placementOf, type DragSource } from './document/placement'
  */
 
 /** Where a completed drag wants its payload placed. */
-export type DropPlacement = { column: string; index: number } | { sectionIndex: number }
+export type DropPlacement = { parent: string; index: number } | { sectionIndex: number }
 
 export interface CanvasDragOptions {
     rects: Ref<NodeRect[]>
     /** The frame's scroll offset, to convert page coordinates to screen ones. */
     scrollY: Ref<number>
     sectionIds: ComputedRef<string[]>
-    blocksByColumn: ComputedRef<Record<string, string[]>>
+    /** Every column and container that could hold this drag, in document order. */
+    parents: ComputedRef<ParentInfo[]>
     /** The element the iframe fills — the origin of frame coordinates. */
     stage: Ref<HTMLElement | null>
+    /**
+     * What the document will accept for this payload — depth left, and the
+     * parents it may not enter. Absent means "no rule beyond geometry",
+     * which is what a fresh block from the library needs.
+     */
+    rulesFor?: (source: DragSource) => DropRules | undefined
     onDrop: (source: DragSource, at: DropPlacement) => void | Promise<void>
 }
 
@@ -46,21 +55,21 @@ export function useCanvasDrag(options: CanvasDragOptions) {
     const origin = ref<{ x: number; y: number } | null>(null)
     /** True once the pointer has travelled far enough for this to be a drag. */
     const active = ref(false)
-    const columnTarget = ref<DropTarget | null>(null)
+    const blockTarget = ref<DropTarget | null>(null)
     const sectionTarget = ref<SectionDropTarget | null>(null)
 
     /** The frame ignores the pointer while the parent is tracking a drag. */
     const overCanvas = ref(false)
 
     const indicator = computed(() =>
-        columnTarget.value?.indicator ?? sectionTarget.value?.indicator ?? null,
+        blockTarget.value?.indicator ?? sectionTarget.value?.indicator ?? null,
     )
 
     function reset() {
         source.value = null
         origin.value = null
         active.value = false
-        columnTarget.value = null
+        blockTarget.value = null
         sectionTarget.value = null
         overCanvas.value = false
     }
@@ -72,14 +81,15 @@ export function useCanvasDrag(options: CanvasDragOptions) {
         }
 
         const placement = placementOf(source.value)
-        columnTarget.value = null
+        blockTarget.value = null
         sectionTarget.value = null
 
-        if (placement === 'column') {
-            columnTarget.value = dropTargetAt(
-                layout(options.rects.value, options.blocksByColumn.value),
+        if (placement === 'blocks') {
+            blockTarget.value = dropTargetAt(
+                layout(options.rects.value, options.parents.value),
                 at.x,
                 at.y,
+                options.rulesFor?.(source.value),
             )
 
             return
@@ -114,8 +124,8 @@ export function useCanvasDrag(options: CanvasDragOptions) {
 
     async function finish() {
         const dragged = source.value
-        const at: DropPlacement | null = columnTarget.value
-            ? { column: columnTarget.value.column, index: columnTarget.value.index }
+        const at: DropPlacement | null = blockTarget.value
+            ? { parent: blockTarget.value.parent, index: blockTarget.value.index }
             : sectionTarget.value
               ? { sectionIndex: sectionTarget.value.index }
               : null
@@ -174,7 +184,7 @@ export function useCanvasDrag(options: CanvasDragOptions) {
             if (at) {
                 aim(at)
             } else {
-                columnTarget.value = null
+                blockTarget.value = null
                 sectionTarget.value = null
             }
         }
@@ -193,7 +203,7 @@ export function useCanvasDrag(options: CanvasDragOptions) {
         source,
         active,
         overCanvas,
-        columnTarget,
+        blockTarget,
         sectionTarget,
         indicator,
         press,

@@ -23,7 +23,7 @@ export interface PaletteContext {
     capabilities: { content: boolean; structure: boolean; style: boolean; publish: boolean }
     lockMine: boolean
     hasSelection: boolean
-    targetColumn: string | null
+    targetParent: string | null
     blocks: { handle: string; label: string; requiresPermission: string | null }[]
     patterns: { id: string; name: string; kind: string }[]
     breakpoints: string[]
@@ -53,7 +53,7 @@ export function buildActions(context: PaletteContext): PaletteAction[] {
             run: handlers.addSection,
         })
 
-        if (context.targetColumn !== null) {
+        if (context.targetParent !== null) {
             for (const block of context.blocks) {
                 // Blocks gated by a permission the actor lacks are omitted
                 // entirely here (unlike the Add panel, which teaches by
@@ -74,7 +74,7 @@ export function buildActions(context: PaletteContext): PaletteAction[] {
         }
 
         for (const pattern of context.patterns) {
-            if (pattern.kind === 'block' && context.targetColumn === null) {
+            if (pattern.kind === 'block' && context.targetParent === null) {
                 continue
             }
             actions.push({

@@ -7,7 +7,7 @@ function context(overrides: Partial<PaletteContext> = {}): PaletteContext {
         capabilities: { content: true, structure: true, style: true, publish: true },
         lockMine: true,
         hasSelection: true,
-        targetColumn: 'col-1',
+        targetParent: 'col-1',
         blocks: [
             { handle: 'heading', label: 'Heading', requiresPermission: null },
             { handle: 'html', label: 'HTML', requiresPermission: 'blocks.raw_html' },
@@ -76,7 +76,7 @@ describe('buildActions', () => {
     })
 
     it('drops column-dependent inserts when no column is targeted', () => {
-        const ids = buildActions(context({ targetColumn: null })).map((action) => action.id)
+        const ids = buildActions(context({ targetParent: null })).map((action) => action.id)
 
         expect(ids).not.toContain('add-block-heading')
         expect(ids).not.toContain('pattern-p2') // block pattern needs a column

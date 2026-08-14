@@ -5,7 +5,6 @@ import {
     addColumn,
     appendSection,
     blockFrom,
-    columnOf,
     duplicateNode,
     emptySection,
     insertBlock,
@@ -18,13 +17,14 @@ import {
     setSpans,
     withFreshIds,
 } from '../document/edits'
-import { locate } from '../document/locate'
+import { locate, parentOf } from '../document/locate'
 import { applyPatch } from '../document/patch'
 import { classifyFailure, loadQueue, persistQueue, type QueuedBatch } from '../resilience'
 import type {
     ApprovalState,
     BlockDefinition,
     BlockDocument,
+    BlockNode,
     Capabilities,
     LockState,
     PatchOperation,
@@ -58,10 +58,23 @@ export interface ClipboardEntry {
 }
 
 /**
- * Where an inserted instance goes. Omitting `index` appends, which is what
- * click-to-insert means; a drag always knows its exact position.
+ * Where an inserted instance goes.
+ *
+ * `parent` is whatever holds blocks — a column, or a container block. The
+ * two are the same decision to every caller, so they are one shape here;
+ * `sectionIndex` is the other decision entirely, a position between
+ * sections at the root of the document. Omitting `index` appends, which is
+ * what click-to-insert means; a drag always knows its exact position.
  */
-export type Placement = { column: string; index?: number } | { sectionIndex: number }
+export type Placement = { parent: string; index?: number } | { sectionIndex: number }
+
+/** Nesting depth the server allows when the bootstrap payload is silent. */
+const DEFAULT_MAX_BLOCK_DEPTH = 6
+
+/** Whether a block holds other blocks, according to the shipped registry. */
+function holdsChildren(registry: BlockDefinition[], block: BlockNode): boolean {
+    return registry.find((definition) => definition.handle === block.block)?.container === true
+}
 
 interface HistoryEntry {
     label: string
@@ -101,6 +114,8 @@ interface State {
     libraryCollections: LibraryCollectionSummary[]
     blocks: BlockDocument
     registry: BlockDefinition[]
+    /** How deep blocks may nest, as the server counts it. */
+    maxBlockDepth: number
     tokens: Record<string, string>
     capabilities: Capabilities
     selectedNode: string | null
@@ -132,6 +147,7 @@ export const useDocumentStore = defineStore('document', {
         libraryCollections: [],
         blocks: [],
         registry: [],
+        maxBlockDepth: DEFAULT_MAX_BLOCK_DEPTH,
         tokens: {},
         capabilities: { content: false, structure: false, style: false, publish: false },
         selectedNode: null,
@@ -158,6 +174,52 @@ export const useDocumentStore = defineStore('document', {
             return (handle: string): BlockDefinition | undefined =>
                 state.registry.find((definition) => definition.handle === handle)
         },
+
+        /**
+         * Whether a block holds other blocks. The registry answers it, so
+         * `container` is never inferred from a handle — a plugin's own
+         * layout block nests on the same terms core's does.
+         */
+        isContainer: (state) => {
+            return (block: BlockNode): boolean => holdsChildren(state.registry, block)
+        },
+
+        /**
+         * Where a click-to-insert puts a block, given what is selected.
+         *
+         * A selected CONTAINER is the thing being filled, so the block goes
+         * inside it; anything else gets a sibling. A selected section
+         * targets its first column, so "add a section, then add an element"
+         * works without a second click into the column — the approved flow
+         * is Add Section → Choose Columns → Drag Element, and making the
+         * middle step mandatory would break it.
+         */
+        insertionParent(state): string | null {
+            if (state.selectedNode === null) {
+                return null
+            }
+
+            const found = locate(state.blocks, state.selectedNode)
+            if (!found) {
+                return null
+            }
+
+            if (found.kind === 'column') {
+                return state.selectedNode
+            }
+
+            if (found.kind === 'section') {
+                const columns = (found.node as SectionNode).columns ?? []
+
+                return columns.length > 0 ? String(columns[0].id) : null
+            }
+
+            const block = found.node as BlockNode
+
+            return holdsChildren(state.registry, block)
+                ? block.id
+                : (parentOf(state.blocks, block.id)?.id ?? null)
+        },
     },
 
     actions: {
@@ -169,6 +231,7 @@ export const useDocumentStore = defineStore('document', {
             this.status = payload.document.status
             this.blocks = payload.document.blocks
             this.registry = payload.registry
+            this.maxBlockDepth = payload.maxBlockDepth ?? DEFAULT_MAX_BLOCK_DEPTH
             this.tokens = payload.tokens
             this.capabilities = payload.capabilities
             this.lock = payload.lock ?? { mine: true, holder: null }
@@ -287,14 +350,9 @@ export const useDocumentStore = defineStore('document', {
                 !Array.isArray(instance.node) && typeof instance.node.block === 'string'
 
             if (isBlock) {
-                const column =
-                    at && 'column' in at
-                        ? at.column
-                        : this.selectedNode
-                          ? columnOf(this.blocks, this.selectedNode)
-                          : null
+                const parent = at && 'parent' in at ? at.parent : this.insertionParent
 
-                if (column === null) {
+                if (parent === null) {
                     this.error = 'Choose a column for this block.'
 
                     return false
@@ -302,9 +360,9 @@ export const useDocumentStore = defineStore('document', {
 
                 const operations = insertBlock(
                     this.blocks,
-                    column,
+                    parent,
                     instance.node as never,
-                    at && 'column' in at ? at.index : undefined,
+                    at && 'parent' in at ? at.index : undefined,
                 )
 
                 return operations ? this.edit(api, label, operations) : false
@@ -588,7 +646,7 @@ export const useDocumentStore = defineStore('document', {
          */
         async addBlock(
             api: BuilderApi,
-            columnId: string,
+            parentId: string,
             handle: string,
             index?: number,
         ): Promise<boolean> {
@@ -599,7 +657,7 @@ export const useDocumentStore = defineStore('document', {
 
             const block = blockFrom(definition)
             // A click appends; a drop states exactly where the line was drawn.
-            const operations = insertBlock(this.blocks, columnId, block, index)
+            const operations = insertBlock(this.blocks, parentId, block, index)
             if (!operations) {
                 return false
             }
@@ -705,10 +763,10 @@ export const useDocumentStore = defineStore('document', {
         async moveBlock(
             api: BuilderApi,
             nodeId: string,
-            columnId: string,
+            parentId: string,
             index: number,
         ): Promise<boolean> {
-            const operations = moveNode(this.blocks, nodeId, columnId, index)
+            const operations = moveNode(this.blocks, nodeId, parentId, index)
             if (!operations || operations.length === 0) {
                 return operations !== null
             }
@@ -848,14 +906,14 @@ export const useDocumentStore = defineStore('document', {
             const node = withFreshIds(entry.node)
 
             if (entry.kind === 'block') {
-                const column = this.selectedNode ? columnOf(this.blocks, this.selectedNode) : null
-                if (column === null) {
+                const parent = this.insertionParent
+                if (parent === null) {
                     this.error = 'Choose a column to paste into.'
 
                     return false
                 }
 
-                const operations = insertBlock(this.blocks, column, node as never)
+                const operations = insertBlock(this.blocks, parent, node as never)
 
                 return operations ? this.edit(api, 'Paste', operations) : false
             }

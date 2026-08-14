@@ -16,15 +16,23 @@ import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
-import { columnOf, exportAsLibraryAsset, sectionOf } from './document/edits'
+import { exportAsLibraryAsset, sectionOf } from './document/edits'
 import { inlineTarget, type InlineMode } from './document/inline'
 import { responsiveStyleOperations, type Breakpoint as ResponsiveBreakpoint } from './document/responsive'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
-import { locate, type NodeKind } from './document/locate'
+import {
+    blockParents,
+    locate,
+    parentOf,
+    subtreeHeight,
+    subtreeIds,
+    type NodeKind,
+} from './document/locate'
 import { needsImportFlow, type DragSource } from './document/placement'
+import type { DropRules, ParentInfo } from './dragdrop'
 import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
-import type { SectionNode, StyleControl } from './document/types'
+import type { BlockNode, SectionNode, StyleControl } from './document/types'
 import { useDocumentStore } from './stores/document'
 import { useUiStore, type Breakpoint } from './stores/ui'
 
@@ -61,27 +69,55 @@ const BREAKPOINTS: Record<Breakpoint, string> = { desktop: '100%', tablet: '768p
 
 const stage = ref<HTMLElement | null>(null)
 
-/** Block ids per column, so drop math orders by the document, not geometry. */
-const blocksByColumn = computed<Record<string, string[]>>(() => {
-    const map: Record<string, string[]> = {}
-
-    for (const section of store.sections) {
-        for (const column of section.columns ?? []) {
-            map[column.id] = (column.blocks ?? []).map((block) => block.id)
-        }
-    }
-
-    return map
-})
+/**
+ * Every place a block can land — each column, and each container inside
+ * one — with its direct children in DOCUMENT order, so drop math orders by
+ * the document rather than by geometry.
+ *
+ * Derived from the store's document, never from a second tree of its own:
+ * the navigator, the canvas and this all read the one document, which is
+ * the only way they can agree about what is inside what.
+ */
+const dropParents = computed<ParentInfo[]>(() =>
+    blockParents(store.blocks, store.isContainer).map((parent) => ({
+        id: parent.id,
+        kind: parent.kind,
+        depth: parent.depth,
+        blockIds: parent.blocks.map((block) => block.id),
+    })),
+)
 
 const sectionIds = computed(() => store.sections.map((section) => section.id))
+
+/**
+ * What the document will accept for this drag: how much depth the payload
+ * itself needs, and which parents it may not enter. Advisory — the server
+ * refuses the same things — but it keeps the indicator from being drawn
+ * somewhere the drop would then be rejected.
+ */
+function dropRulesFor(source: DragSource): DropRules {
+    if (source.kind !== 'move') {
+        return { maxDepth: store.maxBlockDepth, height: 1, forbidden: [] }
+    }
+
+    const moved = locate(store.blocks, source.nodeId)
+    const node = moved?.kind === 'block' ? (moved.node as BlockNode) : null
+
+    return {
+        maxDepth: store.maxBlockDepth,
+        height: node ? subtreeHeight(node) : 1,
+        // Itself and everything under it: a node cannot contain itself.
+        forbidden: node ? subtreeIds(node) : [source.nodeId],
+    }
+}
 
 const drag = useCanvasDrag({
     rects,
     scrollY,
     sectionIds,
-    blocksByColumn,
+    parents: dropParents,
     stage,
+    rulesFor: dropRulesFor,
     onDrop: (source, at) => onDrop(source, at),
 })
 
@@ -267,10 +303,10 @@ async function commitText(nodeId: string, text: string) {
  * payload to the producer that knows how to insert it.
  */
 async function onDrop(source: DragSource, at: DropPlacement) {
-    const inColumn = 'column' in at
+    const inParent = 'parent' in at
 
     if (source.kind === 'move') {
-        if (inColumn && (await store.moveBlock(api, source.nodeId, at.column, at.index))) {
+        if (inParent && (await store.moveBlock(api, source.nodeId, at.parent, at.index))) {
             reloadCanvas()
         }
 
@@ -278,7 +314,7 @@ async function onDrop(source: DragSource, at: DropPlacement) {
     }
 
     if (source.kind === 'new') {
-        if (inColumn && (await store.addBlock(api, at.column, source.handle, at.index))) {
+        if (inParent && (await store.addBlock(api, at.parent, source.handle, at.index))) {
             ui.inspect('content')
             reloadCanvas()
         }
@@ -418,36 +454,15 @@ async function onSettingEdit(pointer: string, key: string, value: unknown) {
 }
 
 /**
- * Where a new block would go: the selected column, or the column holding
- * the selected block, so "select a heading, add a paragraph" lands where the
- * user is looking rather than at the end of the page.
+ * Where a new block would go — the selected container, the selected column,
+ * or whatever holds the selected block, so "select a heading, add a
+ * paragraph" lands where the user is looking rather than at the end of the
+ * page. The rule lives in the store, because paste needs the same answer.
  */
-const targetColumn = computed<string | null>(() => {
-    if (!selected.value) {
-        return null
-    }
-
-    const id = String((selected.value.node as { id: string }).id)
-
-    if (selected.value.kind === 'column') {
-        return id
-    }
-
-    // A selected SECTION targets its first column, so "add a section, then
-    // add an element" works without a second click into the column — the
-    // approved flow is Add Section → Choose Columns → Drag Element, and
-    // making the middle step mandatory would break it.
-    if (selected.value.kind === 'section') {
-        const columns = (selected.value.node as { columns?: { id: string }[] }).columns ?? []
-
-        return columns.length > 0 ? String(columns[0].id) : null
-    }
-
-    return columnOf(store.blocks, id)
-})
+const targetParent = computed<string | null>(() => store.insertionParent)
 
 async function onAddBlock(handle: string) {
-    if (targetColumn.value && (await store.addBlock(api, targetColumn.value, handle))) {
+    if (targetParent.value && (await store.addBlock(api, targetParent.value, handle))) {
         // A placed element is one the editor wants to fill in next.
         ui.inspect('content')
         reloadCanvas()
@@ -564,26 +579,27 @@ async function onMoveSection(delta: number) {
  * among their column's blocks. Both the move actions and their enabled
  * state need it.
  */
-function siblingsOf(nodeId: string): { list: string[]; index: number; column: string | null } {
-    for (const section of store.sections) {
-        if (section.id === nodeId) {
-            return {
-                list: store.sections.map((entry) => entry.id),
-                index: store.sections.findIndex((entry) => entry.id === nodeId),
-                column: null,
-            }
-        }
-
-        for (const column of section.columns ?? []) {
-            const blocks = (column.blocks ?? []).map((block) => block.id)
-            const index = blocks.indexOf(nodeId)
-            if (index >= 0) {
-                return { list: blocks, index, column: column.id }
-            }
+function siblingsOf(nodeId: string): { list: string[]; index: number; parent: string | null } {
+    const section = store.sections.findIndex((entry) => entry.id === nodeId)
+    if (section >= 0) {
+        return {
+            list: store.sections.map((entry) => entry.id),
+            index: section,
+            parent: null,
         }
     }
 
-    return { list: [], index: -1, column: null }
+    // Blocks reorder among the blocks of whatever holds them — a column, or
+    // a container. One lookup, so a nested block is as movable from the
+    // keyboard as a top-level one.
+    const parent = parentOf(store.blocks, nodeId)
+    if (parent === null) {
+        return { list: [], index: -1, parent: null }
+    }
+
+    const list = parent.blocks.map((block) => block.id)
+
+    return { list, index: list.indexOf(nodeId), parent: parent.id }
 }
 
 /** Right-click on the canvas: the node's actions, where the pointer is. */
@@ -713,7 +729,7 @@ async function onMoveNode(nodeId: string, delta: number) {
         return
     }
 
-    if (position.column === null) {
+    if (position.parent === null) {
         await onMoveSection(delta)
 
         return
@@ -726,7 +742,7 @@ async function onMoveNode(nodeId: string, delta: number) {
         return
     }
 
-    if (await store.moveBlock(api, nodeId, position.column, target)) {
+    if (await store.moveBlock(api, nodeId, position.parent, target)) {
         reloadCanvas()
     }
 }
@@ -761,7 +777,7 @@ const paletteActions = computed(() =>
         capabilities: store.capabilities,
         lockMine: store.lock.mine,
         hasSelection: store.selectedNode !== null,
-        targetColumn: targetColumn.value,
+        targetParent: targetParent.value,
         blocks: store.registry.map((definition) => ({
             handle: definition.handle,
             label: definition.label,
@@ -970,8 +986,8 @@ async function onInsertLibrary(slug: string) {
     }
 
     // A click has no target of its own, so a block-shaped asset joins the
-    // end of the column the selection is in. A drag supplies an exact one.
-    const at = targetColumn.value ? { column: targetColumn.value } : undefined
+    // end of whatever the selection sits in. A drag supplies an exact one.
+    const at = targetParent.value ? { parent: targetParent.value } : undefined
 
     if (await store.insertLibraryAsset(api, slug, at)) {
         reloadCanvas()
@@ -988,9 +1004,9 @@ async function onImportPage(mode: 'replace' | 'append') {
 }
 
 async function onInsertPattern(id: string) {
-    // Click-to-insert: a block pattern joins the column the selection is
+    // Click-to-insert: a block pattern joins whatever the selection sits
     // in, a section pattern appends. A drag supplies an exact target.
-    const at = targetColumn.value ? { column: targetColumn.value } : undefined
+    const at = targetParent.value ? { parent: targetParent.value } : undefined
 
     if (await store.insertPattern(api, id, at)) {
         reloadCanvas()
@@ -1224,7 +1240,7 @@ onBeforeUnmount(() => {
                 <template #library>
                     <BuilderLibrary
                         :registry="store.registry"
-                        :target-column="targetColumn"
+                        :target-parent="targetParent"
                         :capabilities="store.capabilities"
                         :patterns="store.patterns"
                         :library-assets="store.libraryAssets"

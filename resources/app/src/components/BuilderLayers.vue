@@ -3,7 +3,7 @@ import { ref } from 'vue'
 
 import type { NodeAction, NodeActionKey } from '../document/actions'
 import type { NodeKind } from '../document/locate'
-import type { SectionNode } from '../document/types'
+import type { BlockNode, SectionNode } from '../document/types'
 import BuilderNodeMenu from './BuilderNodeMenu.vue'
 
 /**
@@ -38,6 +38,35 @@ function toggle(nodeId: string) {
     const next = new Set(collapsed.value)
     next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId)
     collapsed.value = next
+}
+
+/**
+ * A column's blocks, and the blocks inside those, as one flat list with a
+ * depth on each row.
+ *
+ * Flattened rather than nested markup so the tree stays ONE component
+ * reading ONE document: a recursive row component would need the selection,
+ * the collapse set and the action table threaded through every level, and
+ * the day one of them stopped being passed down a nested row would quietly
+ * behave differently from a top-level one. Indentation is the depth.
+ */
+interface LayerRow {
+    block: BlockNode
+    depth: number
+    hasChildren: boolean
+}
+
+function rowsFor(blocks: BlockNode[], depth = 0, into: LayerRow[] = []): LayerRow[] {
+    for (const block of blocks) {
+        const children = block.children ?? []
+        into.push({ block, depth, hasChildren: children.length > 0 })
+
+        if (children.length > 0 && !collapsed.value.has(block.id)) {
+            rowsFor(children, depth + 1, into)
+        }
+    }
+
+    return into
 }
 
 const openMenu = ref<string | null>(null)
@@ -179,17 +208,34 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
                         />
 
                         <ul v-if="!collapsed.has(column.id)" class="layers__list layers__list--nested">
-                            <li v-for="block in column.blocks ?? []" :key="block.id">
+                            <li
+                                v-for="row in rowsFor(column.blocks ?? [])"
+                                :key="row.block.id"
+                                :style="{ paddingLeft: `${row.depth * 12}px` }"
+                            >
                                 <div class="layers__row">
+                                    <button
+                                        v-if="row.hasChildren"
+                                        type="button"
+                                        class="layers__twisty"
+                                        :aria-expanded="!collapsed.has(row.block.id)"
+                                        :aria-label="`${collapsed.has(row.block.id) ? 'Expand' : 'Collapse'} ${row.block.block}`"
+                                        @click="toggle(row.block.id)"
+                                    >
+                                        {{ collapsed.has(row.block.id) ? '▸' : '▾' }}
+                                    </button>
+                                    <span v-else class="layers__twisty layers__twisty--leaf" aria-hidden="true"></span>
+
                                     <button
                                         type="button"
                                         class="layers__node"
-                                        :class="{ 'is-selected': selected === block.id }"
-                                        @click="$emit('select', block.id)"
+                                        :class="{ 'is-selected': selected === row.block.id }"
+                                        :aria-current="selected === row.block.id ? 'true' : undefined"
+                                        @click="$emit('select', row.block.id)"
                                     >
-                                        {{ nameOf(block.settings, block.block) }}
+                                        {{ nameOf(row.block.settings, row.block.block) }}
                                         <span
-                                            v-for="mark in badges(block.settings)"
+                                            v-for="mark in badges(row.block.settings)"
                                             :key="mark"
                                             class="layers__badge"
                                         >
@@ -200,19 +246,19 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
                                     <button
                                         type="button"
                                         class="layers__more"
-                                        :aria-label="`Actions for this ${block.block}`"
-                                        @click="openMenu = openMenu === block.id ? null : block.id"
+                                        :aria-label="`Actions for this ${row.block.block}`"
+                                        @click="openMenu = openMenu === row.block.id ? null : row.block.id"
                                     >
                                         ⋮
                                     </button>
                                 </div>
 
                                 <BuilderNodeMenu
-                                    v-if="openMenu === block.id"
+                                    v-if="openMenu === row.block.id"
                                     :at="null"
-                                    :actions="menuFor(block.id, 'block')"
-                                    :label="block.block"
-                                    @pick="pick(block.id, $event)"
+                                    :actions="menuFor(row.block.id, 'block')"
+                                    :label="row.block.block"
+                                    @pick="pick(row.block.id, $event)"
                                 />
                             </li>
                         </ul>
@@ -294,6 +340,11 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
 .layers__twisty:hover,
 .layers__more:hover {
     opacity: 1;
+}
+
+/* Keeps a leaf row's label aligned with its siblings' labels. */
+.layers__twisty--leaf {
+    cursor: default;
 }
 
 .layers__empty {
