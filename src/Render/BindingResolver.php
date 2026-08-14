@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Magna\Pages\Render;
 
 use Magna\Blocks\DynamicTags\DynamicTagRegistry;
+use Magna\Blocks\Resolution\ResolverBudget;
 use Magna\Content\Entry;
 use Magna\Content\SchemaRegistry;
 use Magna\Settings\GeneralSettings;
@@ -35,6 +36,7 @@ class BindingResolver
     public function __construct(
         private readonly DynamicTagRegistry $tags,
         private readonly SchemaRegistry $schemas,
+        private readonly ResolverBudget $budget,
     ) {}
 
     /**
@@ -106,7 +108,13 @@ class BindingResolver
                 return '';
             }
             try {
-                return $tag->resolve();
+                /*
+                 * Through the budget, so a page carrying forty slow tags
+                 * costs the visitor a bounded wait and some gaps rather than
+                 * an unbounded one. A refused tag is null here and reads as
+                 * the same gap an unknown tag renders.
+                 */
+                return $this->budget->spend('tag', $tag->handle(), fn (): string => $tag->resolve()) ?? '';
             } catch (Throwable $e) {
                 // A misbehaving tag costs its own gap, never the page.
                 logger()->warning("Dynamic tag [{$tag->handle()}] failed to resolve: {$e->getMessage()}");

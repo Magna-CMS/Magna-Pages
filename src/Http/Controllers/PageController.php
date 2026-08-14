@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Magna\Pages\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Magna\Blocks\Resolution\ResolverBudget;
 use Magna\Pages\Cache\PageCache;
 use Magna\Pages\Collections\CollectionResponder;
 use Magna\Pages\Frontend\FrontendPageResponder;
@@ -35,6 +36,7 @@ final class PageController
         private readonly CollectionResponder $collections,
         private readonly LocalePrefix $localePrefix,
         private readonly ThemeTokens $tokens,
+        private readonly ResolverBudget $budget,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -132,6 +134,16 @@ final class PageController
                 now(),
             );
             $cacheable = $verdict['cacheable'];
+
+            /*
+             * A render that spent its resolver budget produced gaps where
+             * slow tags and loops should have been. Storing that copy would
+             * outlive the slow minute that caused it and serve a visibly
+             * broken page to everybody until something purged it.
+             */
+            if ($this->budget->exhausted()) {
+                $cacheable = false;
+            }
 
             // A scheduled design change is another expiry boundary: the
             // earliest of the two decides how long this copy may live.

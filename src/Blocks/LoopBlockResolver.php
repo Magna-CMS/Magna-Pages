@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Magna\Pages\Blocks;
 
 use Magna\Blocks\DataSources\DataSourceRegistry;
+use Magna\Blocks\Resolution\ResolverBudget;
 use Magna\Blocks\Resolution\ResolvesBlockData;
 
 /**
@@ -19,7 +20,10 @@ final class LoopBlockResolver implements ResolvesBlockData
 {
     private const MAX_ITEMS = 50;
 
-    public function __construct(private readonly DataSourceRegistry $registry) {}
+    public function __construct(
+        private readonly DataSourceRegistry $registry,
+        private readonly ResolverBudget $budget,
+    ) {}
 
     public function handle(): string
     {
@@ -42,7 +46,17 @@ final class LoopBlockResolver implements ResolvesBlockData
         $limit = is_numeric($data['limit'] ?? null) ? (int) $data['limit'] : 6;
         $limit = max(1, min(self::MAX_ITEMS, $limit));
 
-        $items = $source->fetch(['limit' => $limit]);
+        /*
+         * Through the render budget: a data source is plugin code fetching
+         * on a visitor's request, and a page with several slow loops is the
+         * shape this bounds. A refused fetch renders the same empty loop a
+         * vanished source does.
+         */
+        $items = $this->budget->spend(
+            'source',
+            $source->handle(),
+            fn (): array => $source->fetch(['limit' => $limit]),
+        ) ?? [];
 
         // The clamp is enforced HERE regardless of what the source returned
         // — a generous source must not turn one block into a data dump.
