@@ -111,7 +111,7 @@ function swatch(control: StyleControl): string {
                     :value="swatch(control)"
                     :disabled="!canEdit"
                     :aria-label="`${control.label} colour picker`"
-                    @input="$emit('set', control.key, ($event.target as HTMLInputElement).value)"
+                    @change="$emit('set', control.key, ($event.target as HTMLInputElement).value)"
                 />
             </span>
 
