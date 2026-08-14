@@ -113,6 +113,29 @@ test('drags an element from the panel into the column it was dropped on', async 
     expect(inSecondColumn).toBe(true)
 })
 
+test('opens every dock drawer, including the ones fetched on demand', async ({ page }) => {
+    await newBuilderPage(page, 'Drawers')
+
+    // Design, Checks, History and Comments are loaded the first time they
+    // are opened, so a broken dynamic import shows up as a drawer that
+    // opens onto nothing — which no other spec would catch.
+    for (const [tab, heading] of [
+        ['Design', 'Design'],
+        ['Checks', 'Checks'],
+        ['History', 'History'],
+        ['Comments', 'Comments'],
+    ]) {
+        await page.getByRole('button', { name: tab, exact: true }).click()
+        await expect(
+            page.getByRole('region').getByRole('heading', { name: heading, exact: true }),
+        ).toBeVisible({ timeout: 15_000 })
+    }
+
+    // The navigator stays eager: it is the guaranteed keyboard path.
+    await page.getByRole('button', { name: 'Navigator', exact: true }).click()
+    await expect(page.getByRole('navigation', { name: 'Page structure' })).toBeVisible()
+})
+
 test('edits rich text on the canvas and stores the markup', async ({ page }) => {
     await newBuilderPage(page, 'Rich')
 

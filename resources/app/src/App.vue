@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { createApi } from './api'
 import { CanvasBridge, debounceByKey, type NodeRect } from './bridge'
 import BuilderCommandPalette from './components/BuilderCommandPalette.vue'
-import BuilderDesignPanel from './components/BuilderDesignPanel.vue'
 import BuilderDock from './components/BuilderDock.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderLibrary from './components/BuilderLibrary.vue'
 import BuilderNodeMenu from './components/BuilderNodeMenu.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
-import BuilderShortcuts from './components/BuilderShortcuts.vue'
-import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
@@ -48,6 +45,24 @@ import { useUiStore, type Breakpoint } from './stores/ui'
  * styling nodes inside the frame — the frame's DOM has to stay exactly what
  * ships, so nothing the builder draws may live in it.
  */
+
+/**
+ * Drawer surfaces, fetched the first time one is opened.
+ *
+ * The dock only renders the open drawer's slot, so these never mount
+ * until an editor asks for them — and an editor who never opens Design,
+ * Checks, History or Comments never pays for their code
+ * (12-BUILDER-REDESIGN §17).
+ *
+ * The NAVIGATOR is deliberately not among them: it is the guaranteed
+ * keyboard editing path, so it is opened constantly and must not wait on
+ * a network round trip to appear.
+ */
+const BuilderDesignPanel = defineAsyncComponent(
+    () => import('./components/BuilderDesignPanel.vue'),
+)
+const BuilderToolsPanel = defineAsyncComponent(() => import('./components/BuilderToolsPanel.vue'))
+const BuilderShortcuts = defineAsyncComponent(() => import('./components/BuilderShortcuts.vue'))
 
 const pageId = document.getElementById('magna-builder')?.dataset.page ?? ''
 const api = createApi(pageId)
