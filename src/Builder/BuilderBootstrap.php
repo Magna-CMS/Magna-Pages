@@ -86,6 +86,11 @@ final class BuilderBootstrap
                 // rather than hardcoding handles is what lets a plugin ship
                 // a container of its own.
                 'container' => $block->container,
+                // What a freshly inserted instance starts with. Computed
+                // from the schema server-side because only this side knows
+                // what an `optionsFrom` select offers here — a builder that
+                // seeded its own would insert blocks the save then refuses.
+                'seed' => $block->seedData(),
                 // Which fields the canvas may edit in place, if this block
                 // says. Absent means the first eligible one.
                 'inlineFields' => $block->inlineFields,

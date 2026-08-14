@@ -81,6 +81,13 @@ export interface BlockDefinition {
      * layout block is a drop target on exactly the same terms as core's.
      */
     container?: boolean
+    /**
+     * The data a freshly inserted instance starts with, computed from the
+     * schema by the server. Seeding here instead would mean guessing what
+     * an `optionsFrom` select offers on this installation, and inserting
+     * blocks the save then refuses for a missing required field.
+     */
+    seed?: Record<string, unknown>
     fields: BlockFieldDefinition[]
 }
 

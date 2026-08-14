@@ -68,7 +68,8 @@ describe('blockFrom', () => {
         expect(block.id).toHaveLength(26)
     })
 
-    it('placeholders a required text field that has no default, so the block is insertable', () => {
+    it('falls back to declared defaults when the payload carries no seed', () => {
+        // A registry payload from a server older than `seed`.
         const definition = {
             ...heading,
             fields: [
@@ -81,6 +82,40 @@ describe('blockFrom', () => {
 
         // Required-without-default gets the label; optional stays absent.
         expect(block.data).toEqual({ text: 'Text' })
+    })
+
+    it('takes the seed the server computed in preference to deriving one', () => {
+        // The server is the only side that knows what a dynamic select
+        // offers on this installation, so its answer wins outright.
+        const definition = {
+            ...heading,
+            seed: { text: 'Seeded by the server', content_type: 'article' },
+        }
+
+        expect(blockFrom(definition).data).toEqual({
+            text: 'Seeded by the server',
+            content_type: 'article',
+        })
+    })
+
+    it('gives each block its own copy of the seed, nested values included', () => {
+        const definition = {
+            ...heading,
+            seed: { text: 'Shared', rows: [{ label: 'One' }] },
+        }
+
+        const first = blockFrom(definition)
+        const second = blockFrom(definition)
+
+        const rowsOf = (block: BlockNode): { label: string }[] =>
+            (block.data?.rows ?? []) as { label: string }[]
+
+        rowsOf(first)[0].label = 'Edited'
+
+        // A shallow copy would have edited the second block and the
+        // registry's own definition along with the first.
+        expect(rowsOf(second)[0].label).toBe('One')
+        expect(definition.seed.rows[0].label).toBe('One')
     })
 })
 

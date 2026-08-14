@@ -24,13 +24,54 @@ import { sectionsOf, sectionsPointer } from './types'
  */
 
 /**
- * A block seeded with its definition's declared defaults — plus a
- * placeholder for any REQUIRED text field without one, because a fresh
- * block must be insertable: the server validates required fields on every
- * save, and "empty data" would make any block with a defaultless required
- * text field (the core heading, for one) silently refuse insertion.
+ * A block seeded with what the server says a fresh instance starts with.
+ *
+ * A fresh block must be insertable: the server validates required fields
+ * on every save, so a block whose required field arrives empty is refused
+ * on the very patch that adds it. `seed` is computed from the schema by
+ * BlockDefinition::seedData(), which is the only side that knows what an
+ * `optionsFrom` select offers here — the `entries` block's content type
+ * has no static default at all.
+ *
+ * The fallback covers a registry payload from a server older than `seed`:
+ * declared defaults, plus the field label for required free text, which
+ * is what this function did before the seed existed.
  */
 export function blockFrom(definition: BlockDefinition): BlockNode {
+    const data: Record<string, unknown> = definition.seed
+        ? cloneSeed(definition.seed)
+        : legacySeed(definition)
+
+    const block: BlockNode = { id: newId(), block: definition.handle, settings: {}, data }
+
+    // A container starts with the list it holds. JSON Patch cannot add
+    // THROUGH a path that does not exist, so a container born without
+    // `children` would refuse its own first child.
+    if (definition.container === true) {
+        block.children = []
+    }
+
+    return block
+}
+
+/**
+ * A copy deep enough that two inserted blocks share nothing.
+ *
+ * A shallow spread would hand every instance the same array for a repeater
+ * default — editing one block's rows would edit the next block's, and the
+ * definition in the registry with them, which is a bug that only appears
+ * on the second insertion of a block nobody thought to try twice.
+ *
+ * JSON round-trip rather than `structuredClone`, for the reason
+ * `patch.ts` gives: the registry is held in a store, so what arrives here
+ * is a Vue reactive proxy, and `structuredClone` refuses to clone one. The
+ * seed is JSON by definition — it came from the bootstrap payload.
+ */
+function cloneSeed(seed: Record<string, unknown>): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(seed)) as Record<string, unknown>
+}
+
+function legacySeed(definition: BlockDefinition): Record<string, unknown> {
     const data: Record<string, unknown> = {}
 
     for (const field of definition.fields) {
@@ -44,16 +85,10 @@ export function blockFrom(definition: BlockDefinition): BlockNode {
         }
     }
 
-    const block: BlockNode = { id: newId(), block: definition.handle, settings: {}, data }
-
-    // A container starts with the list it holds. JSON Patch cannot add
-    // THROUGH a path that does not exist, so a container born without
-    // `children` would refuse its own first child.
-    if (definition.container === true) {
-        block.children = []
-    }
-
-    return block
+    // Cloned for the same reason the seed is: a declared array default is
+    // one object in the registry, and handing it to every instance makes
+    // them share it.
+    return cloneSeed(data)
 }
 
 /**
