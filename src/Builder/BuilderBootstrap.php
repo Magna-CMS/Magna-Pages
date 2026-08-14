@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\BlockField;
 use Magna\Blocks\BlockRegistry;
+use Magna\Blocks\Conditions\DisplayConditionRegistry;
 use Magna\Blocks\PageTreeValidator;
 use Magna\Content\Entry;
 use Magna\Pages\Render\BindingResolver;
@@ -31,6 +32,7 @@ final class BuilderBootstrap
         private readonly BlockRegistry $blocks,
         private readonly ThemeTokens $tokens,
         private readonly BindingResolver $bindings,
+        private readonly DisplayConditionRegistry $conditions,
     ) {}
 
     /**
@@ -63,6 +65,12 @@ final class BuilderBootstrap
             // renderer decides what `settings.style` may say, and the
             // inspector draws exactly those controls.
             'styleControls' => StyleDescriptors::forBuilder(),
+            // Every show/hide rule this install can actually evaluate, for
+            // the conditions picker. Shipped for the same reason as the
+            // style vocabulary: the renderer decides what a condition type
+            // means, so the builder must offer exactly what it will honour
+            // rather than a list maintained beside it.
+            'displayConditions' => $this->displayConditions(),
         ];
     }
 
@@ -113,6 +121,41 @@ final class BuilderBootstrap
             'multiple' => $field->multiple,
             'fields' => array_map($this->fieldPayload(...), $field->fields),
         ];
+    }
+
+    /**
+     * The condition types the builder may offer, built-ins first.
+     *
+     * The two built-ins are listed here rather than registered, because they
+     * are matched before the registry and cannot be replaced — see
+     * ConditionEvaluator. Listing them beside the plugin ones is what makes
+     * the picker a single list instead of two that drift.
+     *
+     * A plugin condition arrives with nothing but a handle and a label: it
+     * carries whatever settings it likes, and the builder cannot know their
+     * shape. So the picker offers it, stores `{type: handle}`, and anything
+     * further belongs to a future field descriptor — deliberately not
+     * invented here, where it would be a guess at an API no plugin has asked
+     * for yet.
+     *
+     * @return list<array{handle: string, label: string, builtIn: bool}>
+     */
+    private function displayConditions(): array
+    {
+        $conditions = [
+            ['handle' => 'auth', 'label' => 'Visitor is signed in', 'builtIn' => true],
+            ['handle' => 'schedule', 'label' => 'Between two dates', 'builtIn' => true],
+        ];
+
+        foreach ($this->conditions->all() as $condition) {
+            $conditions[] = [
+                'handle' => $condition->handle(),
+                'label' => $condition->label(),
+                'builtIn' => false,
+            ];
+        }
+
+        return $conditions;
     }
 
     /**

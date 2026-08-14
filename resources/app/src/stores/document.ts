@@ -26,6 +26,7 @@ import type {
     BlockDocument,
     BlockNode,
     Capabilities,
+    DisplayConditionOption,
     LockState,
     PatchOperation,
     SectionNode,
@@ -80,7 +81,23 @@ interface HistoryEntry {
     label: string
     undo: PatchOperation[]
     redo: PatchOperation[]
+    /**
+     * What continuous gesture this entry belongs to, if any. Two edits
+     * carrying the same key close together are one gesture — see
+     * `pushHistory`.
+     */
+    key?: string
+    /** When it was pushed, for the coalescing window. */
+    at: number
 }
+
+/**
+ * How long after an edit a same-key edit still counts as the same gesture.
+ *
+ * Long enough to cover dragging a colour picker or typing a length, short
+ * enough that coming back to a field a moment later is its own undo step.
+ */
+const COALESCE_WINDOW_MS = 700
 
 export interface PatternSummary {
     id: string
@@ -123,6 +140,7 @@ interface State {
     approval: ApprovalState | null
     bindingSources: Record<string, string>
     styleControls: StyleControls
+    displayConditions: DisplayConditionOption[]
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -155,6 +173,7 @@ export const useDocumentStore = defineStore('document', {
         approval: null,
         bindingSources: {},
         styleControls: {},
+        displayConditions: [],
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -238,6 +257,7 @@ export const useDocumentStore = defineStore('document', {
             this.approval = payload.approval ?? null
             this.bindingSources = payload.bindingSources ?? {}
             this.styleControls = payload.styleControls ?? {}
+            this.displayConditions = payload.displayConditions ?? []
             this.loaded = true
         },
 
@@ -496,8 +516,18 @@ export const useDocumentStore = defineStore('document', {
         /**
          * Apply one gesture's worth of operations: locally now, on the
          * server next, rolled back if the server refuses.
+         *
+         * `coalesceKey` names a CONTINUOUS gesture — one field, one style
+         * key. Successive edits carrying the same key fold into a single
+         * undo step, so dragging a colour picker is one thing to undo
+         * rather than forty (12-BUILDER-REDESIGN §17).
          */
-        async edit(api: BuilderApi, label: string, operations: PatchOperation[]): Promise<boolean> {
+        async edit(
+            api: BuilderApi,
+            label: string,
+            operations: PatchOperation[],
+            coalesceKey?: string,
+        ): Promise<boolean> {
             this.error = null
 
             let inverse: PatchOperation[]
@@ -511,7 +541,19 @@ export const useDocumentStore = defineStore('document', {
                 return false
             }
 
-            this.pushHistory({ label, undo: inverse, redo: operations })
+            // The stack as it was, so a refusal can put it back. Popping
+            // would be wrong once entries merge: a refused edit folded into
+            // the previous gesture would take that gesture's undo step with
+            // it, even though the document still holds it.
+            const historyBefore = [...this.undoStack]
+
+            this.pushHistory({
+                label,
+                undo: inverse,
+                redo: operations,
+                key: coalesceKey,
+                at: Date.now(),
+            })
 
             // While a queue exists, new edits join it instead of racing it —
             // order is the whole guarantee of a send queue.
@@ -539,7 +581,7 @@ export const useDocumentStore = defineStore('document', {
 
                 // The server answered no — retrying a refusal just refuses.
                 this.blocks = applyPatch(this.blocks, inverse).document
-                this.undoStack.pop()
+                this.undoStack = historyBefore
                 this.error = error instanceof Error ? error.message : String(error)
 
                 return false
@@ -944,7 +986,37 @@ export const useDocumentStore = defineStore('document', {
             )
         },
 
+        /**
+         * Record an edit as an undo step, folding it into the previous one
+         * when both belong to the same continuous gesture.
+         *
+         * Merging keeps the OLDER entry's undo and appends to its redo, so
+         * the merged step still reverts to where the gesture started and
+         * still replays the whole of it. Without this, one drag of a colour
+         * picker buries every earlier edit under forty identical steps.
+         */
         pushHistory(entry: HistoryEntry): void {
+            const previous = this.undoStack[this.undoStack.length - 1]
+            const sameGesture =
+                previous !== undefined &&
+                entry.key !== undefined &&
+                previous.key === entry.key &&
+                entry.at - previous.at < COALESCE_WINDOW_MS
+
+            if (sameGesture) {
+                this.undoStack[this.undoStack.length - 1] = {
+                    label: previous.label,
+                    key: previous.key,
+                    at: entry.at,
+                    // Undo runs newest-first, so the new inverse leads.
+                    undo: [...entry.undo, ...previous.undo],
+                    redo: [...previous.redo, ...entry.redo],
+                }
+                this.redoStack = []
+
+                return
+            }
+
             this.undoStack.push(entry)
             if (this.undoStack.length > HISTORY_LIMIT) {
                 this.undoStack.shift()

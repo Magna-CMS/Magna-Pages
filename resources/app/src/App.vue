@@ -431,9 +431,14 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
         return
     }
 
-    const ok = await store.edit(api, `Edit ${handle}`, [
-        { op: 'replace', path: `${pointer}/data/${handle}`, value },
-    ])
+    // One field is one gesture: typing into it, or dragging its picker,
+    // collapses to a single undo step rather than one per keystroke.
+    const ok = await store.edit(
+        api,
+        `Edit ${handle}`,
+        [{ op: 'replace', path: `${pointer}/data/${handle}`, value }],
+        `field:${pointer}:${handle}`,
+    )
 
     if (ok) {
         refreshFragment(node)
@@ -521,7 +526,11 @@ async function writeStyle(pointer: string, settingsKey: string, key: string, val
         return
     }
 
-    if (await store.edit(api, `Style ${key}`, operations)) {
+    // One control at one breakpoint is one gesture — dragging a colour
+    // picker must not bury the rest of the history under its own steps.
+    const gesture = `style:${pointer}:${settingsKey}:${key}:${styleBreakpoint.value}`
+
+    if (await store.edit(api, `Style ${key}`, operations, gesture)) {
         // Styles land on wrappers the per-node fragment loop does not
         // re-render.
         reloadCanvas()
@@ -1263,6 +1272,7 @@ onBeforeUnmount(() => {
                         "
                         :capabilities="store.capabilities"
                         :binding-sources="store.bindingSources"
+                    :display-conditions="store.displayConditions"
                         :layout-section="layoutSection"
                         :style-controls="styleControlsForSelection"
                         :style-breakpoint="styleBreakpoint"

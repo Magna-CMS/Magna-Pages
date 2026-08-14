@@ -6,6 +6,7 @@ namespace Magna\Pages\Render\Conditions;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Carbon;
+use Magna\Blocks\Conditions\DisplayConditionRegistry;
 
 /**
  * Display conditions (Phase C item 2): per-node show/hide rules stored in
@@ -29,6 +30,14 @@ use Illuminate\Support\Carbon;
  */
 class ConditionEvaluator
 {
+    /*
+     * Anything beyond the two built-ins is a plugin's, through
+     * RegistersDisplayConditions. Injected rather than resolved inline so
+     * this stays testable with an empty registry — which is also what an
+     * install with no condition-providing plugin actually has.
+     */
+    public function __construct(private readonly DisplayConditionRegistry $conditions) {}
+
     /**
      * @param  array<mixed, mixed>  $settings  A node's settings array
      */
@@ -51,7 +60,9 @@ class ConditionEvaluator
             $result = match ($condition['type']) {
                 'auth' => $this->auth($condition, $user),
                 'schedule' => $this->schedule($condition, $now),
-                default => ConditionOutcome::hiddenUncacheable(),
+                // Anything else may be a plugin's, and is still unknown if no
+                // plugin claims it — see fromRegistry().
+                default => $this->fromRegistry($condition, $user, $now),
             };
 
             $visible = $visible && $result->visible;
@@ -62,6 +73,43 @@ class ConditionEvaluator
         }
 
         return new ConditionOutcome($visible, $cacheable, $expiresAt);
+    }
+
+    /**
+     * A condition type a plugin registered, or nothing we can evaluate.
+     *
+     * The two built-ins above are matched first and deliberately cannot be
+     * replaced: `auth` and `schedule` are what the page cache's own reasoning
+     * is built on, and a plugin redefining either could quietly make every
+     * cached page wrong.
+     *
+     * A resolver that throws is treated exactly as an unknown type. A plugin
+     * failing mid-render must not be a way to make gated content appear, and
+     * the page it is on cannot be cached either — we have no idea what the
+     * answer should have been.
+     *
+     * @param  array<mixed, mixed>  $condition
+     */
+    private function fromRegistry(array $condition, ?Authenticatable $user, Carbon $now): ConditionOutcome
+    {
+        /** @var string $type */
+        $type = $condition['type'];
+
+        $handler = $this->conditions->get($type);
+
+        if ($handler === null) {
+            return ConditionOutcome::hiddenUncacheable();
+        }
+
+        try {
+            $verdict = $handler->evaluate($condition, $user, $now);
+        } catch (\Throwable $failure) {
+            report($failure);
+
+            return ConditionOutcome::hiddenUncacheable();
+        }
+
+        return new ConditionOutcome($verdict->visible, $verdict->cacheable, $verdict->expiresAt);
     }
 
     /**

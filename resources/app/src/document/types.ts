@@ -128,11 +128,26 @@ export interface StyleControl {
 
 export type StyleControls = Record<string, StyleControl[]>
 
+/**
+ * A show/hide rule this install can evaluate.
+ *
+ * Shipped by the server rather than listed here, so the picker can only ever
+ * offer what the renderer will honour — a type it refuses hides the node,
+ * which looks to whoever set it like the rule silently not working.
+ */
+export interface DisplayConditionOption {
+    handle: string
+    label: string
+    /** `auth` and `schedule`, which have their own controls in the inspector. */
+    builtIn: boolean
+}
+
 export interface BootstrapPayload {
     lock?: LockState
     approval?: ApprovalState | null
     bindingSources?: Record<string, string>
     styleControls?: StyleControls
+    displayConditions?: DisplayConditionOption[]
     document: {
         id: string
         title: string

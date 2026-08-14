@@ -9,6 +9,7 @@ import type {
     BlockDefinition,
     BlockFieldDefinition,
     Capabilities,
+    DisplayConditionOption,
     SectionNode,
     StyleControl,
 } from '../document/types'
@@ -43,6 +44,12 @@ const props = defineProps<{
     styleBreakpoint: Breakpoint
     /** Row-layout controls, for a section: how its columns lay out. */
     rowControls?: StyleControl[]
+    /**
+     * Every show/hide rule this install can evaluate, as the server listed
+     * them. Only the plugin ones get a control here — the two built-ins have
+     * their own, above.
+     */
+    displayConditions?: DisplayConditionOption[]
 }>()
 
 const emit = defineEmits<{
@@ -203,6 +210,40 @@ function writeConditions(next: { audience?: string; from?: string; until?: strin
             rule.until = untilValue
         }
         rules.push(rule)
+    }
+
+    emit('editSetting', props.located.pointer, 'conditions', rules)
+}
+
+/* ------------------------------------------------- plugin display conditions */
+
+/** The rules a plugin contributed, which is everything but the two built-ins. */
+const pluginConditions = computed<DisplayConditionOption[]>(() =>
+    (props.displayConditions ?? []).filter((option) => !option.builtIn),
+)
+
+function conditionIsOn(handle: string): boolean {
+    return conditions.value.some((rule) => rule.type === handle)
+}
+
+/**
+ * Turns one plugin condition on or off.
+ *
+ * Adding writes `{type}` and nothing else; removing drops that rule. An
+ * existing rule is never rewritten, because a plugin condition may carry
+ * settings this inspector cannot render — rewriting it to `{type}` would
+ * silently discard them. Every other rule, modelled or not, is left exactly
+ * as it was, which is the same promise writeConditions() makes.
+ */
+function togglePluginCondition(handle: string, on: boolean): void {
+    if (!props.located) {
+        return
+    }
+
+    const rules = conditions.value.filter((rule) => rule.type !== handle)
+
+    if (on) {
+        rules.push({ type: handle })
     }
 
     emit('editSetting', props.located.pointer, 'conditions', rules)
@@ -580,6 +621,35 @@ const title = computed<string>(() => {
                         @change="writeConditions({ until: ($event.target as HTMLInputElement).value })"
                     />
                 </label>
+
+                <!--
+                    Rules a plugin contributed. Listed only when there are
+                    any, so an install with none sees no empty heading — and
+                    only ever the ones the server says it can evaluate, since
+                    a type it refuses hides the node rather than erroring.
+                -->
+                <template v-if="pluginConditions.length > 0">
+                    <p class="inspector__hint">Also show only when</p>
+
+                    <label
+                        v-for="option in pluginConditions"
+                        :key="option.handle"
+                        class="inspector__check"
+                    >
+                        <input
+                            type="checkbox"
+                            :checked="conditionIsOn(option.handle)"
+                            :disabled="!capabilities.style"
+                            @change="
+                                togglePluginCondition(
+                                    option.handle,
+                                    ($event.target as HTMLInputElement).checked,
+                                )
+                            "
+                        />
+                        {{ option.label }}
+                    </label>
+                </template>
             </fieldset>
 
             <label class="inspector__field inspector__stack">
