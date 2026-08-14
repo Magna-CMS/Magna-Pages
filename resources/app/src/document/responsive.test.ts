@@ -104,3 +104,30 @@ describe('operations', () => {
         expect(responsiveStyleOperations(undefined, '/0', 'paddingTop', 'base', '')).toEqual([])
     })
 })
+
+describe('settings sets', () => {
+    it('writes row layout to its own set, not the node style', () => {
+        // A row's align-items lines the COLUMNS up; a node's lines its own
+        // contents up. Same CSS property, different subject — so they must
+        // never share a key.
+        expect(
+            responsiveStyleOperations(undefined, '/0', 'gap', 'base', '2rem', 'row'),
+        ).toEqual([{ op: 'add', path: '/0/settings/row', value: { gap: '2rem' } }])
+
+        expect(
+            responsiveStyleOperations({ gap: '2rem' }, '/0', 'gap', 'mobile', '1rem', 'row'),
+        ).toEqual([
+            {
+                op: 'add',
+                path: '/0/settings/row/gap',
+                value: { $responsive: { base: '2rem', mobile: '1rem' } },
+            },
+        ])
+    })
+
+    it('removes from the set it was given', () => {
+        expect(responsiveStyleOperations({ gap: '2rem' }, '/0', 'gap', 'base', '', 'row')).toEqual([
+            { op: 'remove', path: '/0/settings/row/gap' },
+        ])
+    })
+})

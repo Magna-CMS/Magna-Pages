@@ -36,6 +36,14 @@ final class StyleDescriptors
     public const BLOCK = 'block';
 
     /**
+     * The ROW a section's columns lay out in — `.magna-columns`, not the
+     * section itself. Its own kind because `alignItems` on a row means
+     * "line the columns up" while on a column it means "line the contents
+     * up", and one key that means two things is a key nobody can label.
+     */
+    public const ROW = 'row';
+
+    /**
      * key => [property, control, group, label, options, appliesTo].
      *
      * `control` names what the builder draws: text (a length or keyword),
@@ -65,6 +73,12 @@ final class StyleDescriptors
         'lineHeight' => ['property' => 'line-height', 'control' => 'text', 'group' => 'Typography', 'label' => 'Line height', 'options' => [], 'appliesTo' => [self::BLOCK]],
         'letterSpacing' => ['property' => 'letter-spacing', 'control' => 'text', 'group' => 'Typography', 'label' => 'Letter spacing', 'options' => [], 'appliesTo' => [self::BLOCK]],
         'maxWidth' => ['property' => 'max-width', 'control' => 'text', 'group' => 'Layout', 'label' => 'Maximum width', 'options' => [], 'appliesTo' => [self::BLOCK]],
+
+        'gap' => ['property' => 'gap', 'control' => 'text', 'group' => 'Row layout', 'label' => 'Gap between columns', 'options' => [], 'appliesTo' => [self::ROW]],
+        'rowAlign' => ['property' => 'align-items', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Align columns', 'options' => ['', 'flex-start', 'center', 'flex-end', 'stretch'], 'appliesTo' => [self::ROW]],
+        'rowJustify' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Distribute columns', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between', 'space-around'], 'appliesTo' => [self::ROW]],
+        'rowDirection' => ['property' => 'flex-direction', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Direction', 'options' => ['', 'row', 'row-reverse', 'column'], 'appliesTo' => [self::ROW]],
+        'rowWrap' => ['property' => 'flex-wrap', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Wrapping', 'options' => ['', 'wrap', 'nowrap'], 'appliesTo' => [self::ROW]],
 
         'minHeight' => ['property' => 'min-height', 'control' => 'text', 'group' => 'Layout', 'label' => 'Minimum height', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
         'justifyContent' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Layout', 'label' => 'Horizontal align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between'], 'appliesTo' => [self::COLUMN]],
@@ -108,6 +122,7 @@ final class StyleDescriptors
             self::SECTION => self::forKind(self::SECTION),
             self::COLUMN => self::forKind(self::COLUMN),
             self::BLOCK => self::forKind(self::BLOCK),
+            self::ROW => self::forKind(self::ROW),
         ];
     }
 

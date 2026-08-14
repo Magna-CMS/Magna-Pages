@@ -89,13 +89,21 @@ final class ResponsiveStyles
      * The media-query rules a node needs, or an empty string when it
      * needs none.
      */
-    public static function rulesFor(string $nodeId, mixed $style, string $kind, bool $withBase = false): string
-    {
+    public static function rulesFor(
+        string $nodeId,
+        mixed $style,
+        string $kind,
+        bool $withBase = false,
+        string $within = '',
+    ): string {
         if (! $withBase && ! self::isResponsive($style)) {
             return '';
         }
 
-        $selector = '.'.self::nodeClass($nodeId);
+        // `$within` targets an element INSIDE the node — the row a section's
+        // columns lay out in, which the section's own style attribute
+        // cannot reach.
+        $selector = '.'.self::nodeClass($nodeId).($within === '' ? '' : ' '.$within);
         $css = '';
 
         // A block has no attribute of ours to carry its base declarations,

@@ -477,13 +477,28 @@ async function onDelete() {
  * in the document, and the renderer treats the two differently.
  */
 async function onSetStyle(pointer: string, key: string, value: string) {
-    const node = selected.value?.node as { settings?: { style?: unknown } } | undefined
+    await writeStyle(pointer, 'style', key, value)
+}
+
+/** Row layout writes to `settings.row`, its own set beside `settings.style`. */
+async function onSetRowStyle(pointer: string, key: string, value: string) {
+    await writeStyle(pointer, 'row', key, value)
+}
+
+/**
+ * One style write, whichever set it lands in. The device preview decides
+ * the breakpoint; clearing removes the key rather than storing an empty
+ * string, because absent is what "not set" means to the renderer.
+ */
+async function writeStyle(pointer: string, settingsKey: string, key: string, value: string) {
+    const settings = (selected.value?.node as { settings?: Record<string, unknown> } | undefined)?.settings
     const operations = responsiveStyleOperations(
-        node?.settings?.style,
+        settings?.[settingsKey],
         pointer,
         key,
         styleBreakpoint.value,
         value,
+        settingsKey,
     )
 
     if (operations.length === 0) {
@@ -491,8 +506,8 @@ async function onSetStyle(pointer: string, key: string, value: string) {
     }
 
     if (await store.edit(api, `Style ${key}`, operations)) {
-        // Styles land on the section or column wrapper, which the per-node
-        // fragment loop does not re-render.
+        // Styles land on wrappers the per-node fragment loop does not
+        // re-render.
         reloadCanvas()
     }
 }
@@ -1217,12 +1232,14 @@ onBeforeUnmount(() => {
                         :layout-section="layoutSection"
                         :style-controls="styleControlsForSelection"
                         :style-breakpoint="styleBreakpoint"
+                        :row-controls="selected?.kind === 'section' ? (store.styleControls.row ?? []) : []"
                         @edit="onFieldEdit"
                         @edit-setting="onSettingEdit"
                         @add-column="onAddColumn"
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
                         @set-style="onSetStyle"
+                        @set-row-style="onSetRowStyle"
                         @select="selectNode($event)"
                     />
                 </template>

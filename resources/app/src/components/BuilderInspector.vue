@@ -41,6 +41,8 @@ const props = defineProps<{
     styleControls?: StyleControl[]
     /** The device being previewed; style edits land on this breakpoint. */
     styleBreakpoint: Breakpoint
+    /** Row-layout controls, for a section: how its columns lay out. */
+    rowControls?: StyleControl[]
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +52,7 @@ const emit = defineEmits<{
     removeColumn: [sectionId: string, columnId: string]
     setSpans: [sectionId: string, spans: number[]]
     setStyle: [pointer: string, key: string, value: string]
+    setRowStyle: [pointer: string, key: string, value: string]
     select: [nodeId: string]
 }>()
 
@@ -58,6 +61,20 @@ function onStyleSet(key: string, value: string) {
         emit('setStyle', props.located.pointer, key, value)
     }
 }
+
+function onRowStyleSet(key: string, value: string) {
+    if (props.located) {
+        emit('setRowStyle', props.located.pointer, key, value)
+    }
+}
+
+/** The row-layout set on a selected section (settings.row). */
+const rowValues = computed<Record<string, unknown>>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+    const stored = settings?.row
+
+    return typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {}
+})
 
 /** The selected node's stored style set, whatever it currently holds. */
 const styleValues = computed<Record<string, unknown>>(() => {
@@ -476,6 +493,15 @@ const title = computed<string>(() => {
                 @remove-column="$emit('removeColumn', layoutSection.id, $event)"
                 @set-spans="$emit('setSpans', layoutSection.id, $event)"
                 @select="$emit('select', $event)"
+            />
+
+            <BuilderStyleControls
+                v-if="rowControls && rowControls.length > 0"
+                :controls="rowControls"
+                :style="rowValues"
+                :can-edit="capabilities.style"
+                :breakpoint="styleBreakpoint"
+                @set="onRowStyleSet"
             />
 
             <BuilderStyleControls

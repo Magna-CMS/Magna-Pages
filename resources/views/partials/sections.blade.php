@@ -84,15 +84,27 @@
             ));
         }
         $sectionStyle = $section->settings['style'] ?? null;
-        $responsiveClass = '';
-        if (\Magna\Pages\Render\ResponsiveStyles::isResponsive($sectionStyle)) {
-            $responsiveClass = ' '.\Magna\Pages\Render\ResponsiveStyles::nodeClass($section->id);
-            $responsiveCss .= \Magna\Pages\Render\ResponsiveStyles::rulesFor(
-                $section->id,
-                $sectionStyle,
-                \Magna\Pages\Render\StyleDescriptors::SECTION,
-            );
-        }
+
+        // The ROW its columns lay out in is a different element from the
+        // section, and the section's style attribute cannot reach it — so
+        // row layout rides the stylesheet, base values included.
+        $rowStyle = $section->settings['row'] ?? null;
+        $rowCss = \Magna\Pages\Render\ResponsiveStyles::rulesFor(
+            $section->id,
+            $rowStyle,
+            \Magna\Pages\Render\StyleDescriptors::ROW,
+            withBase: true,
+            within: '.magna-columns',
+        );
+
+        $sectionCss = \Magna\Pages\Render\ResponsiveStyles::rulesFor($section->id, $sectionStyle, \Magna\Pages\Render\StyleDescriptors::SECTION);
+        $responsiveCss .= $sectionCss.$rowCss;
+
+        // One class serves both: the section needs it if either it or its
+        // row has anything in the stylesheet.
+        $responsiveClass = ($sectionCss === '' && $rowCss === '')
+            ? ''
+            : ' '.\Magna\Pages\Render\ResponsiveStyles::nodeClass($section->id);
 
         $anchor = $section->settings['anchor'] ?? '';
         $cssClass = $section->settings['cssClass'] ?? '';

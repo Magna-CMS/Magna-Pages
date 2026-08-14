@@ -130,6 +130,8 @@ export function responsiveStyleOperations(
     key: string,
     breakpoint: Breakpoint,
     value: string,
+    /** Which settings set to write: `style` for the node, `row` for its row. */
+    settingsKey: string = 'style',
 ): PatchOperation[] {
     const style =
         typeof currentStyle === 'object' && currentStyle !== null
@@ -140,12 +142,12 @@ export function responsiveStyleOperations(
     if (style === null) {
         return next === undefined
             ? []
-            : [{ op: 'add', path: `${pointer}/settings/style`, value: { [key]: next } }]
+            : [{ op: 'add', path: `${pointer}/settings/${settingsKey}`, value: { [key]: next } }]
     }
 
     if (next === undefined) {
-        return key in style ? [{ op: 'remove', path: `${pointer}/settings/style/${key}` }] : []
+        return key in style ? [{ op: 'remove', path: `${pointer}/settings/${settingsKey}/${key}` }] : []
     }
 
-    return [{ op: 'add', path: `${pointer}/settings/style/${key}`, value: next }]
+    return [{ op: 'add', path: `${pointer}/settings/${settingsKey}/${key}`, value: next }]
 }
