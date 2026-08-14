@@ -11,6 +11,7 @@ import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderLibrary from './components/BuilderLibrary.vue'
 import BuilderNodeMenu from './components/BuilderNodeMenu.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
+import BuilderShortcuts from './components/BuilderShortcuts.vue'
 import BuilderToolsPanel from './components/BuilderToolsPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
@@ -751,8 +752,9 @@ const toolbar = computed(() => {
     }
 })
 
-/** Command palette. */
+/** Command palette, and the shortcut list behind `?`. */
 const paletteOpen = ref(false)
+const shortcutsOpen = ref(false)
 
 const paletteActions = computed(() =>
     buildActions({
@@ -806,8 +808,24 @@ function onKeydown(event: KeyboardEvent) {
         return
     }
 
-    if (event.key === 'Escape' && contextMenu.value) {
-        contextMenu.value = null
+    if (event.key === 'Escape') {
+        if (shortcutsOpen.value) {
+            shortcutsOpen.value = false
+
+            return
+        }
+        if (contextMenu.value) {
+            contextMenu.value = null
+
+            return
+        }
+    }
+
+    // `?` is what people try, and it is only a question mark when nothing
+    // is being typed into — the guard above already returned for that.
+    if (event.key === '?') {
+        event.preventDefault()
+        shortcutsOpen.value = !shortcutsOpen.value
 
         return
     }
@@ -1516,6 +1534,8 @@ onBeforeUnmount(() => {
             @pick="onNodeAction($event as NodeActionKey)"
             @close="contextMenu = null"
         />
+
+        <BuilderShortcuts v-if="shortcutsOpen" @close="shortcutsOpen = false" />
 
         <BuilderCommandPalette
             :open="paletteOpen"
