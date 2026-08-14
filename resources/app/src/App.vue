@@ -1416,7 +1416,32 @@ onBeforeUnmount(() => {
 
             <template #checks>
                 <BuilderToolsPanel
-                    :groups="['checks', 'history']"
+                    :groups="['checks']"
+                    :a11y-findings="a11yFindings"
+                    :a11y-running="a11yRunning"
+                    :performance="perfReport"
+                    :performance-running="perfRunning"
+                    :revisions="revisions"
+                    :revisions-loading="revisionsLoading"
+                    :can-restore="store.lock.mine && store.capabilities.content"
+                    :comments="comments"
+                    :comments-loading="commentsLoading"
+                    :selected-node="store.selectedNode"
+                    @run-a11y="onRunA11y"
+                    @run-performance="onRunPerformance"
+                    @load-revisions="onLoadRevisions"
+                    @preview-revision="previewedRevision = $event"
+                    @restore-revision="onRestoreRevision"
+                    @select-node="selectNode($event)"
+                    @load-comments="onLoadComments"
+                    @add-comment="onAddComment"
+                    @resolve-comment="onResolveComment"
+                />
+            </template>
+
+            <template #history>
+                <BuilderToolsPanel
+                    :groups="['history']"
                     :a11y-findings="a11yFindings"
                     :a11y-running="a11yRunning"
                     :performance="perfReport"

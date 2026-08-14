@@ -16,7 +16,7 @@ import { defineStore } from 'pinia'
 export type PanelMode = 'library' | 'inspect'
 export type LibraryTab = 'elements' | 'patterns' | 'cloud'
 export type InspectTab = 'content' | 'style' | 'advanced'
-export type Drawer = 'layers' | 'checks' | 'comments' | 'design' | null
+export type Drawer = 'layers' | 'checks' | 'history' | 'comments' | 'design' | null
 export type Breakpoint = 'desktop' | 'tablet' | 'mobile'
 
 const STORAGE_KEY = 'magna-builder-ui'

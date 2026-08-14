@@ -14,6 +14,7 @@ const TABS: { key: Exclude<Drawer, null>; label: string }[] = [
     { key: 'layers', label: 'Navigator' },
     { key: 'design', label: 'Design' },
     { key: 'checks', label: 'Checks' },
+    { key: 'history', label: 'History' },
     { key: 'comments', label: 'Comments' },
 ]
 
@@ -29,6 +30,7 @@ const ui = useUiStore()
                 <slot v-if="ui.drawer === 'layers'" name="layers" />
                 <slot v-else-if="ui.drawer === 'design'" name="design" />
                 <slot v-else-if="ui.drawer === 'checks'" name="checks" />
+                <slot v-else-if="ui.drawer === 'history'" name="history" />
                 <slot v-else name="comments" />
             </div>
         </div>
