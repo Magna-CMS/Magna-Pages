@@ -517,7 +517,36 @@ const title = computed<string>(() => {
                         :value="valueFor(field)"
                         :disabled="!editable"
                         @change="onInput(field, $event)"
+                        @blur="rememberCaret(field.handle, $event)"
+                        @select="rememberCaret(field.handle, $event)"
+                        @keyup="rememberCaret(field.handle, $event)"
+                        @click="rememberCaret(field.handle, $event)"
                     />
+
+                    <!--
+                        A tag in a heading or a button label.
+                        BindingResolver substitutes {tag:…} in ANY string
+                        value, so this already worked at render — the picker
+                        was only ever drawn beside a textarea, which left the
+                        one place people write short live text without a way
+                        to insert one. Numbers are excluded: a token in a
+                        number field is not a number.
+                    -->
+                    <select
+                        v-if="editable && field.type === 'text' && Object.keys(tagSources).length > 0"
+                        class="inspector__taginsert"
+                        title="Insert a dynamic tag — resolves when the page renders"
+                        :value="''"
+                        @change="
+                            insertInlineTag(field, ($event.target as HTMLSelectElement).value);
+                            ($event.target as HTMLSelectElement).value = ''
+                        "
+                    >
+                        <option value="" disabled selected>{ }</option>
+                        <option v-for="(label, handle) in tagSources" :key="handle" :value="handle">
+                            {{ label }}
+                        </option>
+                    </select>
                     <!-- Bind to dynamic data: design-tier, so the toggle
                          only shows to actors the server would not refuse. -->
                     <select
