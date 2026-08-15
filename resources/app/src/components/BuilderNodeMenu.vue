@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 /**
  * The actions a node offers, in one component so the canvas right-click
@@ -24,13 +24,53 @@ const props = defineProps<{
 
 defineEmits<{ pick: [key: string]; close: [] }>()
 
-const style = computed(() =>
-    props.at ? { top: `${props.at.y}px`, left: `${props.at.x}px` } : undefined,
-)
+const root = ref<HTMLElement | null>(null)
+
+/**
+ * Where the menu actually ends up, once it has been measured.
+ *
+ * A menu opened near the bottom or right edge would otherwise render
+ * partly off-screen — and a `position: fixed` element that hangs off the
+ * viewport cannot be scrolled to, so its lower entries become unreachable
+ * rather than merely awkward. Measured after mount because the height
+ * depends on how many actions this node offers.
+ */
+const placed = ref<{ top: number; left: number } | null>(null)
+
+const MARGIN = 8
+
+function place() {
+    if (!props.at || !root.value) {
+        placed.value = null
+
+        return
+    }
+
+    const box = root.value.getBoundingClientRect()
+
+    placed.value = {
+        top: Math.max(MARGIN, Math.min(props.at.y, window.innerHeight - box.height - MARGIN)),
+        left: Math.max(MARGIN, Math.min(props.at.x, window.innerWidth - box.width - MARGIN)),
+    }
+}
+
+onMounted(place)
+watch(() => props.at, place)
+
+const style = computed(() => {
+    if (!props.at) {
+        return undefined
+    }
+
+    const at = placed.value ?? { top: props.at.y, left: props.at.x }
+
+    return { top: `${at.top}px`, left: `${at.left}px` }
+})
 </script>
 
 <template>
     <div
+        ref="root"
         class="nodemenu"
         :class="{ 'is-floating': at !== null }"
         :style="style"

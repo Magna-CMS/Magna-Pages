@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import type { NodeAction, NodeActionKey } from '../document/actions'
 import type { NodeKind } from '../document/locate'
@@ -13,6 +13,17 @@ import BuilderNodeMenu from './BuilderNodeMenu.vue'
  * Every action the canvas offers on a node exists here too, as ordinary
  * buttons — a mouse gesture that has no keyboard equivalent is not an
  * editing path, it is an editing path for some people.
+ *
+ * The tree is rendered as ONE flat list of rows carrying their own depth,
+ * rather than as nested markup. Three near-identical row templates for
+ * section, column and block is three places to fix every time a row grows
+ * an affordance, and the day one of them is missed a nested node quietly
+ * behaves differently from a top-level one. Indentation is the depth.
+ *
+ * It also makes every row the same height, which is what lets a long
+ * document be windowed later (12-BUILDER-REDESIGN §17) — and that is why
+ * the row menu opens as an overlay rather than inline: an inline menu
+ * changes the height of the row it belongs to.
  */
 
 const props = defineProps<{
@@ -40,44 +51,18 @@ function toggle(nodeId: string) {
     collapsed.value = next
 }
 
-/**
- * A column's blocks, and the blocks inside those, as one flat list with a
- * depth on each row.
- *
- * Flattened rather than nested markup so the tree stays ONE component
- * reading ONE document: a recursive row component would need the selection,
- * the collapse set and the action table threaded through every level, and
- * the day one of them stopped being passed down a nested row would quietly
- * behave differently from a top-level one. Indentation is the depth.
- */
 interface LayerRow {
-    block: BlockNode
+    id: string
+    kind: NodeKind
     depth: number
-    hasChildren: boolean
-}
-
-function rowsFor(blocks: BlockNode[], depth = 0, into: LayerRow[] = []): LayerRow[] {
-    for (const block of blocks) {
-        const children = block.children ?? []
-        into.push({ block, depth, hasChildren: children.length > 0 })
-
-        if (children.length > 0 && !collapsed.value.has(block.id)) {
-            rowsFor(children, depth + 1, into)
-        }
-    }
-
-    return into
-}
-
-const openMenu = ref<string | null>(null)
-
-function menuFor(nodeId: string, kind: NodeKind): NodeAction[] {
-    return props.actionsFor(nodeId, kind)
-}
-
-function pick(nodeId: string, key: string) {
-    openMenu.value = null
-    emit('act', nodeId, key as NodeActionKey)
+    /** What the row reads as. */
+    label: string
+    /** What this node IS, for the labels that name a kind. */
+    noun: string
+    /** Title case of `noun`, which is what the menu announces itself as. */
+    menuTitle: string
+    badges: string[]
+    expandable: boolean
 }
 
 /**
@@ -117,6 +102,138 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
 
     return marks
 }
+
+function blockRows(blocks: BlockNode[], depth: number, into: LayerRow[]): void {
+    for (const block of blocks) {
+        const children = block.children ?? []
+
+        into.push({
+            id: block.id,
+            kind: 'block',
+            depth,
+            label: nameOf(block.settings, block.block),
+            noun: block.block,
+            menuTitle: block.block,
+            badges: badges(block.settings),
+            expandable: children.length > 0,
+        })
+
+        if (children.length > 0 && !collapsed.value.has(block.id)) {
+            blockRows(children, depth + 1, into)
+        }
+    }
+}
+
+/** The whole visible tree, in document order, collapse applied. */
+const rows = computed<LayerRow[]>(() => {
+    const list: LayerRow[] = []
+
+    for (const section of props.sections) {
+        list.push({
+            id: section.id,
+            kind: 'section',
+            depth: 0,
+            label: nameOf(section.settings, 'Section'),
+            noun: 'section',
+            menuTitle: 'Section',
+            badges: badges(section.settings),
+            expandable: true,
+        })
+
+        if (collapsed.value.has(section.id)) {
+            continue
+        }
+
+        for (const column of section.columns ?? []) {
+            list.push({
+                id: column.id,
+                kind: 'column',
+                depth: 1,
+                label: nameOf(column.settings, `Column (${column.span})`),
+                noun: 'column',
+                menuTitle: 'Column',
+                // A column carries no badges of its own: everything a badge
+                // reports is set on the section or on the block.
+                badges: [],
+                expandable: true,
+            })
+
+            if (!collapsed.value.has(column.id)) {
+                blockRows(column.blocks ?? [], 2, list)
+            }
+        }
+    }
+
+    return list
+})
+
+/**
+ * The open row menu, and where to draw it.
+ *
+ * Positioned against the viewport rather than rendered inside its row:
+ * an inline menu makes one row taller than the rest, which is exactly what
+ * a windowed list cannot have.
+ */
+const menu = ref<{ id: string; kind: NodeKind; title: string; at: { x: number; y: number } } | null>(
+    null,
+)
+
+function openMenu(row: LayerRow, event: MouseEvent) {
+    if (menu.value?.id === row.id) {
+        menu.value = null
+
+        return
+    }
+
+    const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    menu.value = {
+        id: row.id,
+        kind: row.kind,
+        title: row.menuTitle,
+        // Under the button that opened it, aligned to its left edge.
+        at: { x: box.left, y: box.bottom },
+    }
+}
+
+function pick(nodeId: string, key: string) {
+    menu.value = null
+    emit('act', nodeId, key as NodeActionKey)
+}
+
+function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+        menu.value = null
+    }
+}
+
+function close() {
+    menu.value = null
+}
+
+/**
+ * A floating menu does not move with the row it belongs to, so anything
+ * that moves the row closes it rather than leaving it stranded.
+ *
+ * Scroll is watched in the CAPTURE phase: the drawer scrolls, not the
+ * window, and a scroll inside an element does not bubble.
+ */
+function watchWhileOpen(on: boolean) {
+    // Bound through `window` on purpose: a detached `addEventListener`
+    // reference throws "Illegal invocation" the moment it is called.
+    const bind = on
+        ? (type: string, handler: EventListener, capture?: boolean) =>
+              window.addEventListener(type, handler, capture)
+        : (type: string, handler: EventListener, capture?: boolean) =>
+              window.removeEventListener(type, handler, capture)
+
+    bind('keydown', onKeydown as EventListener)
+    bind('resize', close)
+    bind('scroll', close, true)
+}
+
+watch(() => menu.value !== null, watchWhileOpen)
+
+onBeforeUnmount(() => watchWhileOpen(false))
 </script>
 
 <template>
@@ -124,27 +241,34 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
         <h2 class="layers__heading">Navigator</h2>
 
         <ul class="layers__list">
-            <li v-for="section in sections" :key="section.id">
-                <div class="layers__row">
+            <li
+                v-for="row in rows"
+                :key="row.id"
+                class="layers__item"
+                :style="{ paddingLeft: `${row.depth * 12}px` }"
+            >
+                <div class="layers__row" :class="{ 'is-nested': row.depth > 0 }">
                     <button
+                        v-if="row.expandable"
                         type="button"
                         class="layers__twisty"
-                        :aria-expanded="!collapsed.has(section.id)"
-                        :aria-label="`${collapsed.has(section.id) ? 'Expand' : 'Collapse'} section`"
-                        @click="toggle(section.id)"
+                        :aria-expanded="!collapsed.has(row.id)"
+                        :aria-label="`${collapsed.has(row.id) ? 'Expand' : 'Collapse'} ${row.noun}`"
+                        @click="toggle(row.id)"
                     >
-                        {{ collapsed.has(section.id) ? '▸' : '▾' }}
+                        {{ collapsed.has(row.id) ? '▸' : '▾' }}
                     </button>
+                    <span v-else class="layers__twisty layers__twisty--leaf" aria-hidden="true"></span>
 
                     <button
                         type="button"
                         class="layers__node"
-                        :class="{ 'is-selected': selected === section.id }"
-                        :aria-current="selected === section.id ? 'true' : undefined"
-                        @click="$emit('select', section.id)"
+                        :class="{ 'is-selected': selected === row.id }"
+                        :aria-current="selected === row.id ? 'true' : undefined"
+                        @click="$emit('select', row.id)"
                     >
-                        {{ nameOf(section.settings, 'Section') }}
-                        <span v-for="mark in badges(section.settings)" :key="mark" class="layers__badge">
+                        {{ row.label }}
+                        <span v-for="mark in row.badges" :key="mark" class="layers__badge">
                             {{ mark }}
                         </span>
                     </button>
@@ -152,120 +276,23 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
                     <button
                         type="button"
                         class="layers__more"
-                        :aria-label="'Actions for this section'"
-                        @click="openMenu = openMenu === section.id ? null : section.id"
+                        :aria-label="`Actions for this ${row.noun}`"
+                        @click="openMenu(row, $event)"
                     >
                         ⋮
                     </button>
                 </div>
-
-                <BuilderNodeMenu
-                    v-if="openMenu === section.id"
-                    :at="null"
-                    :actions="menuFor(section.id, 'section')"
-                    label="Section"
-                    @pick="pick(section.id, $event)"
-                />
-
-                <ul v-if="!collapsed.has(section.id)" class="layers__list layers__list--nested">
-                    <li v-for="column in section.columns ?? []" :key="column.id">
-                        <div class="layers__row">
-                            <button
-                                type="button"
-                                class="layers__twisty"
-                                :aria-expanded="!collapsed.has(column.id)"
-                                :aria-label="`${collapsed.has(column.id) ? 'Expand' : 'Collapse'} column`"
-                                @click="toggle(column.id)"
-                            >
-                                {{ collapsed.has(column.id) ? '▸' : '▾' }}
-                            </button>
-
-                            <button
-                                type="button"
-                                class="layers__node"
-                                :class="{ 'is-selected': selected === column.id }"
-                                @click="$emit('select', column.id)"
-                            >
-                                {{ nameOf(column.settings, `Column (${column.span})`) }}
-                            </button>
-
-                            <button
-                                type="button"
-                                class="layers__more"
-                                :aria-label="'Actions for this column'"
-                                @click="openMenu = openMenu === column.id ? null : column.id"
-                            >
-                                ⋮
-                            </button>
-                        </div>
-
-                        <BuilderNodeMenu
-                            v-if="openMenu === column.id"
-                            :at="null"
-                            :actions="menuFor(column.id, 'column')"
-                            label="Column"
-                            @pick="pick(column.id, $event)"
-                        />
-
-                        <ul v-if="!collapsed.has(column.id)" class="layers__list layers__list--nested">
-                            <li
-                                v-for="row in rowsFor(column.blocks ?? [])"
-                                :key="row.block.id"
-                                :style="{ paddingLeft: `${row.depth * 12}px` }"
-                            >
-                                <div class="layers__row">
-                                    <button
-                                        v-if="row.hasChildren"
-                                        type="button"
-                                        class="layers__twisty"
-                                        :aria-expanded="!collapsed.has(row.block.id)"
-                                        :aria-label="`${collapsed.has(row.block.id) ? 'Expand' : 'Collapse'} ${row.block.block}`"
-                                        @click="toggle(row.block.id)"
-                                    >
-                                        {{ collapsed.has(row.block.id) ? '▸' : '▾' }}
-                                    </button>
-                                    <span v-else class="layers__twisty layers__twisty--leaf" aria-hidden="true"></span>
-
-                                    <button
-                                        type="button"
-                                        class="layers__node"
-                                        :class="{ 'is-selected': selected === row.block.id }"
-                                        :aria-current="selected === row.block.id ? 'true' : undefined"
-                                        @click="$emit('select', row.block.id)"
-                                    >
-                                        {{ nameOf(row.block.settings, row.block.block) }}
-                                        <span
-                                            v-for="mark in badges(row.block.settings)"
-                                            :key="mark"
-                                            class="layers__badge"
-                                        >
-                                            {{ mark }}
-                                        </span>
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class="layers__more"
-                                        :aria-label="`Actions for this ${row.block.block}`"
-                                        @click="openMenu = openMenu === row.block.id ? null : row.block.id"
-                                    >
-                                        ⋮
-                                    </button>
-                                </div>
-
-                                <BuilderNodeMenu
-                                    v-if="openMenu === row.block.id"
-                                    :at="null"
-                                    :actions="menuFor(row.block.id, 'block')"
-                                    :label="row.block.block"
-                                    @pick="pick(row.block.id, $event)"
-                                />
-                            </li>
-                        </ul>
-                    </li>
-                </ul>
             </li>
         </ul>
+
+        <BuilderNodeMenu
+            v-if="menu"
+            :at="menu.at"
+            :actions="actionsFor(menu.id, menu.kind)"
+            :label="menu.title"
+            @pick="pick(menu.id, $event)"
+            @close="close"
+        />
 
         <p v-if="sections.length === 0" class="layers__empty">
             This page has no sections yet.
@@ -288,16 +315,21 @@ function badges(settings: Record<string, unknown> | undefined): string[] {
     list-style: none;
 }
 
-.layers__list--nested {
-    margin-left: 10px;
-    border-left: 1px solid var(--builder-border);
-    padding-left: 6px;
+/* Depth is drawn as indentation plus a guide, so a flat list still reads
+   as a tree. */
+.layers__item {
+    box-sizing: border-box;
 }
 
 .layers__row {
     display: flex;
     align-items: center;
     gap: 2px;
+}
+
+.layers__row.is-nested {
+    border-left: 1px solid var(--builder-border);
+    padding-left: 6px;
 }
 
 .layers__node {
