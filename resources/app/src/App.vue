@@ -1633,8 +1633,21 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+/*
+ * The builder's own palette, checked against WCAG AA rather than eyeballed.
+ *
+ * The accent carries white text (a selected navigator row, the inline
+ * toolbar's active button), so it is bound by the 4.5:1 text rule, not the
+ * 3:1 one — the previous #3d8bfd read as 3.33:1 both ways and failed. This
+ * one measures 5.17:1 under white and 3.50:1 against the surface, so it
+ * still works as a focus ring and a selection indicator.
+ *
+ * --builder-border is deliberately quiet at 1.28:1: it separates panels, it
+ * does not report state or bound a control, and 1.4.11 asks for contrast on
+ * the things that do.
+ */
 :root {
-    --builder-accent: #3d8bfd;
+    --builder-accent: #2563eb;
     --builder-surface: #14161d;
     --builder-border: #272b36;
     --builder-text: #e7e9ee;

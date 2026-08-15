@@ -131,7 +131,16 @@ function onKeydown(event: KeyboardEvent) {
     background: transparent;
     color: inherit;
     font: inherit;
+}
+
+/* The palette focuses this on open, so its ring looked like noise and was
+   removed outright — which also took it away from anyone who tabs back to
+   it. Drawn on the border instead: visible where it belongs, and quiet
+   when focus arrived by opening the dialog rather than by tabbing. */
+.palette__input:focus-visible {
     outline: none;
+    border-bottom-color: var(--builder-accent);
+    box-shadow: inset 0 -2px 0 var(--builder-accent);
 }
 
 .palette__list {
