@@ -24,6 +24,15 @@
 @endphp
 @if($blockView !== null)
     @php
+        // A container styles the same way any block does, plus the flex
+        // controls for arranging what it holds — so it reads a wider
+        // vocabulary from the same `settings.style`. The DEFINITION says
+        // which, never the handle: a plugin's own layout block lays its
+        // children out on exactly the same terms core's does.
+        $styleKind = $registry->get($block->block)?->container === true
+            ? \Magna\Pages\Render\StyleDescriptors::CONTAINER
+            : \Magna\Pages\Render\StyleDescriptors::BLOCK;
+
         // A block renders its own markup, so its styles reach it through a
         // class merged into that markup and a rule in the page stylesheet —
         // never a second class or style attribute, which the parser would
@@ -31,7 +40,7 @@
         $blockRules = \Magna\Pages\Render\ResponsiveStyles::rulesFor(
             $block->id,
             $block->settings['style'] ?? null,
-            \Magna\Pages\Render\StyleDescriptors::BLOCK,
+            $styleKind,
             withBase: true,
         );
         $collectCss($blockRules);

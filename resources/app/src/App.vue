@@ -392,9 +392,26 @@ const layoutSection = computed<SectionNode | null>(() => {
 })
 
 /** The style controls the server offers for whatever kind is selected. */
-const styleControlsForSelection = computed<StyleControl[]>(() =>
-    selected.value ? (store.styleControls[selected.value.kind] ?? []) : [],
-)
+/**
+ * The style vocabulary the inspector draws for what is selected.
+ *
+ * A container reads a wider one than a plain block — it arranges what it
+ * holds — and the server decides which, from the block's definition. The
+ * client only asks; a list of container handles here would be the second
+ * source of truth the descriptor table exists to avoid.
+ */
+const styleControlsForSelection = computed<StyleControl[]>(() => {
+    if (!selected.value) {
+        return []
+    }
+
+    const kind =
+        selected.value.kind === 'block' && store.isContainer(selected.value.node as BlockNode)
+            ? 'container'
+            : selected.value.kind
+
+    return store.styleControls[kind] ?? []
+})
 
 /**
  * The device preview decides which breakpoint a style edit writes. Desktop

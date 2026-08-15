@@ -44,6 +44,19 @@ final class StyleDescriptors
     public const ROW = 'row';
 
     /**
+     * A CONTAINER block — everything a block may style, plus the flex
+     * controls that make holding other blocks worth anything.
+     *
+     * Its own kind rather than more keys on BLOCK: a heading offered a
+     * `gap` would be offered a control that does nothing, and the
+     * vocabulary a node is shown is the promise that setting it will
+     * matter. Unlike ROW, these land on the container's OWN element, so
+     * they ride `settings.style` like every other block declaration
+     * rather than needing a second settings key.
+     */
+    public const CONTAINER = 'container';
+
+    /**
      * key => [property, control, group, label, options, appliesTo].
      *
      * `control` names what the builder draws: text (a length or keyword),
@@ -52,27 +65,27 @@ final class StyleDescriptors
      * @var array<string, array{property: string, control: string, group: string, label: string, options: list<string>, appliesTo: list<string>}>
      */
     private const KEYS = [
-        'paddingTop' => ['property' => 'padding-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding top', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'paddingRight' => ['property' => 'padding-right', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding right', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'paddingBottom' => ['property' => 'padding-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'paddingLeft' => ['property' => 'padding-left', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding left', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'marginTop' => ['property' => 'margin-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin top', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK]],
-        'marginBottom' => ['property' => 'margin-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK]],
+        'paddingTop' => ['property' => 'padding-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding top', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'paddingRight' => ['property' => 'padding-right', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding right', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'paddingBottom' => ['property' => 'padding-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'paddingLeft' => ['property' => 'padding-left', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding left', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'marginTop' => ['property' => 'margin-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin top', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK, self::CONTAINER]],
+        'marginBottom' => ['property' => 'margin-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK, self::CONTAINER]],
 
-        'background' => ['property' => 'background-color', 'control' => 'color', 'group' => 'Background', 'label' => 'Background', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'color' => ['property' => 'color', 'control' => 'color', 'group' => 'Typography', 'label' => 'Text colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'textAlign' => ['property' => 'text-align', 'control' => 'select', 'group' => 'Typography', 'label' => 'Text align', 'options' => ['', 'left', 'center', 'right'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'background' => ['property' => 'background-color', 'control' => 'color', 'group' => 'Background', 'label' => 'Background', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'color' => ['property' => 'color', 'control' => 'color', 'group' => 'Typography', 'label' => 'Text colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'textAlign' => ['property' => 'text-align', 'control' => 'select', 'group' => 'Typography', 'label' => 'Text align', 'options' => ['', 'left', 'center', 'right'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
 
-        'borderWidth' => ['property' => 'border-width', 'control' => 'text', 'group' => 'Border', 'label' => 'Border width', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'borderStyle' => ['property' => 'border-style', 'control' => 'select', 'group' => 'Border', 'label' => 'Border style', 'options' => ['', 'none', 'solid', 'dashed', 'dotted'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'borderColor' => ['property' => 'border-color', 'control' => 'color', 'group' => 'Border', 'label' => 'Border colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
-        'borderRadius' => ['property' => 'border-radius', 'control' => 'text', 'group' => 'Border', 'label' => 'Corner radius', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK]],
+        'borderWidth' => ['property' => 'border-width', 'control' => 'text', 'group' => 'Border', 'label' => 'Border width', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'borderStyle' => ['property' => 'border-style', 'control' => 'select', 'group' => 'Border', 'label' => 'Border style', 'options' => ['', 'none', 'solid', 'dashed', 'dotted'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'borderColor' => ['property' => 'border-color', 'control' => 'color', 'group' => 'Border', 'label' => 'Border colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'borderRadius' => ['property' => 'border-radius', 'control' => 'text', 'group' => 'Border', 'label' => 'Corner radius', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
 
-        'fontSize' => ['property' => 'font-size', 'control' => 'text', 'group' => 'Typography', 'label' => 'Font size', 'options' => [], 'appliesTo' => [self::BLOCK]],
-        'fontWeight' => ['property' => 'font-weight', 'control' => 'select', 'group' => 'Typography', 'label' => 'Weight', 'options' => ['', '300', '400', '500', '600', '700'], 'appliesTo' => [self::BLOCK]],
-        'lineHeight' => ['property' => 'line-height', 'control' => 'text', 'group' => 'Typography', 'label' => 'Line height', 'options' => [], 'appliesTo' => [self::BLOCK]],
-        'letterSpacing' => ['property' => 'letter-spacing', 'control' => 'text', 'group' => 'Typography', 'label' => 'Letter spacing', 'options' => [], 'appliesTo' => [self::BLOCK]],
-        'maxWidth' => ['property' => 'max-width', 'control' => 'text', 'group' => 'Layout', 'label' => 'Maximum width', 'options' => [], 'appliesTo' => [self::BLOCK]],
+        'fontSize' => ['property' => 'font-size', 'control' => 'text', 'group' => 'Typography', 'label' => 'Font size', 'options' => [], 'appliesTo' => [self::BLOCK, self::CONTAINER]],
+        'fontWeight' => ['property' => 'font-weight', 'control' => 'select', 'group' => 'Typography', 'label' => 'Weight', 'options' => ['', '300', '400', '500', '600', '700'], 'appliesTo' => [self::BLOCK, self::CONTAINER]],
+        'lineHeight' => ['property' => 'line-height', 'control' => 'text', 'group' => 'Typography', 'label' => 'Line height', 'options' => [], 'appliesTo' => [self::BLOCK, self::CONTAINER]],
+        'letterSpacing' => ['property' => 'letter-spacing', 'control' => 'text', 'group' => 'Typography', 'label' => 'Letter spacing', 'options' => [], 'appliesTo' => [self::BLOCK, self::CONTAINER]],
+        'maxWidth' => ['property' => 'max-width', 'control' => 'text', 'group' => 'Layout', 'label' => 'Maximum width', 'options' => [], 'appliesTo' => [self::BLOCK, self::CONTAINER]],
 
         'gap' => ['property' => 'gap', 'control' => 'text', 'group' => 'Row layout', 'label' => 'Gap between columns', 'options' => [], 'appliesTo' => [self::ROW]],
         'rowAlign' => ['property' => 'align-items', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Align columns', 'options' => ['', 'flex-start', 'center', 'flex-end', 'stretch'], 'appliesTo' => [self::ROW]],
@@ -80,9 +93,16 @@ final class StyleDescriptors
         'rowDirection' => ['property' => 'flex-direction', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Direction', 'options' => ['', 'row', 'row-reverse', 'column'], 'appliesTo' => [self::ROW]],
         'rowWrap' => ['property' => 'flex-wrap', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Wrapping', 'options' => ['', 'wrap', 'nowrap'], 'appliesTo' => [self::ROW]],
 
-        'minHeight' => ['property' => 'min-height', 'control' => 'text', 'group' => 'Layout', 'label' => 'Minimum height', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN]],
-        'justifyContent' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Layout', 'label' => 'Horizontal align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between'], 'appliesTo' => [self::COLUMN]],
-        'alignItems' => ['property' => 'align-items', 'control' => 'select', 'group' => 'Layout', 'label' => 'Vertical align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'stretch'], 'appliesTo' => [self::COLUMN]],
+        'minHeight' => ['property' => 'min-height', 'control' => 'text', 'group' => 'Layout', 'label' => 'Minimum height', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::CONTAINER]],
+        'justifyContent' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Layout', 'label' => 'Horizontal align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between'], 'appliesTo' => [self::COLUMN, self::CONTAINER]],
+        'alignItems' => ['property' => 'align-items', 'control' => 'select', 'group' => 'Layout', 'label' => 'Vertical align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'stretch'], 'appliesTo' => [self::COLUMN, self::CONTAINER]],
+
+        // What makes a container a layout and not just a box. Named for
+        // what they do to the blocks INSIDE it, which is the only thing an
+        // editor is deciding when they reach for them.
+        'direction' => ['property' => 'flex-direction', 'control' => 'select', 'group' => 'Layout', 'label' => 'Stack direction', 'options' => ['', 'row', 'row-reverse', 'column', 'column-reverse'], 'appliesTo' => [self::CONTAINER]],
+        'wrap' => ['property' => 'flex-wrap', 'control' => 'select', 'group' => 'Layout', 'label' => 'Wrapping', 'options' => ['', 'wrap', 'nowrap'], 'appliesTo' => [self::CONTAINER]],
+        'childGap' => ['property' => 'gap', 'control' => 'text', 'group' => 'Layout', 'label' => 'Gap between blocks', 'options' => [], 'appliesTo' => [self::CONTAINER]],
     ];
 
     /**
@@ -123,17 +143,36 @@ final class StyleDescriptors
             self::COLUMN => self::forKind(self::COLUMN),
             self::BLOCK => self::forKind(self::BLOCK),
             self::ROW => self::forKind(self::ROW),
+            self::CONTAINER => self::forKind(self::CONTAINER),
         ];
     }
 
-    /** Whether this style set positions the node's own contents. */
-    private static function alignsContents(mixed $style): bool
+    /** Whether a style set says anything under this key at all. */
+    private static function declares(mixed $style, string $key): bool
     {
         if (! is_array($style)) {
             return false;
         }
 
-        foreach (['justifyContent', 'alignItems'] as $key) {
+        $value = ResponsiveStyles::valueAt($style[$key] ?? null, 'base');
+
+        return is_string($value) && trim($value) !== '';
+    }
+
+    /**
+     * Whether this style set positions the node's own contents.
+     *
+     * @param  list<string>  $keys  The ones that mean "arrange what is inside
+     *                              me" for this kind — a column has two, a
+     *                              container has the whole flex vocabulary.
+     */
+    private static function alignsContents(mixed $style, array $keys): bool
+    {
+        if (! is_array($style)) {
+            return false;
+        }
+
+        foreach ($keys as $key) {
             $value = $style[$key] ?? null;
             if (is_string($value) && trim($value) !== '') {
                 return true;
@@ -188,8 +227,24 @@ final class StyleDescriptors
         // aligning its contents does nothing until it becomes one. Derived
         // rather than offered as a control: "why did my align setting need
         // a display setting too" is a question no editor should be asked.
-        if ($parts !== [] && $kind === self::COLUMN && self::alignsContents($style)) {
+        if ($parts !== [] && $kind === self::COLUMN
+            && self::alignsContents($style, ['justifyContent', 'alignItems'])
+        ) {
             array_unshift($parts, 'display:flex', 'flex-direction:column');
+        }
+
+        // A container is a plain block until something inside it needs
+        // arranging, for the same reason and with the same answer. It
+        // stacks by default, so a container that only sets a gap behaves
+        // the way the editor expects without naming a direction.
+        if ($parts !== [] && $kind === self::CONTAINER
+            && self::alignsContents($style, ['justifyContent', 'alignItems', 'direction', 'wrap', 'childGap'])
+        ) {
+            array_unshift($parts, 'display:flex');
+
+            if (! self::declares($style, 'direction')) {
+                array_unshift($parts, 'flex-direction:column');
+            }
         }
 
         return CustomCss::sanitize(implode(';', $parts));
