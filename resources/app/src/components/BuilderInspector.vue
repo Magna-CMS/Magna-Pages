@@ -3,9 +3,15 @@ import { computed } from 'vue'
 
 import BuilderColumnControls from './BuilderColumnControls.vue'
 import BuilderStyleControls from './BuilderStyleControls.vue'
+import BuilderTagSuggest from './BuilderTagSuggest.vue'
 import type { Located } from '../document/locate'
 import type { Breakpoint } from '../document/responsive'
 import { insertTag } from '../document/tags'
+import {
+    useTagCompletion,
+    type TagCompletionState,
+    type TextField,
+} from '../document/useTagCompletion'
 import type {
     BlockDefinition,
     BlockFieldDefinition,
@@ -386,6 +392,66 @@ function insertInlineTag(field: BlockFieldDefinition, handle: string) {
     emit('edit', props.located.pointer, field.handle, next)
 }
 
+/**
+ * The same tags, offered as you type them.
+ *
+ * The picker above is still there and still right for "what can I put here?";
+ * this is for the writer who already knows, mid-sentence, and should not have
+ * to leave the text to say so.
+ */
+const completion = useTagCompletion(
+    () => tagSources.value,
+    (handle, value) => {
+        if (props.located) {
+            emit('edit', props.located.pointer, handle, value)
+        }
+    },
+)
+
+function onTagTyping(field: BlockFieldDefinition, event: Event): void {
+    rememberCaret(field.handle, event)
+
+    if (!editable.value || Object.keys(tagSources.value).length === 0) {
+        return
+    }
+
+    completion.refresh(field.handle, event.target as TextField)
+}
+
+/**
+ * Keys the completion list owns while it is open.
+ *
+ * Stopped as well as prevented: Enter commits the field and Escape deselects
+ * the node, and both are the wrong answer to "I am choosing from this list".
+ */
+function onTagKeydown(field: BlockFieldDefinition, event: KeyboardEvent): void {
+    if (completion.handleKey(field.handle, event.target as TextField, event)) {
+        event.preventDefault()
+        event.stopPropagation()
+    }
+}
+
+/** The open list, if it belongs to this field. */
+function suggestFor(handle: string): TagCompletionState | null {
+    const state = completion.state.value
+
+    return state !== null && state.handle === handle ? state : null
+}
+
+/**
+ * Chosen with the mouse.
+ *
+ * The element is fetched by id rather than held in a ref: the fields are
+ * rendered by a `v-for` over the block's own schema, so a ref would be an
+ * array whose order is the schema's, and the id is already there and already
+ * unique per field.
+ */
+function acceptTag(handle: string, tag: string): void {
+    const element = document.getElementById(`field-${handle}`)
+
+    completion.accept(handle, element as TextField | null, tag)
+}
+
 /** The selected column's id, when a column is what is selected. */
 const selectedColumnId = computed<string | null>(() =>
     props.located?.kind === 'column'
@@ -478,8 +544,22 @@ const title = computed<string>(() => {
                         @change="onInput(field, $event)"
                         @blur="rememberCaret(field.handle, $event)"
                         @select="rememberCaret(field.handle, $event)"
-                        @keyup="rememberCaret(field.handle, $event)"
-                        @click="rememberCaret(field.handle, $event)"
+                        @keyup="onTagTyping(field, $event)"
+                        @input="onTagTyping(field, $event)"
+                        @keydown="onTagKeydown(field, $event)"
+                        @click="onTagTyping(field, $event)"
+                    />
+
+                    <!--
+                        Drawn under the field it belongs to and nowhere else,
+                        so two text fields cannot both claim the list.
+                    -->
+                    <BuilderTagSuggest
+                        v-if="suggestFor(field.handle)"
+                        :matches="suggestFor(field.handle)!.matches"
+                        :active="suggestFor(field.handle)!.index"
+                        :query="suggestFor(field.handle)!.open.query"
+                        @pick="acceptTag(field.handle, $event)"
                     />
                     <select
                         v-if="editable && Object.keys(tagSources).length > 0"
@@ -519,8 +599,18 @@ const title = computed<string>(() => {
                         @change="onInput(field, $event)"
                         @blur="rememberCaret(field.handle, $event)"
                         @select="rememberCaret(field.handle, $event)"
-                        @keyup="rememberCaret(field.handle, $event)"
-                        @click="rememberCaret(field.handle, $event)"
+                        @keyup="field.type === 'text' ? onTagTyping(field, $event) : rememberCaret(field.handle, $event)"
+                        @input="field.type === 'text' ? onTagTyping(field, $event) : undefined"
+                        @keydown="field.type === 'text' ? onTagKeydown(field, $event) : undefined"
+                        @click="field.type === 'text' ? onTagTyping(field, $event) : rememberCaret(field.handle, $event)"
+                    />
+
+                    <BuilderTagSuggest
+                        v-if="suggestFor(field.handle)"
+                        :matches="suggestFor(field.handle)!.matches"
+                        :active="suggestFor(field.handle)!.index"
+                        :query="suggestFor(field.handle)!.open.query"
+                        @pick="acceptTag(field.handle, $event)"
                     />
 
                     <!--
@@ -871,6 +961,51 @@ select:disabled {
     margin-top: 4px;
     font-size: 12px;
     opacity: 0.85;
+}
+
+/*
+ * The completions for a `{tag:` being typed.
+ *
+ * In flow rather than absolutely positioned: the inspector is a scrolling
+ * column, and a floating list would need its own scroll and resize handling
+ * to stay attached to a field that moves under it. Pushing the fields below
+ * it down for a moment is the cheaper honesty.
+ */
+.inspector__tagsuggest {
+    margin: 4px 0 0;
+    padding: 2px;
+    list-style: none;
+    border: 1px solid var(--builder-border, rgba(255, 255, 255, 0.14));
+    border-radius: 6px;
+    background: var(--builder-panel, rgba(20, 22, 30, 0.96));
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.inspector__tagsuggest li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.inspector__tagsuggest--active,
+.inspector__tagsuggest li:hover {
+    background: var(--builder-accent-soft, rgba(120, 160, 255, 0.18));
+}
+
+.inspector__tagsuggest-handle {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.inspector__tagsuggest-label {
+    opacity: 0.65;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .inspector__hint {
