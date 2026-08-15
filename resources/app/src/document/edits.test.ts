@@ -8,6 +8,7 @@ import {
     exportAsLibraryAsset,
     insertBlock,
     moveNode,
+    nestingMovesFor,
     removeNode,
     withFreshIds,
 } from './edits'
@@ -553,6 +554,82 @@ describe('undo and redo of nested operations', () => {
             document = applyPatch(document, inverses[i]).document
             expect(document).toEqual(snapshots[i])
         }
+    })
+})
+
+describe('nesting without a mouse', () => {
+    const isContainer = (block: BlockNode): boolean => block.block === 'container'
+
+    /** col-1: [a, box[ x, y ]] — `box` is the sibling above nothing. */
+    const movesFor = (document: SectionNode[], id: string, maxDepth = 6) =>
+        nestingMovesFor(document, id, isContainer, maxDepth)
+
+    it('indents a block into the container directly above it', () => {
+        // `a` sits before `box`, so there is nothing above it to enter.
+        expect(movesFor(nestedDocument(), 'a').into).toBeNull()
+
+        const document = nestedDocument()
+        // Put `a` after the container, and it can step into it.
+        const reordered = applyPatch(document, moveNode(document, 'a', 'col-1', 2) ?? []).document
+
+        expect(movesFor(reordered as SectionNode[], 'a').into).toEqual({
+            parent: 'box',
+            // Appended, which is where the editor last saw it: below.
+            index: 2,
+        })
+    })
+
+    it('refuses to indent past what the server would store', () => {
+        const document = nestedDocument()
+        const reordered = applyPatch(document, moveNode(document, 'a', 'col-1', 2) ?? []).document
+
+        // A column's blocks are depth 1, so the container's children are
+        // depth 2 — beyond a cap of 1.
+        expect(movesFor(reordered as SectionNode[], 'a', 1).into).toBeNull()
+        expect(movesFor(reordered as SectionNode[], 'a', 2).into).not.toBeNull()
+    })
+
+    it('counts the moving block’s own subtree against the cap', () => {
+        const document = nestedDocument()
+        document[0].columns?.[0].blocks?.push({
+            id: 'box-2',
+            block: 'container',
+            children: [{ id: 'deep', block: 'heading' }],
+        })
+
+        // `box-2` is two levels tall, so entering `box` lands its child at
+        // depth 3 — allowed at 3, refused at 2. A leaf in the same place
+        // would still be allowed at 2, which is the point of measuring the
+        // subtree rather than the block.
+        expect(movesFor(document, 'box-2', 3).into).toEqual({ parent: 'box', index: 2 })
+        expect(movesFor(document, 'box-2', 2).into).toBeNull()
+    })
+
+    it('lifts a nested block out, to just after the container it was in', () => {
+        const moves = movesFor(nestedDocument(), 'x')
+
+        expect(moves.out).toEqual({ parent: 'col-1', index: 2 })
+    })
+
+    it('has nowhere to lift a block that is not nested', () => {
+        expect(movesFor(nestedDocument(), 'a').out).toBeNull()
+    })
+
+    it('produces a move the document actually accepts', () => {
+        const document = nestedDocument()
+        const out = movesFor(document, 'x').out as { parent: string; index: number }
+        const { document: after } = applyPatch(
+            document,
+            moveNode(document, 'x', out.parent, out.index) ?? [],
+        )
+
+        expect(after[0].columns?.[0].blocks?.map((block) => block.id)).toEqual(['a', 'box', 'x'])
+        expect(childrenOf(after)).toEqual(['y'])
+    })
+
+    it('says nothing about a node that is not a block', () => {
+        expect(movesFor(nestedDocument(), 'col-1')).toEqual({ into: null, out: null })
+        expect(movesFor(nestedDocument(), 'nope')).toEqual({ into: null, out: null })
     })
 })
 

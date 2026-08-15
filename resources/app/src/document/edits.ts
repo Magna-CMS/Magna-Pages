@@ -1,4 +1,4 @@
-import { locate, newId, subtreeIds, type Located } from './locate'
+import { locate, newId, parentOf, subtreeHeight, subtreeIds, type Located } from './locate'
 import { applyPatch } from './patch'
 import type {
     BlockDefinition,
@@ -406,6 +406,73 @@ export function insertBlock(
     const at = index === undefined ? '-' : String(index)
 
     return [{ op: 'add', path: `${list}/${at}`, value: block }]
+}
+
+/**
+ * Where a block would go if it were nested one level in, or lifted one
+ * level out. Null for a direction that is not available.
+ */
+export interface NestingMoves {
+    into: { parent: string; index: number } | null
+    out: { parent: string; index: number } | null
+}
+
+/**
+ * Nesting without a mouse.
+ *
+ * Dragging is how most people put a block into a container, and it is the
+ * only way a container can be aimed at precisely. But a builder whose
+ * nesting exists only as a drag has nesting for some editors and not for
+ * others, so the keyboard gets the two moves an outline editor has always
+ * had: indent into the thing above, outdent to just after the thing you
+ * were in.
+ *
+ * "The thing above" rather than a chosen target, because a menu cannot
+ * ask which container — and the sibling above is the one the editor can
+ * see themselves next to.
+ */
+export function nestingMovesFor(
+    document: BlockDocument,
+    blockId: string,
+    isContainer: (block: BlockNode) => boolean,
+    maxDepth: number,
+): NestingMoves {
+    const moves: NestingMoves = { into: null, out: null }
+
+    const parent = parentOf(document, blockId)
+    if (parent === null) {
+        return moves
+    }
+
+    const index = parent.blocks.findIndex((block) => block.id === blockId)
+    if (index < 0) {
+        return moves
+    }
+
+    const previous = index > 0 ? parent.blocks[index - 1] : undefined
+    if (previous !== undefined && isContainer(previous)) {
+        // The container's children sit one level below the container, and
+        // the block brings its own subtree with it.
+        const landing = parent.depth + 1 + subtreeHeight(parent.blocks[index]) - 1
+
+        if (landing <= maxDepth) {
+            moves.into = { parent: previous.id, index: (previous.children ?? []).length }
+        }
+    }
+
+    if (parent.kind === 'container') {
+        const grandparent = parentOf(document, parent.id)
+        if (grandparent !== null) {
+            const at = grandparent.blocks.findIndex((block) => block.id === parent.id)
+            if (at >= 0) {
+                // Just after the container it came out of, which is where
+                // the editor last saw it.
+                moves.out = { parent: grandparent.id, index: at + 1 }
+            }
+        }
+    }
+
+    return moves
 }
 
 export function removeNode(document: BlockDocument, nodeId: string): PatchOperation[] | null {

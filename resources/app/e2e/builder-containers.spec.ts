@@ -300,6 +300,41 @@ test('builds, rearranges and reloads a nested document', async ({ page }) => {
     await expect.poll(() => canvasTree(page), { timeout: 25_000 }).toEqual(before)
 })
 
+test('nests and unnests a block from the navigator alone', async ({ page }) => {
+    await newBuilderPage(page, 'Nesting by keyboard')
+
+    // Dragging is not everyone's input device. Everything below goes
+    // through the navigator's own menu, which is the guaranteed editing
+    // path — if nesting is unreachable here it is unreachable for anyone
+    // who does not use a mouse.
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await addElement(page, 'Container')
+    await waitForContainers(page, 1)
+
+    // A sibling AFTER the container, so the container is the thing above it.
+    await openNavigator(page)
+    await selectInNavigator(page, 'Column (12)')
+    await addElement(page, 'Divider')
+
+    const tree = await treeWhen(page, (t) => Object.values(t).some((kids) => kids.length === 2))
+    const columnId = Object.keys(tree).find((id) => tree[id].length === 2) as string
+    const [containerId, blockId] = tree[columnId]
+
+    await actOn(page, 'divider', 0, 'Move into')
+    await saved(page)
+    await treeWhen(page, (t) => (t[containerId] ?? []).join() === blockId)
+
+    await actOn(page, 'divider', 0, 'Move out')
+    await saved(page)
+
+    // Back beside the container, and still the same node — a move, not a
+    // re-creation.
+    await treeWhen(
+        page,
+        (t) => (t[containerId] ?? []).length === 0 && t[columnId]?.join() === `${containerId},${blockId}`,
+    )
+})
+
 /** Whether the tree knows this id as a holder — i.e. it is a container. */
 function holdsBlocks(tree: Record<string, string[]>, id: string): boolean {
     return tree[id] !== undefined

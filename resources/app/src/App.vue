@@ -13,7 +13,7 @@ import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
-import { exportAsLibraryAsset, sectionOf } from './document/edits'
+import { exportAsLibraryAsset, nestingMovesFor, sectionOf } from './document/edits'
 import { inlineTarget, type InlineMode } from './document/inline'
 import { responsiveStyleOperations, type Breakpoint as ResponsiveBreakpoint } from './document/responsive'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
@@ -626,32 +626,23 @@ function siblingsOf(nodeId: string): { list: string[]; index: number; parent: st
     return { list, index: list.indexOf(nodeId), parent: parent.id }
 }
 
-/** Right-click on the canvas: the node's actions, where the pointer is. */
 const contextMenu = ref<{ node: string; at: { x: number; y: number } } | null>(null)
 
-const menuActions = computed<NodeAction[]>(() => {
-    if (!selected.value) {
-        return []
-    }
+/** Which way this block could be nested, from where it currently sits. */
+function nestingFor(nodeId: string) {
+    return nestingMovesFor(store.blocks, nodeId, store.isContainer, store.maxBlockDepth)
+}
 
-    const position = siblingsOf(String((selected.value.node as { id: string }).id))
-
-    return nodeActions({
-        kind: selected.value.kind,
-        canStructure: store.capabilities.structure,
-        canContent: store.capabilities.content,
-        canStyle: store.capabilities.style,
-        holdsLock: store.lock.mine,
-        hasClipboard: store.clipboard !== null,
-        hasStyles: store.styleClipboard !== null,
-        isFirst: position.index <= 0,
-        isLast: position.index < 0 || position.index === position.list.length - 1,
-    })
-})
-
-/** The same table the canvas menu uses, for any node the navigator lists. */
+/**
+ * What a node offers right now.
+ *
+ * One builder for both menus: the canvas right-click and the navigator row
+ * promise to offer the same actions, and two copies of this context is how
+ * that promise quietly stops being true.
+ */
 function actionsForNode(nodeId: string, kind: NodeKind): NodeAction[] {
     const position = siblingsOf(nodeId)
+    const nesting = kind === 'block' ? nestingFor(nodeId) : { into: null, out: null }
 
     return nodeActions({
         kind,
@@ -663,8 +654,17 @@ function actionsForNode(nodeId: string, kind: NodeKind): NodeAction[] {
         hasStyles: store.styleClipboard !== null,
         isFirst: position.index <= 0,
         isLast: position.index < 0 || position.index === position.list.length - 1,
+        canMoveInto: nesting.into !== null,
+        canMoveOut: nesting.out !== null,
     })
 }
+
+/** Right-click on the canvas: the node's actions, where the pointer is. */
+const menuActions = computed<NodeAction[]>(() =>
+    selected.value
+        ? actionsForNode(String((selected.value.node as { id: string }).id), selected.value.kind)
+        : [],
+)
 
 /**
  * A navigator row acts on ITS node, which may not be the selected one —
@@ -739,8 +739,29 @@ async function onNodeAction(key: NodeActionKey) {
 
         return
     }
+    if (key === 'moveInto' || key === 'moveOut') {
+        await onNestNode(node, key === 'moveInto' ? 'into' : 'out')
+
+        return
+    }
 
     await onMoveNode(node, key === 'moveUp' ? -1 : 1)
+}
+
+/**
+ * Nest a block one level in, or lift it one level out — the keyboard
+ * equivalent of dragging it into a container, so nesting is not a feature
+ * only the people who can drag get to use (12-BUILDER-REDESIGN §18).
+ */
+async function onNestNode(nodeId: string, direction: 'into' | 'out') {
+    const target = nestingFor(nodeId)[direction]
+    if (target === null) {
+        return
+    }
+
+    if (await store.moveBlock(api, nodeId, target.parent, target.index)) {
+        reloadCanvas()
+    }
 }
 
 /**

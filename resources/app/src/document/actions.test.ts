@@ -18,6 +18,10 @@ function context(overrides: Partial<NodeActionContext> = {}): NodeActionContext 
         hasStyles: false,
         isFirst: false,
         isLast: false,
+        // A block with nowhere to nest is the ordinary case; the specs
+        // that care about nesting opt in.
+        canMoveInto: false,
+        canMoveOut: false,
         ...overrides,
     }
 }
@@ -64,10 +68,37 @@ describe('nodeActions', () => {
     it('says why, rather than hiding the option', () => {
         const actions = nodeActions(context({ canStructure: false }))
 
-        expect(actions).toHaveLength(10)
+        expect(actions).toHaveLength(12)
         expect(actions.find((action) => action.key === 'delete')?.hint).toBe(
             'Needs the layout permission',
         )
+    })
+
+    it('offers nesting only where there is somewhere to nest', () => {
+        // Dragging is not everyone's input device, so the two directions an
+        // outline editor has always had are on the table too.
+        expect(enabled({ canMoveInto: true })).toContain('moveInto')
+        expect(enabled({ canMoveOut: true })).toContain('moveOut')
+        expect(enabled()).not.toContain('moveInto')
+        expect(enabled()).not.toContain('moveOut')
+    })
+
+    it('says what is missing when a block has nowhere to nest', () => {
+        const actions = nodeActions(context())
+
+        expect(actions.find((action) => action.key === 'moveInto')?.hint).toBe(
+            'Put a container directly above it first',
+        )
+        expect(actions.find((action) => action.key === 'moveOut')?.hint).toBe(
+            'It is not inside a container',
+        )
+    })
+
+    it('never offers nesting to a section or a column', () => {
+        const section = enabled({ kind: 'section', canMoveInto: true, canMoveOut: true })
+
+        expect(section).not.toContain('moveInto')
+        expect(section).not.toContain('moveOut')
     })
 
     it('will not move the first node up or the last node down', () => {

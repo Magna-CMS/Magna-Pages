@@ -16,6 +16,8 @@ import type { NodeKind } from './locate'
 export type NodeActionKey =
     | 'moveUp'
     | 'moveDown'
+    | 'moveInto'
+    | 'moveOut'
     | 'duplicate'
     | 'rename'
     | 'copy'
@@ -49,6 +51,15 @@ export interface NodeActionContext {
     /** Position among siblings, for the move options. */
     isFirst: boolean
     isLast: boolean
+    /**
+     * Whether the sibling immediately above this block is a container with
+     * room for it. Nesting by keyboard indents into the thing above, the
+     * way every outline editor does — the alternative is asking someone to
+     * name a target, which a menu cannot do.
+     */
+    canMoveInto: boolean
+    /** Whether this block sits inside a container it could step out of. */
+    canMoveOut: boolean
 }
 
 export function nodeActions(context: NodeActionContext): NodeAction[] {
@@ -73,6 +84,31 @@ export function nodeActions(context: NodeActionContext): NodeAction[] {
             label: 'Move down',
             enabled: structural && movable && !context.isLast,
             hint: movable ? structureHint : 'Columns are ordered by the row layout',
+        },
+        // Nesting, for people who do not drag. A container is reachable by
+        // mouse through the canvas and by nothing else without these, which
+        // would make nesting a feature only some editors have.
+        {
+            key: 'moveInto',
+            label: 'Move into',
+            enabled: structural && context.kind === 'block' && context.canMoveInto,
+            hint:
+                context.kind === 'block'
+                    ? context.canMoveInto
+                        ? structureHint
+                        : 'Put a container directly above it first'
+                    : 'Only a block goes inside a container',
+        },
+        {
+            key: 'moveOut',
+            label: 'Move out',
+            enabled: structural && context.kind === 'block' && context.canMoveOut,
+            hint:
+                context.kind === 'block'
+                    ? context.canMoveOut
+                        ? structureHint
+                        : 'It is not inside a container'
+                    : 'Only a block comes out of a container',
         },
         {
             key: 'duplicate',
