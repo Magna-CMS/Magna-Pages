@@ -55,6 +55,21 @@ function refusingApi(): BuilderApi {
     } as unknown as BuilderApi
 }
 
+/**
+ * An API that never answers, the way a dropped connection does.
+ *
+ * A plain Error, not an ApiError: that is what tells the store the server
+ * said nothing at all, which keeps the edit and queues it rather than
+ * rolling it back.
+ */
+function offlineApi(): BuilderApi {
+    return {
+        patch: vi.fn(async () => {
+            throw new Error('Failed to fetch')
+        }),
+    } as unknown as BuilderApi
+}
+
 const setText = (value: string): PatchOperation[] => [
     { op: 'replace', path: '/0/columns/0/blocks/0/data/text', value },
 ]
@@ -201,5 +216,89 @@ describe('a refused edit', () => {
 
         expect(store.blocks).toEqual(before)
         expect(store.undoStack).toHaveLength(0)
+    })
+})
+
+/**
+ * Undo used to patch the server directly, which made it the one gesture
+ * that behaved differently from every other edit when the connection was
+ * not there — and the one that could jump a send queue.
+ */
+describe('undo travels the same road as an edit', () => {
+    it('keeps the undo and queues it when the server never answers', async () => {
+        const store = freshStore()
+
+        await store.edit(acceptingApi(store), 'Edit text', setText('Two'))
+        vi.advanceTimersByTime(50)
+
+        await store.undo(offlineApi())
+
+        // The undo stands: the edit was not wrong, the connection was.
+        expect(textIn(store.blocks)).toBe('One')
+        expect(store.sendQueue).toHaveLength(1)
+        expect(store.redoStack).toHaveLength(1)
+        expect(store.error).toBeNull()
+    })
+
+    it('joins the queue rather than jumping it', async () => {
+        const store = freshStore()
+
+        // Offline: this edit is queued rather than sent.
+        await store.edit(offlineApi(), 'Edit text', setText('Two'))
+        vi.advanceTimersByTime(50)
+
+        const api = acceptingApi(store)
+        await store.undo(api)
+
+        // Order is the whole guarantee of a queue, so the undo lands behind
+        // the edit it undoes instead of racing ahead of it.
+        expect(api.patch).not.toHaveBeenCalled()
+        expect(store.sendQueue).toHaveLength(2)
+    })
+
+    it('puts the document and both stacks back when the server refuses', async () => {
+        const store = freshStore()
+
+        await store.edit(acceptingApi(store), 'Edit text', setText('Two'))
+        vi.advanceTimersByTime(50)
+
+        await store.undo(refusingApi())
+
+        expect(textIn(store.blocks)).toBe('Two')
+        expect(store.undoStack).toHaveLength(1)
+        expect(store.redoStack).toHaveLength(0)
+        expect(store.error).toContain('pages.layout')
+    })
+
+    it('retires the entry it pushed, not whatever ended up on top', async () => {
+        const store = freshStore()
+
+        await store.edit(acceptingApi(store), 'Edit one', setText('Two'))
+        vi.advanceTimersByTime(50)
+        await store.edit(acceptingApi(store), 'Edit two', setText('Three'))
+        vi.advanceTimersByTime(50)
+
+        // A refusal that has not come back yet. The await inside undo is a
+        // real gap, and a second undo can land in it.
+        let refuse: (error: unknown) => void = () => {}
+        const slow = {
+            patch: vi.fn(
+                () =>
+                    new Promise((_resolve, reject) => {
+                        refuse = reject
+                    }),
+            ),
+        } as unknown as BuilderApi
+
+        const pending = store.undo(slow)
+        // Lands during the gap and pushes "Edit one" on top of the redo stack.
+        await store.undo(acceptingApi(store))
+
+        refuse(new ApiError('This edit needs the "pages.layout" permission.', 422))
+        await pending
+
+        // Popping would have taken "Edit one" — the entry the OTHER undo put
+        // there, which the server accepted and which is still undone.
+        expect(store.redoStack.map((entry) => entry.label)).toEqual(['Edit one'])
     })
 })

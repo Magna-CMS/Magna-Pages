@@ -77,6 +77,15 @@ function holdsChildren(registry: BlockDefinition[], block: BlockNode): boolean {
     return registry.find((definition) => definition.handle === block.block)?.container === true
 }
 
+/**
+ * What became of one batch.
+ *
+ * `queued` is not failure: the operations are kept and replayed, so the
+ * local document stays as the editor left it. Only `refused` means the
+ * server answered and said no, and only that puts the document back.
+ */
+export type SendOutcome = 'ok' | 'queued' | 'refused'
+
 interface HistoryEntry {
     label: string
     undo: PatchOperation[]
@@ -555,12 +564,37 @@ export const useDocumentStore = defineStore('document', {
                 at: Date.now(),
             })
 
-            // While a queue exists, new edits join it instead of racing it —
-            // order is the whole guarantee of a send queue.
+            if ((await this.send(api, operations)) === 'refused') {
+                // The server answered no — retrying a refusal just refuses.
+                this.blocks = applyPatch(this.blocks, inverse).document
+                this.undoStack = historyBefore
+
+                return false
+            }
+
+            return true
+        },
+
+        /**
+         * Put one batch on the wire, the same way for every caller.
+         *
+         * Extracted because undo did not do this and it mattered: it patched
+         * the server directly, so an undo pressed while a send queue existed
+         * jumped the queue — and order is the whole guarantee a queue makes.
+         * Offline it was worse than out of order, it was refused outright and
+         * rolled back, so undo was the one gesture that stopped working when
+         * the connection did.
+         *
+         * Three outcomes, and the caller decides what each means to it:
+         * `ok` (the server has it), `queued` (it will, keep the local state),
+         * `refused` (it never will, put the document back).
+         */
+        async send(api: BuilderApi, operations: PatchOperation[]): Promise<SendOutcome> {
+            // While a queue exists, everything joins it instead of racing it.
             if (this.sendQueue.length > 0) {
                 this.enqueue(operations)
 
-                return true
+                return 'queued'
             }
 
             this.saving = true
@@ -569,22 +603,19 @@ export const useDocumentStore = defineStore('document', {
                 // Adopt the server's document: it is the one that exists.
                 this.blocks = result.document
 
-                return true
+                return 'ok'
             } catch (error) {
                 if (classifyFailure(error) === 'network') {
                     // The server never answered: the edit is not wrong, the
                     // connection is. Keep it, queue it, replay later.
                     this.enqueue(operations)
 
-                    return true
+                    return 'queued'
                 }
 
-                // The server answered no — retrying a refusal just refuses.
-                this.blocks = applyPatch(this.blocks, inverse).document
-                this.undoStack = historyBefore
                 this.error = error instanceof Error ? error.message : String(error)
 
-                return false
+                return 'refused'
             } finally {
                 this.saving = false
             }
@@ -656,18 +687,25 @@ export const useDocumentStore = defineStore('document', {
                 return
             }
 
+            this.error = null
+
             const applied = applyPatch(this.blocks, entry.undo)
             this.blocks = applied.document
             this.redoStack.push(entry)
 
-            try {
-                const result = await api.patch(entry.undo)
-                this.blocks = result.document
-            } catch (error) {
+            // Through the same send path as every other edit, so an undo
+            // pressed offline is kept and replayed rather than refused, and
+            // one pressed while a queue exists lands after what is in it.
+            if ((await this.send(api, entry.undo)) === 'refused') {
                 this.blocks = applyPatch(this.blocks, applied.inverse).document
                 this.undoStack.push(entry)
-                this.redoStack.pop()
-                this.error = error instanceof Error ? error.message : String(error)
+                /*
+                 * Removed by identity, not by popping: the await above is a
+                 * gap somebody can press redo in, and popping would take
+                 * whatever happened to be on top instead of the entry this
+                 * call put there.
+                 */
+                this.redoStack = this.redoStack.filter((candidate) => candidate !== entry)
             }
         },
 
