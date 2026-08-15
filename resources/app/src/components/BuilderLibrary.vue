@@ -124,18 +124,28 @@ function draggable(source: DragSource): boolean {
         <div class="library__tabs" role="tablist" aria-label="Library">
             <button
                 v-for="tab in (['elements', 'patterns', 'cloud'] as const)"
+                :id="`library-tab-${tab}`"
                 :key="tab"
                 type="button"
                 role="tab"
                 class="library__tab"
                 :class="{ 'is-active': ui.libraryTab === tab }"
                 :aria-selected="ui.libraryTab === tab"
+                aria-controls="library-panel"
+                :tabindex="ui.libraryTab === tab ? 0 : -1"
                 @click="ui.libraryTab = tab"
             >
                 {{ tab }}
             </button>
         </div>
 
+        <!-- One panel, whichever tab fills it. Tabs that control nothing
+             are announced as tabs that control nothing. -->
+        <div
+            id="library-panel"
+            role="tabpanel"
+            :aria-labelledby="`library-tab-${ui.libraryTab}`"
+        >
         <template v-if="ui.libraryTab === 'elements'">
             <section class="library__group">
                 <h3 class="library__heading">Add section</h3>
@@ -284,6 +294,7 @@ function draggable(source: DragSource): boolean {
                 {{ collection.name }} — {{ collection.assetCount }} assets by {{ collection.publisher }}
             </p>
         </template>
+        </div>
     </div>
 </template>
 

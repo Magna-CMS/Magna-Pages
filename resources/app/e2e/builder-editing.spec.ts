@@ -136,6 +136,33 @@ test('opens every dock drawer, including the ones fetched on demand', async ({ p
     await expect(page.getByRole('navigation', { name: 'Page structure' })).toBeVisible()
 })
 
+test('announces a panel mode swap and gives its tabs a panel to control', async ({ page }) => {
+    await newBuilderPage(page, 'Panel a11y')
+
+    const panel = page.locator('#panel-body')
+
+    // A tab that controls nothing is announced as a tab that controls
+    // nothing — the tablist needs a tabpanel, and it needs to say which
+    // tab is filling it.
+    await expect(panel).toHaveAttribute('role', 'tabpanel')
+    await expect(panel).toHaveAttribute('aria-labelledby', 'panel-mode-library')
+    await expect(page.locator('#library-panel')).toHaveAttribute(
+        'aria-labelledby',
+        'library-tab-elements',
+    )
+
+    await page.getByRole('tab', { name: 'Edit' }).click()
+    await expect(panel).toHaveAttribute('aria-labelledby', 'panel-mode-inspect')
+
+    // Swapping mode replaces everything in the panel. Without moving focus
+    // and saying so, a screen reader has no way to notice.
+    await expect
+        .poll(() => page.evaluate(() => document.activeElement?.id))
+        .toBe('panel-body')
+
+    await expect(page.locator('[aria-live="polite"]').first()).toContainText('Edit panel')
+})
+
 test('edits rich text on the canvas and stores the markup', async ({ page }) => {
     await newBuilderPage(page, 'Rich')
 

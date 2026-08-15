@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import { useUiStore } from '../stores/ui'
 
@@ -40,6 +40,30 @@ function onResizeEnd(event: PointerEvent) {
     resizing.value = false
 }
 
+/**
+ * Swapping mode replaces everything in the panel, which a screen reader
+ * has no way to notice: focus stays wherever it was and nothing is
+ * announced. So the new panel takes focus, and a live region says what
+ * the panel now holds (12-BUILDER-REDESIGN §18).
+ */
+const body = ref<HTMLElement | null>(null)
+
+const announcement = computed(() =>
+    ui.mode === 'library'
+        ? 'Add panel. Elements, patterns and cloud library.'
+        : `Edit panel. ${props.selectionLabel ?? 'Nothing selected'}.`,
+)
+
+watch(
+    () => ui.mode,
+    async () => {
+        await nextTick()
+        // Focused programmatically, not made a tab stop: the panel's own
+        // controls are what someone tabbing through should land on.
+        body.value?.focus()
+    },
+)
+
 /** Keyboard resizing: a drag handle nobody can reach is not a control. */
 function onResizeKey(event: KeyboardEvent) {
     const step = event.shiftKey ? 40 : 10
@@ -74,21 +98,27 @@ function onResizeKey(event: KeyboardEvent) {
         <template v-if="!ui.panelCollapsed">
             <div class="panel__modes" role="tablist" aria-label="Panel mode">
                 <button
+                    id="panel-mode-library"
                     type="button"
                     role="tab"
                     class="panel__mode"
                     :class="{ 'is-active': ui.mode === 'library' }"
                     :aria-selected="ui.mode === 'library'"
+                    aria-controls="panel-body"
+                    :tabindex="ui.mode === 'library' ? 0 : -1"
                     @click="ui.browse()"
                 >
                     Add
                 </button>
                 <button
+                    id="panel-mode-inspect"
                     type="button"
                     role="tab"
                     class="panel__mode"
                     :class="{ 'is-active': ui.mode === 'inspect' }"
                     :aria-selected="ui.mode === 'inspect'"
+                    aria-controls="panel-body"
+                    :tabindex="ui.mode === 'inspect' ? 0 : -1"
                     @click="ui.inspect(ui.inspectTab)"
                 >
                     Edit
@@ -96,10 +126,21 @@ function onResizeKey(event: KeyboardEvent) {
                 </button>
             </div>
 
-            <div class="panel__body">
+            <!-- A tab with no panel is an ARIA error, not a cosmetic one:
+                 the reader announces a tab that controls nothing. -->
+            <div
+                id="panel-body"
+                ref="body"
+                class="panel__body"
+                role="tabpanel"
+                tabindex="-1"
+                :aria-labelledby="ui.mode === 'library' ? 'panel-mode-library' : 'panel-mode-inspect'"
+            >
                 <slot v-if="ui.mode === 'library'" name="library" />
                 <slot v-else name="inspect" />
             </div>
+
+            <p class="panel__announce" aria-live="polite">{{ announcement }}</p>
         </template>
 
         <div
@@ -173,6 +214,24 @@ function onResizeKey(event: KeyboardEvent) {
     padding: 10px 12px 16px;
     border-top: 1px solid var(--builder-border);
     margin-top: -1px;
+}
+
+/* Focused programmatically after a mode swap, so it must not draw a ring
+   around the whole panel the way a real tab stop would. */
+.panel__body:focus {
+    outline: none;
+}
+
+/* Announced, never shown. Not `display: none`, which readers skip. */
+.panel__announce {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 .panel__collapse {

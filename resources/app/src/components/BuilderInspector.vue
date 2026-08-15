@@ -487,18 +487,28 @@ const title = computed<string>(() => {
             <div v-if="tabs.length > 1" class="inspector__tabs" role="tablist" aria-label="Settings group">
                 <button
                     v-for="name in tabs"
+                    :id="`inspector-tab-${name}`"
                     :key="name"
                     type="button"
                     role="tab"
                     class="inspector__tab"
                     :class="{ 'is-active': tab === name }"
                     :aria-selected="tab === name"
+                    aria-controls="inspector-panel"
+                    :tabindex="tab === name ? 0 : -1"
                     @click="ui.inspectTab = name"
                 >
                     {{ name }}
                 </button>
             </div>
         </template>
+
+        <!-- The settings themselves, as the panel those tabs control. -->
+        <div
+            id="inspector-panel"
+            :role="tabs.length > 1 ? 'tabpanel' : undefined"
+            :aria-labelledby="tabs.length > 1 ? `inspector-tab-${tab}` : undefined"
+        >
 
         <template v-if="located && definition && tab === 'style'">
             <BuilderStyleControls
@@ -832,6 +842,7 @@ const title = computed<string>(() => {
         <p v-else-if="located && tabs.length === 0" class="inspector__empty">
             {{ located.kind === 'block' ? 'This block is not installed.' : 'No settings yet.' }}
         </p>
+        </div>
     </div>
 </template>
 
