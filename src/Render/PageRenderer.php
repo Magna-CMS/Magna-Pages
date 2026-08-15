@@ -152,10 +152,23 @@ final class PageRenderer
             // Inherited by the sections partial through @include, so a theme
             // layout needs no builder awareness of its own.
             'builderMode' => $builderMode,
-            // Display conditions, evaluated per node at render. The BUILDER
-            // shows everything — you cannot edit what you cannot see — and
-            // the canvas marks conditioned nodes instead (the partial adds
-            // a data attribute the overlay can badge).
+            /*
+             * Display conditions, evaluated per node at render.
+             *
+             * The BUILDER shows everything — you cannot edit what you cannot
+             * see, and a section restricted to signed-in visitors would
+             * otherwise vanish from the canvas along with any way to lift the
+             * restriction.
+             *
+             * Where a conditioned node is called out is the NAVIGATOR, which
+             * badges any node carrying `settings.conditions`. The canvas does
+             * not mark them: it renders the published markup exactly, and an
+             * attribute only the builder emits is a difference between what
+             * the canvas shows and what ships. If a canvas badge is wanted it
+             * belongs in the overlay, drawn from the document the builder
+             * already holds, rather than from markup smuggled through the
+             * render.
+             */
             'conditionsPass' => $builderMode
                 ? fn (array $settings): bool => true
                 : fn (array $settings): bool => $this->conditions
