@@ -211,6 +211,9 @@ function onResizeKey(event: KeyboardEvent) {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* Reserve the bar's width even when nothing overflows: without this the
+       whole panel shifts sideways the moment a category is expanded. */
+    scrollbar-gutter: stable;
     padding: 10px 12px 16px;
     border-top: 1px solid var(--builder-border);
     margin-top: -1px;

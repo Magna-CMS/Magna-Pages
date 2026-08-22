@@ -410,3 +410,31 @@ test('paints the page from the panel with nothing selected', async ({ page }) =>
         )
         .toContain('background-color:#123456')
 })
+
+/**
+ * The builder's scrollbars are the builder's.
+ *
+ * The trap this guards is specific: setting EITHER standard property makes
+ * Chromium ignore ::-webkit-scrollbar entirely, so a stylesheet carrying
+ * both silently keeps the platform default. Asserting the computed value
+ * catches that, where a screenshot of a thin dark bar would not.
+ */
+test('styles its own scrollbars', async ({ page }) => {
+    await newBuilderPage(page, 'Scroll')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+
+    const panel = page.locator('.panel__body')
+    const style = await panel.evaluate((el) => ({
+        color: getComputedStyle(el).scrollbarColor,
+        width: getComputedStyle(el).scrollbarWidth,
+        gutter: el.offsetWidth - el.clientWidth,
+    }))
+
+    expect(style.width).toBe('thin')
+    // The track is transparent and the thumb is the builder's own colour.
+    expect(style.color).toContain('rgba(0, 0, 0, 0)')
+    expect(style.color).not.toContain('auto')
+    // Reserved whether or not anything overflows, so expanding a category
+    // does not shove the whole panel sideways.
+    expect(style.gutter).toBeGreaterThan(0)
+})

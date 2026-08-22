@@ -1858,6 +1858,67 @@ onBeforeUnmount(() => {
     --builder-surface: #14161d;
     --builder-border: #272b36;
     --builder-text: #e7e9ee;
+    /* Visible enough to read as a control against the panel, quiet enough
+       not to compete with the content beside it. No hover variant: the
+       only way to express one is `*:hover`, which asks the engine to
+       recalculate styles for every element under the pointer. */
+    --builder-scroll: #454c5e;
+}
+
+/*
+ * Scrollbars, for every surface in the builder that scrolls.
+ *
+ * The platform default is a light-mode widget: a wide grey trough with
+ * arrow buttons, drawn over a dark panel. It reads as a seam down the
+ * middle of the interface rather than as a control, and at the panel's
+ * width it costs real room.
+ *
+ * The standard properties are the primary path. Setting EITHER of them
+ * makes Chromium ignore ::-webkit-scrollbar entirely, so the two cannot be
+ * combined — declaring `scrollbar-width` beside a set of pseudo-element
+ * rules silently discards the pseudo-elements and leaves the default bar,
+ * which is exactly the trap this comment exists to mark.
+ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--builder-scroll) transparent;
+}
+
+/*
+ * Engines with no `scrollbar-color` — Safari before 18.2 — get the older
+ * pseudo-elements instead. Fenced, because on an engine that has both this
+ * block would be the one thrown away.
+ */
+@supports not (scrollbar-color: auto) {
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        /* Inset by a transparent border so the thumb reads as a floating
+           pill rather than a filled channel, and never smaller than a
+           target worth aiming at. */
+        background: var(--builder-scroll);
+        background-clip: padding-box;
+        border: 2px solid transparent;
+        border-radius: 99px;
+        min-height: 32px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--builder-scroll);
+        background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-button,
+    ::-webkit-scrollbar-corner {
+        display: none;
+    }
 }
 
 * {
