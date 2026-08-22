@@ -26,6 +26,7 @@ import type {
     BlockDocument,
     BlockNode,
     Capabilities,
+    ChromeChoice,
     DisplayConditionOption,
     LockState,
     PatchOperation,
@@ -153,6 +154,7 @@ interface State {
     icons: Record<string, string>
     /** The page's own settings — its ground, stored beside the document. */
     pageSettings: Record<string, unknown>
+    chrome: { header: ChromeChoice[]; footer: ChromeChoice[] }
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -188,6 +190,7 @@ export const useDocumentStore = defineStore('document', {
         displayConditions: [],
         icons: {},
         pageSettings: {},
+        chrome: { header: [], footer: [] },
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -274,6 +277,7 @@ export const useDocumentStore = defineStore('document', {
             this.displayConditions = payload.displayConditions ?? []
             this.icons = payload.icons ?? {}
             this.pageSettings = payload.document?.settings ?? {}
+            this.chrome = payload.chrome ?? { header: [], footer: [] }
             this.loaded = true
         },
 

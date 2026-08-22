@@ -142,6 +142,12 @@ export interface DisplayConditionOption {
     builtIn: boolean
 }
 
+export interface ChromeChoice {
+    id: string
+    title: string
+    slug: string
+}
+
 export interface BootstrapPayload {
     lock?: LockState
     approval?: ApprovalState | null
@@ -150,6 +156,8 @@ export interface BootstrapPayload {
     displayConditions?: DisplayConditionOption[]
     /** The server's icon vocabulary: name => inner SVG geometry. */
     icons?: Record<string, string>
+    /** The headers and footers this page may choose between. */
+    chrome?: { header: ChromeChoice[]; footer: ChromeChoice[] }
     document: {
         id: string
         title: string

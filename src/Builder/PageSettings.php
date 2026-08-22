@@ -39,10 +39,10 @@ final class PageSettings
     {
         $allowed = array_column(StyleDescriptors::forKind(StyleDescriptors::PAGE), 'key');
 
+        // Absent styles mean no styles, not no settings: a page may choose
+        // its header without ever touching its background.
         $style = $input['style'] ?? null;
-        if (! is_array($style)) {
-            return [];
-        }
+        $style = is_array($style) ? $style : [];
 
         $clean = [];
         foreach ($style as $key => $value) {
@@ -74,10 +74,31 @@ final class PageSettings
             }
         }
 
-        // An empty style set is stored as nothing at all, so a page that
-        // has had its settings cleared renders byte-identically to a page
-        // that never had any.
-        return $clean === [] ? [] : ['style' => $clean];
+        $settings = $clean === [] ? [] : ['style' => $clean];
+
+        /*
+         * Which header and footer this page uses, as entry ids.
+         *
+         * Stored here rather than as their own columns because that is what
+         * they are: a page-level setting, written by the one endpoint that
+         * writes page-level settings. An empty string clears the choice and
+         * hands the page back to the site default, which is a different
+         * state from "never chose" only in that someone decided it.
+         *
+         * Nothing is validated against the catalog here. The RESOLVER
+         * checks published-ness and role every time it renders, because an
+         * id that was valid at write can stop being valid at any moment —
+         * a part gets unpublished, or repurposed — and the render is the
+         * only place that can be right about it.
+         */
+        foreach (['header', 'footer'] as $role) {
+            $chosen = $input[$role] ?? null;
+            if (is_string($chosen) && $chosen !== '') {
+                $settings[$role] = $chosen;
+            }
+        }
+
+        return $settings;
     }
 
     /**

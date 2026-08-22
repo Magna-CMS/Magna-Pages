@@ -37,6 +37,18 @@ class PagesSettings extends Settings
     public string $color_scheme = 'system';
 
     /**
+     * The site's default header and footer, as `pages_template` entry ids.
+     *
+     * A page may name its own and override these; null here means fall
+     * back to a part whose slug is literally "header" or "footer", which is
+     * how every site chose its chrome before this existed and therefore
+     * how every existing site must keep working.
+     */
+    public ?string $default_header_id = null;
+
+    public ?string $default_footer_id = null;
+
+    /**
      * Content types mounted on the public site, as a list of
      * {type, prefix} maps — e.g. [{"type": "article", "prefix": "blog"}]
      * serves /blog (archive) and /blog/{slug} (single). Only types whose

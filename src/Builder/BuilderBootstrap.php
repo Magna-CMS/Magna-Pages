@@ -14,6 +14,7 @@ use Magna\Blocks\PageTreeValidator;
 use Magna\Content\Entry;
 use Magna\Pages\Render\BindingResolver;
 use Magna\Pages\Render\StyleDescriptors;
+use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
 
 /**
@@ -85,6 +86,16 @@ final class BuilderBootstrap
              * descriptor table already makes.
              */
             'icons' => app(IconRegistry::class)->all(),
+            /*
+             * The headers and footers this page may choose between, and
+             * what it currently uses. Shipped with the document because a
+             * page-level choice belongs to the page, and the panel should
+             * not have to fetch a list to draw one select.
+             */
+            'chrome' => [
+                'header' => app(TemplatePartResolver::class)->chromeChoices('header'),
+                'footer' => app(TemplatePartResolver::class)->chromeChoices('footer'),
+            ],
         ];
     }
 

@@ -179,11 +179,12 @@ final class PageRenderer
              * had not heard of it. The partial is included by every layout
              * and already owns the utilities a theme must not forget.
              */
-            'pageCss' => $context === null
-                ? ''
-                : PageSettings::css(
-                    is_array($pageSettings = $context->getAttribute('page_settings')) ? $pageSettings : null,
-                ),
+            'pageCss' => ($withParts ? $this->chromeCss($context) : '')
+                .($context === null
+                    ? ''
+                    : PageSettings::css(
+                        is_array($pageSettings = $context->getAttribute('page_settings')) ? $pageSettings : null,
+                    )),
             'conditionsPass' => $builderMode
                 ? fn (array $settings): bool => true
                 : fn (array $settings): bool => $this->conditions
@@ -300,12 +301,26 @@ final class PageRenderer
      */
     private function renderPart(string $handle, ?Entry $context = null): ?string
     {
-        $tree = $this->parts->partTree($handle);
-        if ($tree === null || $tree->sections === []) {
+        /*
+         * Which header or footer this page gets: the page's own choice,
+         * then the site default, then a part whose slug is literally
+         * "header"/"footer". The last rung is what keeps every site that
+         * predates this feature rendering exactly as it does today.
+         */
+        $entry = $this->parts->chromeEntry($handle, $context);
+        if ($entry === null) {
             return null;
         }
 
-        return view('magna-pages::partials.sections', [
+        $document = $entry->getAttribute('blocks_data');
+        $tree = PageTree::fromArray(is_array($document) ? $document : []);
+        if ($tree->sections === []) {
+            return null;
+        }
+
+        $behaviour = $this->parts->chromeBehaviour($entry);
+
+        $html = view('magna-pages::partials.sections', [
             'tree' => $tree,
             'registry' => $this->registry,
             'resolver' => $this->resolver,
@@ -318,5 +333,47 @@ final class PageRenderer
                 $this->bindings->resolve($block->data, $context),
             ),
         ])->render();
+
+        /*
+         * Chrome is wrapped so its behaviour has something to attach to.
+         *
+         * Sticky is the awkward one: a theme puts our HTML inside its own
+         * <header>, and an element can only stick within its parent's box —
+         * so sticking the wrapper alone would do nothing, because the
+         * wrapper is exactly as tall as its parent. The rule therefore
+         * names the wrapper AND whatever element holds it, through :has().
+         * :where() keeps the specificity at zero so a theme that wants to
+         * disagree still can.
+         */
+        $classes = 'magna-chrome magna-chrome--'.$handle;
+        if ($behaviour['sticky']) {
+            $classes .= ' magna-chrome--sticky';
+        }
+
+        return '<div class="'.$classes.'">'.$html.'</div>';
+    }
+
+    /**
+     * The stylesheet chrome behaviour needs, or an empty string.
+     *
+     * Emitted once per page beside the document's own styles, so a theme
+     * cannot forget it and a page with ordinary chrome pays nothing.
+     */
+    private function chromeCss(?Entry $context): string
+    {
+        $sticky = false;
+        foreach (['header', 'footer'] as $role) {
+            $entry = $this->parts->chromeEntry($role, $context);
+            if ($this->parts->chromeBehaviour($entry)['sticky']) {
+                $sticky = true;
+            }
+        }
+
+        if (! $sticky) {
+            return '';
+        }
+
+        return '.magna-chrome--sticky,:where(header,footer,div,section):has(>.magna-chrome--sticky)'
+            .'{position:sticky;top:0;z-index:50}';
     }
 }

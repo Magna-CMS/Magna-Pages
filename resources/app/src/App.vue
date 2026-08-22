@@ -665,7 +665,40 @@ async function onPageStyle(key: string, value: string) {
         style[key] = next
     }
 
-    const settings = Object.keys(style).length === 0 ? {} : { style }
+    // Built from the whole settings object, not from the style alone: a
+    // page that has chosen a header must not lose it to a background edit.
+    const settings = { ...store.pageSettings }
+    if (Object.keys(style).length === 0) {
+        delete settings.style
+    } else {
+        settings.style = style
+    }
+
+    store.pageSettings = settings
+
+    try {
+        await api.putSettings(settings)
+        await reloadCanvas()
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    }
+}
+
+/**
+ * Which header or footer this page uses.
+ *
+ * An empty id hands the page back to the site default rather than storing
+ * "none": a two-level chain has no third state, and a page with no chrome
+ * is expressed by the site having none, not by every page saying so.
+ */
+async function onPageChrome(role: 'header' | 'footer', id: string) {
+    const settings = { ...store.pageSettings }
+    if (id === '') {
+        delete settings[role]
+    } else {
+        settings[role] = id
+    }
+
     store.pageSettings = settings
 
     try {
@@ -1512,6 +1545,12 @@ onBeforeUnmount(() => {
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
                         @set-style="onSetStyle"
+                        :chrome-choices="store.chrome"
+                        :chrome-used="{
+                            header: (store.pageSettings.header as string) ?? '',
+                            footer: (store.pageSettings.footer as string) ?? '',
+                        }"
+                        @page-chrome="onPageChrome"
                         :page-controls="store.styleControls.page ?? []"
                         :page-style="(store.pageSettings.style as Record<string, unknown>) ?? {}"
                         @page-style="onPageStyle"

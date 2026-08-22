@@ -486,3 +486,60 @@ test('previews the page in both colour schemes', async ({ page }) => {
     await waitForNodes(page, 'section', 2)
     await expect.poll(async () => (await root()).theme, { timeout: 10_000 }).toBe('dark')
 })
+
+/**
+ * Sticky chrome sticks the element the THEME wrapped it in.
+ *
+ * This is the one part of the header work that correct-looking CSS can get
+ * wrong invisibly. A theme puts our chrome inside its own <header>, and an
+ * element can only stick within its parent's box — so a rule naming only
+ * our wrapper would emit exactly the CSS we intended and do nothing at
+ * all, because the wrapper is precisely as tall as its parent.
+ *
+ * Rendered against the real structure and the real emitted rule, then
+ * scrolled, because where the header ends up is the only thing that can
+ * tell those two cases apart.
+ */
+test('sticks chrome to the top of the page it is on', async ({ page }) => {
+    const rule =
+        '.magna-chrome--sticky,:where(header,footer,div,section):has(>.magna-chrome--sticky)' +
+        '{position:sticky;top:0;z-index:50}'
+
+    await page.setViewportSize({ width: 900, height: 600 })
+    await page.setContent(`
+        <style>body{margin:0}${rule}</style>
+        <header class="l-header l-header--custom">
+            <div class="magna-chrome magna-chrome--header magna-chrome--sticky">
+                <div style="height:60px;background:#123">Sticky header</div>
+            </div>
+        </header>
+        <main style="height:4000px">Long page</main>
+    `)
+
+    const top = () =>
+        page.locator('header.l-header').evaluate((el) => el.getBoundingClientRect().top)
+
+    expect(await top()).toBe(0)
+
+    await page.evaluate(() => window.scrollTo(0, 1500))
+    await page.waitForTimeout(200)
+
+    // Still at the top of the viewport after scrolling past it.
+    expect(await top()).toBe(0)
+
+    // And the control: the same markup without the sticky class scrolls
+    // away, which is what proves the rule is doing the work.
+    await page.setContent(`
+        <style>body{margin:0}${rule}</style>
+        <header class="l-header l-header--custom">
+            <div class="magna-chrome magna-chrome--header">
+                <div style="height:60px;background:#123">Plain header</div>
+            </div>
+        </header>
+        <main style="height:4000px">Long page</main>
+    `)
+
+    await page.evaluate(() => window.scrollTo(0, 1500))
+    await page.waitForTimeout(200)
+    expect(await top()).toBeLessThan(-100)
+})

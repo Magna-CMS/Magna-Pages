@@ -7,22 +7,25 @@ namespace Magna\Pages\Filament\Pages;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Str;
-use Magna\Content\Entry;
-use Magna\Content\EntryStatus;
-use Magna\Content\SchemaRegistry;
-use Magna\Frontend\FrontendPageRegistry;
 use Magna\Pages\Menus\Menu;
 use Magna\Pages\Menus\MenuItem;
+use Magna\Pages\Menus\MenuItemSources;
 use Magna\Pages\Menus\MenuManager;
+use Magna\Pages\Menus\MenuTree;
 
 /**
- * Menu builder: create menus, edit their item tree (two levels — matching
- * what the nav block renders), reorder with up/down controls, save through
- * MenuManager so every change lands a history snapshot.
+ * The menu builder: pick a menu, tick items on the left, arrange them on
+ * the right, save.
  *
- * State lives on the page (Filament pages are Livewire components) in the
- * same editable-array style as the core BlockEditor; drag-and-drop ordering
- * is a later enhancement on the same state shape.
+ * Two things shape this screen. The item list is EDITED FLAT with a depth
+ * per row (see MenuTree) so that reordering and nesting are the same two
+ * gestures at every level, and items are ADDED IN BULK, because a menu is
+ * built by choosing eight pages at once rather than by filling in eight
+ * forms.
+ *
+ * Every structural rule lives in MenuTree and every query in
+ * MenuItemSources; what is left here is Livewire state and a list of
+ * delegations, which is all a page in this codebase is allowed to be.
  */
 class MenusPage extends Page
 {
@@ -42,13 +45,49 @@ class MenusPage extends Page
 
     public string $newMenuName = '';
 
+    /** The selected menu's name, editable in place. */
+    public string $menuName = '';
+
     /**
-     * Editable tree of the selected menu. Item shape:
-     * {label, type, page_id, url, target, children: [same, no deeper]}
+     * The item list as flat rows: {key, label, type, page_id, url, target,
+     * plugin_page, settings, depth}.
      *
      * @var list<array<string, mixed>>
      */
-    public array $items = [];
+    public array $rows = [];
+
+    /** Keys of the rows whose detail panel is open. */
+    public array $openRows = [];
+
+    /**
+     * Which advanced fields the item panels show — WordPress's Screen
+     * Options, and for its reason: most menus never need a link relationship
+     * or a CSS class, and a form that shows every field to everyone is a
+     * form nobody reads.
+     *
+     * @var array<string, bool>
+     */
+    public array $screen = [
+        'title_attr' => false,
+        'css_class' => false,
+        'rel' => false,
+        'description' => false,
+    ];
+
+    /** Which source panel is open, and what has been ticked in it. */
+    public string $openPanel = 'pages';
+
+    public string $sourceSearch = '';
+
+    /** @var list<string> */
+    public array $checkedPages = [];
+
+    /** @var list<string> */
+    public array $checkedPluginPages = [];
+
+    public string $customLinkUrl = 'https://';
+
+    public string $customLinkLabel = '';
 
     public static function canAccess(): bool
     {
@@ -63,7 +102,7 @@ class MenusPage extends Page
         }
     }
 
-    // ── Menu selection & creation ─────────────────────────────────────────────
+    // ── Menus ─────────────────────────────────────────────────────────────────
 
     public function selectMenu(string $menuId): void
     {
@@ -73,7 +112,9 @@ class MenusPage extends Page
         }
 
         $this->selectedMenuId = $menu->id;
-        $this->items = $this->treeFor($menu);
+        $this->menuName = $menu->name;
+        $this->rows = MenuTree::flatten($this->treeFor($menu));
+        $this->openRows = [];
     }
 
     public function createMenu(): void
@@ -95,62 +136,165 @@ class MenusPage extends Page
         $this->selectMenu($menu->id);
     }
 
-    // ── Tree editing (two levels) ─────────────────────────────────────────────
-
-    public function addItem(?int $parentIndex = null): void
+    public function renameMenu(): void
     {
-        $item = ['label' => '', 'type' => 'url', 'page_id' => null, 'url' => '', 'target' => null, 'plugin_page' => null, 'children' => []];
-
-        if ($parentIndex === null) {
-            $this->items[] = $item;
-
+        $menu = $this->selectedMenu();
+        $name = trim($this->menuName);
+        if ($menu === null || $name === '') {
             return;
         }
 
-        if (isset($this->items[$parentIndex])) {
-            unset($item['children']); // one nesting level only
-            $this->items[$parentIndex]['children'][] = $item;
-        }
+        // The HANDLE is what a nav block and a theme layout point at, so it
+        // stays put: renaming a menu must not silently empty every header
+        // that was rendering it.
+        $menu->update(['name' => $name]);
+
+        Notification::make()->title('Menu renamed')->success()->send();
     }
 
-    public function removeItem(int $index, ?int $childIndex = null): void
+    public function deleteMenu(): void
     {
-        if ($childIndex === null) {
-            array_splice($this->items, $index, 1);
-
-            return;
-        }
-
-        if (isset($this->items[$index]['children'][$childIndex])) {
-            array_splice($this->items[$index]['children'], $childIndex, 1);
-        }
-    }
-
-    public function moveItem(int $index, int $direction, ?int $childIndex = null): void
-    {
-        if ($childIndex === null) {
-            $this->swap($this->items, $index, $index + $direction);
-
-            return;
-        }
-
-        if (isset($this->items[$index]['children'])) {
-            $this->swap($this->items[$index]['children'], $childIndex, $childIndex + $direction);
-        }
-    }
-
-    public function save(): void
-    {
-        if ($this->selectedMenuId === null) {
-            return;
-        }
-
-        $menu = Menu::query()->find($this->selectedMenuId);
+        $menu = $this->selectedMenu();
         if ($menu === null) {
             return;
         }
 
-        app(MenuManager::class)->syncItems($menu, $this->items, auth()->id());
+        $menu->delete();
+        $this->selectedMenuId = null;
+        $this->rows = [];
+        $this->menuName = '';
+
+        $first = Menu::query()->orderBy('name')->first();
+        if ($first !== null) {
+            $this->selectMenu($first->id);
+        }
+
+        Notification::make()->title('Menu deleted')->success()->send();
+    }
+
+    // ── Adding items ──────────────────────────────────────────────────────────
+
+    /** Open a source panel, or close it if it is the open one. */
+    public function togglePanel(string $panel): void
+    {
+        $this->openPanel = $this->openPanel === $panel ? '' : $panel;
+        // Each panel searches its own list; carrying the last panel's term
+        // over means opening one and finding it empty for no visible reason.
+        $this->sourceSearch = '';
+    }
+
+    public function addCheckedPages(): void
+    {
+        $labels = collect($this->pageRows())->keyBy('id');
+
+        foreach ($this->checkedPages as $id) {
+            $row = $labels->get($id);
+            if ($row === null) {
+                continue;
+            }
+
+            $this->rows[] = $this->newRow([
+                'label' => $row['label'],
+                'type' => MenuItem::TYPE_PAGE,
+                'page_id' => $id,
+            ]);
+        }
+
+        $this->checkedPages = [];
+    }
+
+    public function addCheckedPluginPages(): void
+    {
+        $labels = collect($this->pluginPageRows())->keyBy('id');
+
+        foreach ($this->checkedPluginPages as $name) {
+            $row = $labels->get($name);
+            if ($row === null) {
+                continue;
+            }
+
+            $this->rows[] = $this->newRow([
+                'label' => $row['label'],
+                'type' => MenuItem::TYPE_PLUGIN,
+                'plugin_page' => $name,
+            ]);
+        }
+
+        $this->checkedPluginPages = [];
+    }
+
+    public function addCustomLink(): void
+    {
+        $url = trim($this->customLinkUrl);
+        $label = trim($this->customLinkLabel);
+
+        if ($url === '' || $url === 'https://' || $label === '') {
+            return;
+        }
+
+        $this->rows[] = $this->newRow(['label' => $label, 'type' => MenuItem::TYPE_URL, 'url' => $url]);
+
+        $this->customLinkUrl = 'https://';
+        $this->customLinkLabel = '';
+    }
+
+    // ── Arranging ─────────────────────────────────────────────────────────────
+
+    public function moveUp(int $index): void
+    {
+        $this->rows = MenuTree::moveUp($this->rows, $index);
+    }
+
+    public function moveDown(int $index): void
+    {
+        $this->rows = MenuTree::moveDown($this->rows, $index);
+    }
+
+    public function indent(int $index): void
+    {
+        $this->rows = MenuTree::indent($this->rows, $index);
+    }
+
+    public function outdent(int $index): void
+    {
+        $this->rows = MenuTree::outdent($this->rows, $index);
+    }
+
+    public function moveToTop(int $index): void
+    {
+        $this->rows = MenuTree::toTop($this->rows, $index);
+    }
+
+    /** A completed drag: one row (and its subtree) to a position and depth. */
+    public function dropRow(int $from, int $to, int $depth): void
+    {
+        $this->rows = MenuTree::move($this->rows, $from, $to, $depth);
+    }
+
+    public function removeRow(int $index): void
+    {
+        $this->rows = MenuTree::remove($this->rows, $index);
+    }
+
+    public function toggleRow(string $key): void
+    {
+        $this->openRows = in_array($key, $this->openRows, true)
+            ? array_values(array_diff($this->openRows, [$key]))
+            : [...$this->openRows, $key];
+    }
+
+    public function save(): void
+    {
+        $menu = $this->selectedMenu();
+        if ($menu === null) {
+            return;
+        }
+
+        app(MenuManager::class)->syncItems($menu, MenuTree::nest($this->forStorage()), auth()->id());
+
+        // Read back, so what is on screen is what was stored rather than
+        // what was sent.
+        $this->rows = MenuTree::flatten($this->treeFor($menu));
 
         Notification::make()->title('Menu saved')->success()->send();
     }
@@ -164,100 +308,136 @@ class MenusPage extends Page
         return Menu::query()->orderBy('name')->pluck('name', 'id')->all();
     }
 
-    /** @return array<string, string> */
-    public function pageOptions(): array
+    /** @return list<array{id: string, label: string, meta: string}> */
+    public function pageRows(): array
     {
-        if (! app(SchemaRegistry::class)->has('page')) {
-            return [];
-        }
-
-        $options = [];
-        foreach (Entry::type('page')
-            ->where('status', EntryStatus::Published->value)
-            ->orderBy('title')
-            ->limit(200)
-            ->get() as $entry) {
-            $id = $entry->getKey();
-            $title = $entry->getAttribute('title');
-            if (is_string($id) && is_string($title)) {
-                $options[$id] = $title;
-            }
-        }
-
-        return $options;
+        return app(MenuItemSources::class)->pages($this->sourceSearch);
     }
 
-    /**
-     * Plugin frontend pages offered in the picker (menu-visible only).
-     *
-     * @return array<string, string>
-     */
-    public function pluginPageOptions(): array
+    /** @return list<array{id: string, label: string, meta: string}> */
+    public function pluginPageRows(): array
     {
-        $options = [];
-        foreach (app(FrontendPageRegistry::class)->all() as $name => $page) {
-            if ($page->menuVisible) {
-                $options[$name] = $page->title;
-            }
-        }
-        ksort($options);
+        return app(MenuItemSources::class)->pluginPages($this->sourceSearch);
+    }
 
-        return $options;
+    /** The handle a nav block or theme layout points at. */
+    public function selectedHandle(): string
+    {
+        return $this->selectedMenu()?->handle ?? '';
+    }
+
+    /** What a row links to, for the collapsed summary line. */
+    public function describeRow(array $row): string
+    {
+        return match ($row['type'] ?? MenuItem::TYPE_URL) {
+            MenuItem::TYPE_PAGE => 'Page',
+            MenuItem::TYPE_PLUGIN => 'Plugin page',
+            default => 'Custom link',
+        };
+    }
+
+    /** Whether this row could still be nested one level further in. */
+    public function canIndent(int $index): bool
+    {
+        return MenuTree::indent($this->rows, $index) !== $this->rows;
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
+    /**
+     * The rows as the store wants them: the editor's checkbox becomes the
+     * `target` string, and nothing editor-only travels further.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function forStorage(): array
+    {
+        return array_map(static function (array $row): array {
+            $row['target'] = ($row['new_tab'] ?? false) ? '_blank' : null;
+            unset($row['new_tab']);
+
+            return $row;
+        }, $this->rows);
+    }
+
+    private function selectedMenu(): ?Menu
+    {
+        return $this->selectedMenuId === null
+            ? null
+            : Menu::query()->find($this->selectedMenuId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function newRow(array $overrides = []): array
+    {
+        return [
+            'key' => (string) Str::ulid(),
+            'label' => '',
+            'type' => MenuItem::TYPE_URL,
+            'page_id' => null,
+            'url' => null,
+            // A checkbox binds to a boolean; `target` is a string the store
+            // and the renderer both understand. Keeping both and mapping at
+            // the boundary is what stops the checkbox writing `true` into a
+            // column that means "_blank".
+            'new_tab' => false,
+            'plugin_page' => null,
+            'settings' => ['title_attr' => '', 'css_class' => '', 'rel' => '', 'description' => ''],
+            'depth' => 0,
+            ...$overrides,
+        ];
+    }
+
     /** @return list<array<string, mixed>> */
     private function treeFor(Menu $menu): array
     {
-        $items = $menu->items()->get();
+        $items = $menu->items()->get()->all();
 
-        $tree = [];
-        foreach ($items as $item) {
-            if ($item->parent_id !== null) {
-                continue;
-            }
-
-            $children = [];
-            foreach ($items as $child) {
-                if ($child->parent_id === $item->id) {
-                    $children[] = $this->editorItem($child);
+        $build = function (?string $parentId) use (&$build, $items): array {
+            $level = [];
+            foreach ($items as $item) {
+                if ($item->parent_id !== $parentId) {
+                    continue;
                 }
+
+                $node = $this->editorItem($item);
+                $children = $build($item->id);
+                if ($children !== []) {
+                    $node['children'] = $children;
+                }
+                $level[] = $node;
             }
 
-            $node = $this->editorItem($item);
-            $node['children'] = $children;
-            $tree[] = $node;
-        }
+            return $level;
+        };
 
-        return $tree;
+        return $build(null);
     }
 
     /** @return array<string, mixed> */
     private function editorItem(MenuItem $item): array
     {
+        $settings = $item->settings ?? [];
+
         return [
+            'key' => $item->id,
             'label' => $item->label,
             'type' => $item->type,
             'page_id' => $item->page_id,
             'url' => $item->url,
-            'target' => $item->target,
-            'plugin_page' => is_string($item->settings['frontend_page'] ?? null)
-                ? $item->settings['frontend_page']
+            'new_tab' => $item->target === '_blank',
+            'plugin_page' => is_string($settings['frontend_page'] ?? null)
+                ? $settings['frontend_page']
                 : null,
+            'settings' => [
+                'title_attr' => is_string($settings['title_attr'] ?? null) ? $settings['title_attr'] : '',
+                'css_class' => is_string($settings['css_class'] ?? null) ? $settings['css_class'] : '',
+                'rel' => is_string($settings['rel'] ?? null) ? $settings['rel'] : '',
+                'description' => is_string($settings['description'] ?? null) ? $settings['description'] : '',
+            ],
         ];
-    }
-
-    /**
-     * @param  array<int, mixed>  $list
-     */
-    private function swap(array &$list, int $a, int $b): void
-    {
-        if ($a < 0 || $b < 0 || ! isset($list[$a]) || ! isset($list[$b])) {
-            return;
-        }
-
-        [$list[$a], $list[$b]] = [$list[$b], $list[$a]];
-        $list = array_values($list);
     }
 }

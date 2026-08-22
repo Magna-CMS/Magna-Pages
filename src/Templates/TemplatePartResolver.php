@@ -8,6 +8,7 @@ use Magna\Blocks\PageTree;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
+use Magna\Pages\PagesSettings;
 
 /**
  * Resolves template parts — entries of the pages_template content type
@@ -30,6 +31,127 @@ class TemplatePartResolver
 
     /** Documents may not nest refs endlessly; one level is the contract. */
     private const MAX_REF_DEPTH = 1;
+
+    /**
+     * The header or footer this page should render, as an entry.
+     *
+     * A two-level chain, deliberately, rather than a condition engine:
+     *
+     *   1. the page's own choice, which is what "override" means;
+     *   2. the site default, set once in settings;
+     *   3. a published part whose slug is literally "header"/"footer".
+     *
+     * The third rung is not legacy debt to be tidied away — it is how every
+     * site chose its chrome before any of this existed, so it is the rung
+     * that keeps those sites rendering exactly as they do today. A site
+     * that never opens the new settings never notices this feature.
+     *
+     * Every rung is checked against the SAME conditions: published, and
+     * actually meant for this role. A page naming a footer as its header,
+     * or naming an entry that has since been unpublished, falls through to
+     * the next rung rather than rendering something surprising.
+     */
+    public function chromeEntry(string $role, ?Entry $page = null): ?Entry
+    {
+        if (! $this->schemaRegistry->has('pages_template') || ! in_array($role, ['header', 'footer'], true)) {
+            return null;
+        }
+
+        $settings = $page?->getAttribute('page_settings');
+        $chosen = is_array($settings) ? ($settings[$role] ?? null) : null;
+        if (is_string($chosen) && $chosen !== '') {
+            $entry = $this->chromeById($chosen, $role);
+            if ($entry !== null) {
+                return $entry;
+            }
+        }
+
+        $default = $role === 'header'
+            ? PagesSettings::get()->default_header_id
+            : PagesSettings::get()->default_footer_id;
+
+        if (is_string($default) && $default !== '') {
+            $entry = $this->chromeById($default, $role);
+            if ($entry !== null) {
+                return $entry;
+            }
+        }
+
+        /** @var Entry|null $legacy */
+        $legacy = Entry::type('pages_template')
+            ->where('slug', $role)
+            ->where('kind', 'part')
+            ->where('status', EntryStatus::Published->value)
+            ->first();
+
+        return $legacy;
+    }
+
+    /** A published part that is actually meant for this role, or null. */
+    private function chromeById(string $id, string $role): ?Entry
+    {
+        /** @var Entry|null $entry */
+        $entry = Entry::type('pages_template')
+            ->where('id', $id)
+            ->where('kind', 'part')
+            ->where('status', EntryStatus::Published->value)
+            ->first();
+
+        if ($entry === null) {
+            return null;
+        }
+
+        // A part chosen as a header must SAY it is one. Without this an id
+        // left behind after a part was repurposed would put a footer at the
+        // top of every page.
+        return $entry->getAttribute('role') === $role ? $entry : null;
+    }
+
+    /**
+     * Every part that may be chosen for a role — what the builder offers
+     * and the settings screen lists.
+     *
+     * @return list<array{id: string, title: string, slug: string}>
+     */
+    public function chromeChoices(string $role): array
+    {
+        if (! $this->schemaRegistry->has('pages_template') || ! in_array($role, ['header', 'footer'], true)) {
+            return [];
+        }
+
+        $choices = [];
+        foreach (Entry::type('pages_template')
+            ->where('kind', 'part')
+            ->where('role', $role)
+            ->where('status', EntryStatus::Published->value)
+            ->orderBy('title')
+            ->get() as $entry) {
+            $id = $entry->getKey();
+            $title = $entry->getAttribute('title');
+            $slug = $entry->getAttribute('slug');
+            if (is_string($id) && is_string($title) && is_string($slug)) {
+                $choices[] = ['id' => $id, 'title' => $title, 'slug' => $slug];
+            }
+        }
+
+        return $choices;
+    }
+
+    /**
+     * How a piece of chrome behaves, as flags the renderer understands.
+     *
+     * Read from the entry rather than guessed from the role: a footer that
+     * sticks is unusual but not wrong, and nothing here needs to know which
+     * roles an editor thinks should be able to.
+     *
+     * @return array{sticky: bool}
+     */
+    public function chromeBehaviour(?Entry $entry): array
+    {
+        $behaviour = $entry?->getAttribute('behaviour');
+
+        return ['sticky' => is_array($behaviour) && ($behaviour['sticky'] ?? false) === true];
+    }
 
     public function partTree(string $handle): ?PageTree
     {

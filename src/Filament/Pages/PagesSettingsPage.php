@@ -19,6 +19,7 @@ use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
 use Magna\Pages\Cache\PageCache;
 use Magna\Pages\PagesSettings;
+use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Settings\SettingsRepository;
 
 /**
@@ -62,6 +63,9 @@ class PagesSettingsPage extends Page implements HasForms
             'home_page_id' => $settings->home_page_id,
             'not_found_page_id' => $settings->not_found_page_id,
             'maintenance_mode' => $settings->maintenance_mode,
+            'color_scheme' => $settings->color_scheme,
+            'default_header_id' => $settings->default_header_id,
+            'default_footer_id' => $settings->default_footer_id,
             'collection_mounts' => $settings->collection_mounts,
             'integrations' => $settings->integrations,
         ]);
@@ -88,6 +92,36 @@ class PagesSettingsPage extends Page implements HasForms
                             ->options($this->pageOptions())
                             ->searchable()
                             ->nullable(),
+                    ]),
+
+                Section::make('Site chrome')
+                    ->description('The header and footer every page starts with. A page may choose its own in the builder, which overrides these.')
+                    ->columns(2)
+                    ->schema([
+                        Select::make('default_header_id')
+                            ->label('Default header')
+                            ->helperText('Leave empty to use a published part whose handle is "header".')
+                            ->options($this->chromeOptions('header'))
+                            ->searchable()
+                            ->nullable(),
+
+                        Select::make('default_footer_id')
+                            ->label('Default footer')
+                            ->helperText('Leave empty to use a published part whose handle is "footer".')
+                            ->options($this->chromeOptions('footer'))
+                            ->searchable()
+                            ->nullable(),
+
+                        Select::make('color_scheme')
+                            ->label('Colour scheme')
+                            ->helperText('System follows each visitor’s own preference. Light and dark pin the site to one palette.')
+                            ->options([
+                                'system' => 'Follow the visitor’s preference',
+                                'light' => 'Always light',
+                                'dark' => 'Always dark',
+                            ])
+                            ->default('system')
+                            ->required(),
                     ]),
 
                 Section::make('Collections on the site')
@@ -159,6 +193,13 @@ class PagesSettingsPage extends Page implements HasForms
         $settings->home_page_id = $this->stringOrNull($this->data['home_page_id'] ?? null);
         $settings->not_found_page_id = $this->stringOrNull($this->data['not_found_page_id'] ?? null);
         $settings->maintenance_mode = (bool) ($this->data['maintenance_mode'] ?? false);
+        $settings->default_header_id = $this->stringOrNull($this->data['default_header_id'] ?? null);
+        $settings->default_footer_id = $this->stringOrNull($this->data['default_footer_id'] ?? null);
+
+        $scheme = $this->data['color_scheme'] ?? 'system';
+        // The vocabulary is fixed and small, so anything else is not a
+        // scheme and the site keeps following the visitor.
+        $settings->color_scheme = in_array($scheme, ['system', 'light', 'dark'], true) ? $scheme : 'system';
         $settings->collection_mounts = $this->cleanMounts($this->data['collection_mounts'] ?? []);
         $settings->integrations = $this->cleanIntegrations($this->data['integrations'] ?? []);
 
@@ -168,6 +209,24 @@ class PagesSettingsPage extends Page implements HasForms
         app(PageCache::class)->flush();
 
         Notification::make()->title('Site settings saved')->success()->send();
+    }
+
+    /**
+     * Published parts meant for a role, as select options.
+     *
+     * Asked of the resolver rather than queried here, so the settings
+     * screen offers exactly what the renderer will accept.
+     *
+     * @return array<string, string>
+     */
+    private function chromeOptions(string $role): array
+    {
+        $options = [];
+        foreach (app(TemplatePartResolver::class)->chromeChoices($role) as $choice) {
+            $options[$choice['id']] = $choice['title'];
+        }
+
+        return $options;
     }
 
     /**

@@ -34,6 +34,25 @@
             "localizable": false
         },
         {
+            "handle": "role",
+            "type": "select",
+            "label": "Used as",
+            "required": false,
+            "default": "generic",
+            "options": [
+                "generic",
+                "header",
+                "footer"
+            ],
+            "localizable": false
+        },
+        {
+            "handle": "behaviour",
+            "type": "json",
+            "label": "Behaviour",
+            "localizable": false
+        },
+        {
             "handle": "blocks_data",
             "type": "blocks",
             "label": "Content",
