@@ -39,6 +39,8 @@ defineEmits<{
     insertPattern: [id: string]
     insertLibrary: [slug: string]
     dragStart: [source: DragSource, event: PointerEvent]
+    /** The Cloud tab opens the full browser; the list below stays for drag. */
+    openBrowser: []
 }>()
 
 const ui = useUiStore()
@@ -126,7 +128,7 @@ function draggable(source: DragSource): boolean {
                 :aria-selected="ui.libraryTab === tab"
                 aria-controls="library-panel"
                 :tabindex="ui.libraryTab === tab ? 0 : -1"
-                @click="ui.libraryTab = tab"
+                @click="ui.libraryTab = tab; tab === 'cloud' && $emit('openBrowser')"
             >
                 {{ tab }}
             </button>

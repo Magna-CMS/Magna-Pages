@@ -64,6 +64,9 @@ const BuilderDesignPanel = defineAsyncComponent(
 )
 const BuilderToolsPanel = defineAsyncComponent(() => import('./components/BuilderToolsPanel.vue'))
 const BuilderShortcuts = defineAsyncComponent(() => import('./components/BuilderShortcuts.vue'))
+const BuilderLibraryBrowser = defineAsyncComponent(
+    () => import('./components/BuilderLibraryBrowser.vue'),
+)
 
 const pageId = document.getElementById('magna-builder')?.dataset.page ?? ''
 const api = createApi(pageId)
@@ -533,12 +536,17 @@ const pageEndTop = computed<number | null>(() => {
     return bottoms.length > 0 ? Math.max(...bottoms) : null
 })
 
-/** The folder button: open the panel on the cloud library. */
+/** The full-surface library browser, with live previews. */
+const libraryOpen = ref(false)
+
 function onBrowseCloud() {
-    ui.browse('cloud')
-    if (ui.panelCollapsed) {
-        ui.togglePanel()
-    }
+    libraryOpen.value = true
+}
+
+/** Insert from the browser: close it, then the ordinary insert flow. */
+async function onLibraryInsert(slug: string) {
+    libraryOpen.value = false
+    await onInsertLibrary(slug)
 }
 
 async function onAddSection(spans: number[] = [12]) {
@@ -922,6 +930,11 @@ function onKeydown(event: KeyboardEvent) {
     }
 
     if (event.key === 'Escape') {
+        if (libraryOpen.value) {
+            libraryOpen.value = false
+
+            return
+        }
         if (shortcutsOpen.value) {
             shortcutsOpen.value = false
 
@@ -1347,6 +1360,7 @@ onBeforeUnmount(() => {
                         @insert-pattern="onInsertPattern"
                         @insert-library="onInsertLibrary"
                         @drag-start="drag.pressInPanel"
+                        @open-browser="libraryOpen = true"
                     />
                 </template>
 
@@ -1685,6 +1699,16 @@ onBeforeUnmount(() => {
         />
 
         <BuilderShortcuts v-if="shortcutsOpen" @close="shortcutsOpen = false" />
+
+        <BuilderLibraryBrowser
+            v-if="libraryOpen"
+            :assets="store.libraryAssets"
+            :collections="store.libraryCollections"
+            :preview-url="api.libraryPreviewUrl"
+            :can-structure="store.capabilities.structure"
+            @insert="onLibraryInsert"
+            @close="libraryOpen = false"
+        />
 
         <BuilderCommandPalette
             :open="paletteOpen"

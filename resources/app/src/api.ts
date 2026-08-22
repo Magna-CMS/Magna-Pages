@@ -74,6 +74,10 @@ export function createApi(pageId: string, base = '/pages-builder') {
 
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
 
+        /** The library browser's preview pane: a live local render. */
+        libraryPreviewUrl: (slug: string): string =>
+            `${base}/library/${encodeURIComponent(slug)}/preview`,
+
         publish: (): Promise<{ status: string; published_at: string | null; url: string | null }> =>
             request(`${base}/${pageId}/publish`, { method: 'POST' }),
 
