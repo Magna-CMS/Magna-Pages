@@ -49,6 +49,18 @@ const visible = computed(() =>
 
 const selectedSlug = ref<string | null>(null)
 
+/**
+ * Whether the preview iframe has painted. The pane keeps the builder's
+ * dark surface until it has — a white flash between selections is the
+ * iframe's blank document showing through, and the fix is to not show
+ * the iframe until it has something to say.
+ */
+const previewLoaded = ref(false)
+
+watch(selectedSlug, () => {
+    previewLoaded.value = false
+})
+
 const selected = computed(
     () => props.assets.find((asset) => asset.slug === selectedSlug.value) ?? null,
 )
@@ -166,14 +178,23 @@ function onKeydown(event: KeyboardEvent) {
 
             <section class="lib__preview" aria-label="Asset preview">
                 <template v-if="selected">
-                    <!-- sandbox with no tokens: hub content renders inert. -->
-                    <iframe
-                        :key="selected.slug"
-                        class="lib__frame"
-                        :src="previewUrl(selected.slug)"
-                        :title="`Preview of ${selected.name}`"
-                        sandbox=""
-                    />
+                    <div class="lib__stage">
+                        <!-- sandbox with no tokens: hub content renders inert. -->
+                        <iframe
+                            :key="selected.slug"
+                            class="lib__frame"
+                            :class="{ 'is-ready': previewLoaded }"
+                            :src="previewUrl(selected.slug)"
+                            :title="`Preview of ${selected.name}`"
+                            sandbox=""
+                            @load="previewLoaded = true"
+                        />
+
+                        <div v-if="!previewLoaded" class="lib__loading" role="status">
+                            <img :src="'/magna-logo.svg'" alt="" width="56" height="56" />
+                            <span>Rendering preview…</span>
+                        </div>
+                    </div>
                     <footer class="lib__actions">
                         <span class="lib__hint">{{ insertHint }}</span>
                         <button
@@ -360,11 +381,68 @@ function onKeydown(event: KeyboardEvent) {
     min-width: 0;
 }
 
+.lib__stage {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
 .lib__frame {
     flex: 1;
     width: 100%;
     border: 0;
     background: #fff;
+    /* Invisible until painted: the blank document never shows. */
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.lib__frame.is-ready {
+    opacity: 1;
+}
+
+.lib__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: var(--builder-surface);
+}
+
+.lib__loading img {
+    animation: lib-breathe 1.6s ease-in-out infinite;
+}
+
+.lib__loading span {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+@keyframes lib-breathe {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 0.85;
+    }
+    50% {
+        transform: scale(1.06);
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lib__loading img {
+        animation: none;
+    }
+
+    .lib__frame {
+        transition: none;
+    }
 }
 
 .lib__actions {
