@@ -261,3 +261,58 @@ test('edits a heading on the page, by both gestures', async ({ page }) => {
     await page.keyboard.press('Enter')
     await expect(heading).toHaveText(/Typed on the page/)
 })
+
+/**
+ * The canvas may not navigate.
+ *
+ * Containment used to apply only to events landing inside a MARKED node,
+ * and everything else kept native behaviour. The header, the footer and
+ * all theme chrome render unmarked, so clicking a header link walked the
+ * iframe off the page being edited and left the builder pointing at
+ * nothing — a blank canvas with no way back but a reload.
+ */
+test('never follows a link out of the canvas', async ({ page }) => {
+    await newBuilderPage(page, 'Chrome')
+    // Give the page a node, so "the canvas survived" is something the DOM
+    // can actually answer.
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await waitForNodes(page, 'section', 1)
+    const frame = page.frameLocator('.builder__frame')
+
+    // The canvas frame's own location — the parent URL never changes when
+    // a link inside the frame is followed, so asserting on it would pass
+    // whether or not this bug exists.
+    const canvasUrl = () =>
+        page
+            .locator('.builder__frame')
+            .evaluate((el) => (el as HTMLIFrameElement).contentWindow?.location.href ?? '')
+
+    const before = await canvasUrl()
+
+    // Not a fragment link: a link that leaves the page is the case that
+    // strands the editor on a blank canvas.
+    const link = frame.locator('a[href]:not([href^="#"])').first()
+    await expect(link).toBeVisible()
+    const href = await link.getAttribute('href')
+    expect(href).toBeTruthy()
+    expect(new URL(href!, before).href).not.toBe(before)
+
+    // Dispatched rather than aimed: the canvas frame is drawn at full page
+    // height under the builder's own overlay, so a mouse press at the
+    // link's coordinates is not reliably delivered to it. A dispatched
+    // click still bubbles through the capture listener under test and
+    // still runs the anchor's default action, which is the behaviour in
+    // question.
+    await link.dispatchEvent('click')
+    await page.waitForTimeout(1200)
+
+    // The canvas is still the page being edited, with its nodes intact.
+    expect(await canvasUrl()).toBe(before)
+    await expect(frame.locator('[data-magna-node]').first()).toBeVisible()
+
+    // Keyboard activation is the same navigation by another route.
+    await link.focus()
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(1000)
+    expect(await canvasUrl()).toBe(before)
+})

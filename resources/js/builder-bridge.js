@@ -417,23 +417,74 @@
         true,
     )
 
+    /*
+     * The canvas is an EDITING surface, so nothing in it may act the way it
+     * would for a visitor — and that is true of the whole canvas, not only
+     * of the parts the builder marked.
+     *
+     * This used to prevent the default only for events landing inside a
+     * marked node, and return early otherwise. Everything else kept native
+     * behaviour: the header, the footer, and all theme chrome are rendered
+     * but unmarked, so a click on a header link navigated the iframe away
+     * from the page being edited and left the builder pointing at nothing.
+     *
+     * Containment belongs at the document, above the question of what was
+     * clicked. Selection is the separate question, asked afterwards and
+     * only when there is a node to select.
+     */
+    function containInCanvas(event) {
+        if (editingContains(event.target)) {
+            return false
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+
+        return true
+    }
+
     document.addEventListener(
         'click',
         function (event) {
-            if (editingContains(event.target)) {
+            if (!containInCanvas(event)) {
                 return
             }
 
             var id = nodeIdFrom(event.target)
-            if (id === null) {
+            if (id !== null) {
+                send('select', { node: id })
+            }
+        },
+        true,
+    )
+
+    // A middle click or a link with target="_blank" opens a tab that is not
+    // the canvas; the editor never asked to leave.
+    document.addEventListener('auxclick', containInCanvas, true)
+
+    // Submitting a form navigates the frame as surely as a link does.
+    document.addEventListener('submit', containInCanvas, true)
+
+    /*
+     * Keyboard activation of a focusable control — Enter on a link, Space
+     * on a button — navigates too, and a canvas that only guards the mouse
+     * is a canvas that loses its editor to the Tab key. Typing is exempt:
+     * the inline editor's own keys are handled where the editor lives.
+     */
+    document.addEventListener(
+        'keydown',
+        function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') {
+                return
+            }
+            if (editingContains(event.target)) {
                 return
             }
 
-            // In the canvas a click selects; it must not follow links or
-            // submit forms the way it would for a visitor.
-            event.preventDefault()
-            event.stopPropagation()
-            send('select', { node: id })
+            var target = event.target
+            if (target && target.closest && target.closest('a[href], button, input, select, textarea')) {
+                event.preventDefault()
+            }
         },
         true,
     )
