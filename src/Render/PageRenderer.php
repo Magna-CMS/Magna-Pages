@@ -11,6 +11,7 @@ use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Frontend\FrontendPage;
+use Magna\Pages\Builder\PageSettings;
 use Magna\Pages\Consent\ConsentScripts;
 use Magna\Pages\Experiments\ExperimentTracker;
 use Magna\Pages\Menus\MenuManager;
@@ -169,6 +170,20 @@ final class PageRenderer
              * already holds, rather than from markup smuggled through the
              * render.
              */
+            /*
+             * The page's own settings, as a stylesheet on `body`.
+             *
+             * Passed to the sections partial rather than to the layout: a
+             * theme replaces the whole layout file, so a page background
+             * printed there would silently stop working on any theme that
+             * had not heard of it. The partial is included by every layout
+             * and already owns the utilities a theme must not forget.
+             */
+            'pageCss' => $context === null
+                ? ''
+                : PageSettings::css(
+                    is_array($pageSettings = $context->getAttribute('page_settings')) ? $pageSettings : null,
+                ),
             'conditionsPass' => $builderMode
                 ? fn (array $settings): bool => true
                 : fn (array $settings): bool => $this->conditions

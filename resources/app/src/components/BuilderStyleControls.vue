@@ -76,11 +76,17 @@ function swatch(control: StyleControl): string {
     <section v-for="[group, entries] in groups" :key="group" class="styles__group">
         <h3 class="styles__heading">{{ group }}</h3>
 
+        <!--
+            An explicit `for` rather than a wrapping label alone: a colour
+            control holds two inputs, and implicit association leaves it
+            ambiguous which one the label names.
+        -->
         <label
             v-for="control in entries"
             :key="control.key"
             class="styles__field"
             :class="{ 'is-inherited': inherited(control) }"
+            :for="`style-${control.key}`"
         >
             <span>
                 {{ control.label }}
@@ -89,6 +95,7 @@ function swatch(control: StyleControl): string {
 
             <select
                 v-if="control.control === 'select'"
+                :id="`style-${control.key}`"
                 :value="valueOf(control)"
                 :disabled="!canEdit"
                 @change="$emit('set', control.key, ($event.target as HTMLSelectElement).value)"
@@ -100,6 +107,7 @@ function swatch(control: StyleControl): string {
 
             <span v-else-if="control.control === 'color'" class="styles__color">
                 <input
+                    :id="`style-${control.key}`"
                     type="text"
                     placeholder="var(--color-primary)"
                     :value="valueOf(control)"
@@ -117,6 +125,7 @@ function swatch(control: StyleControl): string {
 
             <input
                 v-else
+                :id="`style-${control.key}`"
                 type="text"
                 placeholder="e.g. 24px"
                 :value="valueOf(control)"

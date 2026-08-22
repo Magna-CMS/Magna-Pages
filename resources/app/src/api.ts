@@ -72,6 +72,19 @@ export function createApi(pageId: string, base = '/pages-builder') {
                 body: JSON.stringify({ node, document: blocks }),
             }),
 
+        /**
+         * The page's own settings — its background, its ground.
+         *
+         * A whole-object PUT rather than a patch operation: the patch path
+         * owns `blocks_data`, which is a list of sections, and a page-level
+         * key inside that list would be a node that is not a node.
+         */
+        putSettings: (settings: Record<string, unknown>): Promise<{ settings: Record<string, unknown> }> =>
+            request(`${base}/${pageId}/settings`, {
+                method: 'PUT',
+                body: JSON.stringify({ settings }),
+            }),
+
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
 
         /** The library browser's preview pane: a live local render. */

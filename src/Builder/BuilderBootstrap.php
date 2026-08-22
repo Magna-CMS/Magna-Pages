@@ -52,6 +52,9 @@ final class BuilderBootstrap
                 'status' => $entry->status->value,
                 'updated_at' => $entry->updated_at?->toIso8601String(),
                 'blocks' => is_array($document) ? $document : [],
+                // The page's own settings, so the panel opens showing what
+                // is set rather than fetching it a moment later.
+                'settings' => is_array($settings = $entry->getAttribute('page_settings')) ? $settings : [],
             ],
             'registry' => $this->registryPayload($this->blocks),
             // How deep blocks may nest, so the builder refuses a drop the

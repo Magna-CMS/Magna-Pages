@@ -15,6 +15,7 @@ use Magna\Pages\Builder\DocumentEditor;
 use Magna\Pages\Builder\Exceptions\PatchException;
 use Magna\Pages\Builder\FindsDocuments;
 use Magna\Pages\Builder\LockManager;
+use Magna\Pages\Builder\PageSettings;
 use Magna\Users\User;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -110,6 +111,46 @@ final class BuilderApiController
 
         return response()->json([
             'document' => $document,
+            'updated_at' => $entry->fresh()?->updated_at?->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Write the page's own settings — its background, its ground.
+     *
+     * Design-tier, not content: a page background restyles everything
+     * drawn on it, which is the same kind of decision as a palette change
+     * and a different one from editing a heading. It needs the lock like
+     * any other write, because two editors disagreeing about a background
+     * is exactly the collision the lock exists to prevent.
+     *
+     * Deliberately NOT part of the patch path: that path owns `blocks_data`
+     * and blocks_data is a list of sections. A page-level key inside that
+     * list would be a node that is not a node, and every walker in the
+     * codebase would have to learn to skip it.
+     */
+    public function settings(Request $request, string $id): JsonResponse
+    {
+        Gate::authorize('pages.design');
+
+        $user = $this->actor($request);
+        if (! $this->locks->holds($id, $user)) {
+            return response()->json([
+                'message' => 'Another editor holds this document.',
+                'lock' => $this->lockPayload($id, $user),
+            ], 409);
+        }
+
+        $request->validate(['settings' => ['present', 'array']]);
+
+        $entry = $this->findDocument($id);
+        $settings = PageSettings::sanitize((array) $request->input('settings', []));
+
+        $entry->setAttribute('page_settings', $settings);
+        $entry->save();
+
+        return response()->json([
+            'settings' => $settings,
             'updated_at' => $entry->fresh()?->updated_at?->toIso8601String(),
         ]);
     }

@@ -151,6 +151,8 @@ interface State {
     styleControls: StyleControls
     displayConditions: DisplayConditionOption[]
     icons: Record<string, string>
+    /** The page's own settings — its ground, stored beside the document. */
+    pageSettings: Record<string, unknown>
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -185,6 +187,7 @@ export const useDocumentStore = defineStore('document', {
         styleControls: {},
         displayConditions: [],
         icons: {},
+        pageSettings: {},
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -270,6 +273,7 @@ export const useDocumentStore = defineStore('document', {
             this.styleControls = payload.styleControls ?? {}
             this.displayConditions = payload.displayConditions ?? []
             this.icons = payload.icons ?? {}
+            this.pageSettings = payload.document?.settings ?? {}
             this.loaded = true
         },
 

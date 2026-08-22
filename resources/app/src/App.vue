@@ -16,7 +16,11 @@ import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
 import { exportAsLibraryAsset, nestingMovesFor, sectionOf } from './document/edits'
 import { inlineBlockRefusal, inlineTarget, type InlineMode } from './document/inline'
-import { responsiveStyleOperations, type Breakpoint as ResponsiveBreakpoint } from './document/responsive'
+import {
+    responsiveStyleOperations,
+    withBreakpoint,
+    type Breakpoint as ResponsiveBreakpoint,
+} from './document/responsive'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
 import {
     blockParents,
@@ -634,6 +638,38 @@ async function onSetStyle(pointer: string, key: string, value: string) {
     await writeStyle(pointer, 'style', key, value)
 }
 
+/**
+ * The page's own style.
+ *
+ * Its own write path because the page is not a node: there is no pointer
+ * to patch and no document position to hold. The canvas is reloaded
+ * afterwards rather than patched in place, since the declaration lands on
+ * `body` and there is no fragment that could carry it.
+ */
+async function onPageStyle(key: string, value: string) {
+    const style = { ...((store.pageSettings.style as Record<string, unknown> | undefined) ?? {}) }
+
+    // The device preview decides the breakpoint, exactly as it does for a
+    // node. Clearing REMOVES the key rather than storing an empty string,
+    // because absent is what "not set" means to the renderer.
+    const next = withBreakpoint(style[key], styleBreakpoint.value, value)
+    if (next === undefined) {
+        delete style[key]
+    } else {
+        style[key] = next
+    }
+
+    const settings = Object.keys(style).length === 0 ? {} : { style }
+    store.pageSettings = settings
+
+    try {
+        await api.putSettings(settings)
+        await reloadCanvas()
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    }
+}
+
 /** Row layout writes to `settings.row`, its own set beside `settings.style`. */
 async function onSetRowStyle(pointer: string, key: string, value: string) {
     await writeStyle(pointer, 'row', key, value)
@@ -1008,6 +1044,15 @@ function onKeydown(event: KeyboardEvent) {
             contextMenu.value = null
 
             return
+        }
+
+        // Last rung: step out of the selection. Escape has always closed
+        // the innermost thing that was open, and a selection is the
+        // innermost thing once the overlays are gone — it is also now the
+        // only way back to the PAGE's own settings, which is what the
+        // panel shows when nothing is selected.
+        if (store.selectedNode) {
+            selectNode(null)
         }
     }
 
@@ -1449,6 +1494,9 @@ onBeforeUnmount(() => {
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
                         @set-style="onSetStyle"
+                        :page-controls="store.styleControls.page ?? []"
+                        :page-style="(store.pageSettings.style as Record<string, unknown>) ?? {}"
+                        @page-style="onPageStyle"
                         @set-row-style="onSetRowStyle"
                         @select="selectNode($event)"
                     />

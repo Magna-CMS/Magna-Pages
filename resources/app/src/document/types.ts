@@ -158,6 +158,8 @@ export interface BootstrapPayload {
         status: string
         updated_at: string | null
         blocks: BlockDocument
+        /** The page's own settings, stored beside the document not in it. */
+        settings?: Record<string, unknown>
     }
     registry: BlockDefinition[]
     tokens: Record<string, string>

@@ -369,3 +369,44 @@ test('offers every element as a tile with a real icon', async ({ page }) => {
     await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 15_000 })
     await expect(frame.locator('.magna-block--icon svg')).toBeVisible()
 })
+
+/**
+ * The page is a thing with settings.
+ *
+ * Nothing-selected used to mean nothing to edit. The ground a document is
+ * drawn on is real, and this asserts the whole round trip: the panel
+ * offers the page vocabulary, a change reaches the server, and the canvas
+ * comes back painted.
+ */
+test('paints the page from the panel with nothing selected', async ({ page }) => {
+    await newBuilderPage(page, 'Ground')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await waitForNodes(page, 'section', 1)
+
+    // Deselect: the page is what the inspector shows when no node does.
+    await page.keyboard.press('Escape')
+    // The tab's name carries the selection label after it, so match on
+    // the id rather than on a name that changes with the selection.
+    await page.locator('#panel-mode-inspect').click()
+    await expect(page.locator('.inspector__block')).toHaveText('Page')
+
+    const background = page.locator('#style-background')
+    await expect(background).toBeVisible()
+    await background.fill('#123456')
+    await background.dispatchEvent('change')
+
+    // It reached the canvas, which means it reached the server and came
+    // back through a real render.
+    await expect
+        .poll(
+            () =>
+                page
+                    .locator('.builder__frame')
+                    .evaluate(
+                        (el) =>
+                            (el as HTMLIFrameElement).contentDocument?.body?.innerHTML ?? '',
+                    ),
+            { timeout: 20_000 },
+        )
+        .toContain('background-color:#123456')
+})

@@ -291,3 +291,15 @@
 @if($responsiveCss !== '')
     <style>{!! $responsiveCss !!}</style>
 @endif
+
+{{--
+    The page's own settings — its background and ground colour.
+
+    Here rather than in the layout's head because a theme REPLACES the
+    layout file, and a page background printed there would quietly stop
+    working on any theme that had not heard of it. Absent for a template
+    part, which is drawn on the page rather than being one.
+--}}
+@if(($pageCss ?? '') !== '')
+    <style>{!! $pageCss !!}</style>
+@endif

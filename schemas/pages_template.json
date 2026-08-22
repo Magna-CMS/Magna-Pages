@@ -24,7 +24,13 @@
             "label": "Kind",
             "required": true,
             "default": "part",
-            "options": ["part", "page", "collection", "popup", "system"],
+            "options": [
+                "part",
+                "page",
+                "collection",
+                "popup",
+                "system"
+            ],
             "localizable": false
         },
         {
@@ -32,6 +38,12 @@
             "type": "blocks",
             "label": "Content",
             "localizable": true
+        },
+        {
+            "handle": "page_settings",
+            "type": "json",
+            "label": "Page settings",
+            "localizable": false
         }
     ]
 }

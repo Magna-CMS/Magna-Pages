@@ -57,6 +57,19 @@ final class StyleDescriptors
     public const CONTAINER = 'container';
 
     /**
+     * The PAGE itself — the ground everything else is drawn on.
+     *
+     * Its own kind because the vocabulary genuinely differs: a background
+     * image belongs to a page and a `gap` does not, and offering a control
+     * that cannot matter is the one thing this table exists to prevent.
+     *
+     * Page declarations land on `body`, emitted with the document's own
+     * stylesheet rather than in the head, so a theme cannot forget to
+     * print them — the same reason the structural utilities live there.
+     */
+    public const PAGE = 'page';
+
+    /**
      * key => [property, control, group, label, options, appliesTo].
      *
      * `control` names what the builder draws: text (a length or keyword),
@@ -72,8 +85,8 @@ final class StyleDescriptors
         'marginTop' => ['property' => 'margin-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin top', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK, self::CONTAINER]],
         'marginBottom' => ['property' => 'margin-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK, self::CONTAINER]],
 
-        'background' => ['property' => 'background-color', 'control' => 'color', 'group' => 'Background', 'label' => 'Background', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
-        'color' => ['property' => 'color', 'control' => 'color', 'group' => 'Typography', 'label' => 'Text colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'background' => ['property' => 'background-color', 'control' => 'color', 'group' => 'Background', 'label' => 'Background', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER, self::PAGE]],
+        'color' => ['property' => 'color', 'control' => 'color', 'group' => 'Typography', 'label' => 'Text colour', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER, self::PAGE]],
         'textAlign' => ['property' => 'text-align', 'control' => 'select', 'group' => 'Typography', 'label' => 'Text align', 'options' => ['', 'left', 'center', 'right'], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
 
         'borderWidth' => ['property' => 'border-width', 'control' => 'text', 'group' => 'Border', 'label' => 'Border width', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
@@ -103,6 +116,21 @@ final class StyleDescriptors
         'direction' => ['property' => 'flex-direction', 'control' => 'select', 'group' => 'Layout', 'label' => 'Stack direction', 'options' => ['', 'row', 'row-reverse', 'column', 'column-reverse'], 'appliesTo' => [self::CONTAINER]],
         'wrap' => ['property' => 'flex-wrap', 'control' => 'select', 'group' => 'Layout', 'label' => 'Wrapping', 'options' => ['', 'wrap', 'nowrap'], 'appliesTo' => [self::CONTAINER]],
         'childGap' => ['property' => 'gap', 'control' => 'text', 'group' => 'Layout', 'label' => 'Gap between blocks', 'options' => [], 'appliesTo' => [self::CONTAINER]],
+
+        /*
+         * The page's background image.
+         *
+         * `image` is its own control because the stored value is a URL and
+         * the emitted value is a `url()` function. The author's string
+         * never reaches the property: the emitter validates the URL and
+         * builds the function itself, which is the only reason a value
+         * carrying parentheses can be allowed near a stylesheet at all.
+         */
+        'backgroundImage' => ['property' => 'background-image', 'control' => 'image', 'group' => 'Background', 'label' => 'Background image', 'options' => [], 'appliesTo' => [self::PAGE]],
+        'backgroundSize' => ['property' => 'background-size', 'control' => 'select', 'group' => 'Background', 'label' => 'Image size', 'options' => ['', 'cover', 'contain', 'auto'], 'appliesTo' => [self::PAGE]],
+        'backgroundPosition' => ['property' => 'background-position', 'control' => 'select', 'group' => 'Background', 'label' => 'Image position', 'options' => ['', 'center', 'top', 'bottom', 'left', 'right'], 'appliesTo' => [self::PAGE]],
+        'backgroundRepeat' => ['property' => 'background-repeat', 'control' => 'select', 'group' => 'Background', 'label' => 'Repeat', 'options' => ['', 'no-repeat', 'repeat', 'repeat-x', 'repeat-y'], 'appliesTo' => [self::PAGE]],
+        'backgroundAttachment' => ['property' => 'background-attachment', 'control' => 'select', 'group' => 'Background', 'label' => 'Scrolling', 'options' => ['', 'scroll', 'fixed'], 'appliesTo' => [self::PAGE]],
     ];
 
     /**
@@ -144,7 +172,39 @@ final class StyleDescriptors
             self::BLOCK => self::forKind(self::BLOCK),
             self::ROW => self::forKind(self::ROW),
             self::CONTAINER => self::forKind(self::CONTAINER),
+            self::PAGE => self::forKind(self::PAGE),
         ];
+    }
+
+    /**
+     * A `url("…")` for a stored image reference, or null.
+     *
+     * Relative paths and http(s) only — a `data:` or `javascript:` value
+     * has no business being a page background, and anything carrying a
+     * quote, a backslash, a paren or whitespace is refused outright rather
+     * than escaped. Refusing is safe here in a way escaping is not: the
+     * only thing lost is a background nobody could have meant.
+     */
+    private static function imageUrl(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '' || strlen($value) > 2048) {
+            return null;
+        }
+
+        if (preg_match('/[\s"\'\\\\()<>;{}]/', $value) === 1) {
+            return null;
+        }
+
+        $isRelative = str_starts_with($value, '/') && ! str_starts_with($value, '//');
+        if (! $isRelative) {
+            $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
+            if (! in_array($scheme, ['http', 'https'], true)) {
+                return null;
+            }
+        }
+
+        return 'url("'.$value.'")';
     }
 
     /** Whether a style set says anything under this key at all. */
@@ -217,6 +277,24 @@ final class StyleDescriptors
             // A select may only emit what it offers. The options ARE the
             // vocabulary, not a suggestion the renderer trusts.
             if ($descriptor['control'] === 'select' && ! in_array($value, $descriptor['options'], true)) {
+                continue;
+            }
+
+            /*
+             * An image value is a URL, and the property wants a `url()`
+             * function around it. The author's string is never what gets
+             * emitted: it is validated as a URL first and the function is
+             * built here, which is why a value carrying parentheses can be
+             * allowed anywhere near a stylesheet.
+             */
+            if ($descriptor['control'] === 'image') {
+                $url = self::imageUrl($value);
+                if ($url === null) {
+                    continue;
+                }
+
+                $parts[] = $descriptor['property'].':'.$url;
+
                 continue;
             }
 

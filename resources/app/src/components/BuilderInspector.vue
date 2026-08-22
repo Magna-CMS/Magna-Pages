@@ -52,6 +52,9 @@ const props = defineProps<{
     styleBreakpoint: Breakpoint
     /** Row-layout controls, for a section: how its columns lay out. */
     rowControls?: StyleControl[]
+    /** The page's own controls and values — what nothing-selected means. */
+    pageControls?: StyleControl[]
+    pageStyle?: Record<string, unknown>
     /**
      * Every show/hide rule this install can evaluate, as the server listed
      * them. Only the plugin ones get a control here — the two built-ins have
@@ -68,6 +71,8 @@ const emit = defineEmits<{
     setSpans: [sectionId: string, spans: number[]]
     setStyle: [pointer: string, key: string, value: string]
     setRowStyle: [pointer: string, key: string, value: string]
+    /** The page's own style — no pointer, because the page is not a node. */
+    pageStyle: [key: string, value: string]
     select: [nodeId: string]
 }>()
 
@@ -485,9 +490,36 @@ const title = computed<string>(() => {
 
 <template>
     <div class="inspector">
-        <p v-if="!located" class="inspector__empty">
-            Select something on the page, or use Add to place a new element.
-        </p>
+        <!--
+            Nothing selected is not nothing to edit: the PAGE is selected.
+
+            That is the reading Elementor settled on and it is the right
+            one — the ground a document is drawn on is a real thing with
+            real settings, and hiding it behind a menu makes it feel like
+            an afterthought. The message stays underneath, because "click
+            something" is still the answer for an editor who wanted a
+            block.
+        -->
+        <template v-if="!located">
+            <p class="inspector__block">Page</p>
+
+            <BuilderStyleControls
+                v-if="pageControls && pageControls.length > 0"
+                :controls="pageControls"
+                :style="pageStyle ?? {}"
+                :can-edit="capabilities.style"
+                :breakpoint="styleBreakpoint"
+                @set="(key: string, value: string) => $emit('pageStyle', key, value)"
+            />
+
+            <p v-if="!capabilities.style" class="inspector__locked">
+                Page styling needs the design permission.
+            </p>
+
+            <p class="inspector__empty">
+                Select something on the page, or use Add to place a new element.
+            </p>
+        </template>
 
         <template v-else>
             <p class="inspector__block">{{ title }}</p>

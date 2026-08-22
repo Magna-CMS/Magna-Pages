@@ -46,17 +46,49 @@ final class CustomCss
                 continue;
             }
 
-            // No braces, angle brackets, @rules, comments, escapes, or
-            // control characters — none of them belong in a declaration
-            // value, all of them are how attacks start.
-            if ($value === '' || preg_match('/[{}<>@\\\\\'"]|\/\*|[\x00-\x1f]/', $value) === 1) {
+            if ($value === '') {
                 continue;
             }
 
-            // Functions refused except var(--token). Checked by erasing
-            // allowed var() calls first: any parenthesis left is a refusal.
-            $withoutVars = preg_replace('/var\(--[a-z0-9-]+\)/i', '', $value);
-            if ($withoutVars === null || str_contains($withoutVars, '(') || str_contains($withoutVars, ')')) {
+            /*
+             * url() is an exfiltration channel, so it is allowed in exactly
+             * one shape and no other: the WHOLE value, one function, a
+             * double-quoted relative path or http(s) URL carrying nothing
+             * that could close the quote, the function, or the declaration.
+             *
+             * Anchored rather than erased on purpose. An erasing pass would
+             * also accept `url("/a.png"), url("/b.png")` — valid CSS, but
+             * not something the style descriptors ever build, and the value
+             * of a narrow exception is that it stays narrow.
+             *
+             * This is not a widening of what an author may express: an
+             * image block already puts any remote URL on a page, and only
+             * the design tier can set a page background at all.
+             */
+            if (preg_match('/^url\("(?:\/(?!\/)|https?:\/\/)[^"()<>;{}\s\\\\\']*"\)$/i', $value) === 1) {
+                $safe[] = $property.':'.$value;
+
+                continue;
+            }
+
+            // Every other function is refused except var(--token), which is
+            // the system's own currency. Erased first so that any
+            // parenthesis left over is a refusal.
+            $withoutFunctions = preg_replace('/var\(--[a-z0-9-]+\)/i', '', $value);
+            if ($withoutFunctions === null) {
+                continue;
+            }
+
+            // No braces, angle brackets, @rules, comments, escapes, quotes,
+            // or control characters — none of them belong in a declaration
+            // value, all of them are how attacks start.
+            if (preg_match('/[{}<>@\\\\\'"]|\/\*|[\x00-\x1f]/', $withoutFunctions) === 1) {
+                continue;
+            }
+
+            // Any parenthesis left after the two allowed functions were
+            // erased is a function this does not permit.
+            if (str_contains($withoutFunctions, '(') || str_contains($withoutFunctions, ')')) {
                 continue;
             }
 
