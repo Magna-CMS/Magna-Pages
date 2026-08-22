@@ -7,6 +7,7 @@ import BuilderCommandPalette from './components/BuilderCommandPalette.vue'
 import BuilderDock from './components/BuilderDock.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
+import BuilderAddHere from './components/BuilderAddHere.vue'
 import BuilderLibrary from './components/BuilderLibrary.vue'
 import BuilderNodeMenu from './components/BuilderNodeMenu.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
@@ -503,6 +504,30 @@ async function onAddBlock(handle: string) {
         // A placed element is one the editor wants to fill in next.
         ui.inspect('content')
         reloadCanvas()
+    }
+}
+
+/**
+ * Where the page's content ends — the bottom of the lowest section rect.
+ * The add-here affordance sits just below it, the way Elementor's does.
+ */
+const pageEndTop = computed<number | null>(() => {
+    if (!store.loaded || store.sections.length === 0) {
+        return null
+    }
+
+    const bottoms = rects.value
+        .filter((rect) => rect.kind === 'section')
+        .map((rect) => rect.top + rect.height)
+
+    return bottoms.length > 0 ? Math.max(...bottoms) : null
+})
+
+/** The folder button: open the panel on the cloud library. */
+function onBrowseCloud() {
+    ui.browse('cloud')
+    if (ui.panelCollapsed) {
+        ui.togglePanel()
     }
 }
 
@@ -1458,14 +1483,25 @@ onBeforeUnmount(() => {
                          the workflow, not a decoration. -->
                     <div v-if="store.loaded && store.sections.length === 0" class="builder__empty">
                         <p>This page is empty.</p>
-                        <button
-                            type="button"
-                            :disabled="!store.capabilities.structure"
-                            @click="onAddSection([12])"
-                        >
-                            Add your first section
-                        </button>
-                        <small>Or pick a column structure in the Add panel.</small>
+                        <BuilderAddHere
+                            :can-structure="store.capabilities.structure"
+                            @add-section="onAddSection"
+                            @browse="onBrowseCloud"
+                        />
+                    </div>
+
+                    <!-- And where content ends, the way forward continues:
+                         the same affordance after the last section. In its
+                         own clipped layer rather than the overlay, because
+                         the overlay is aria-hidden and these are controls. -->
+                    <div v-if="pageEndTop !== null && !drag.active.value" class="builder__endzone">
+                        <BuilderAddHere
+                            class="builder__endzone-item"
+                            :style="{ top: `${pageEndTop - scrollY + 14}px` }"
+                            :can-structure="store.capabilities.structure"
+                            @add-section="onAddSection"
+                            @browse="onBrowseCloud"
+                        />
                     </div>
                 </div>
             </main>
@@ -1900,6 +1936,20 @@ body {
     border-radius: 8px;
     background: color-mix(in srgb, var(--builder-surface) 92%, transparent);
     text-align: center;
+}
+
+.builder__endzone {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.builder__endzone-item {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    pointer-events: auto;
 }
 
 .builder__empty p {

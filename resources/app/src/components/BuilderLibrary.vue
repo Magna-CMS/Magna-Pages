@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { COLUMN_PRESETS } from '../document/edits'
 import { needsImportFlow, type DragSource } from '../document/placement'
+import BuilderStructurePicker from './BuilderStructurePicker.vue'
 import type { BlockDefinition, Capabilities } from '../document/types'
 import type {
     LibraryAssetSummary,
@@ -42,8 +42,6 @@ defineEmits<{
 }>()
 
 const ui = useUiStore()
-
-const presets = COLUMN_PRESETS
 
 function matches(...haystack: (string | null | undefined)[]): boolean {
     const needle = ui.search.trim().toLowerCase()
@@ -92,11 +90,6 @@ function blocked(definition: BlockDefinition): string | null {
     }
 
     return null
-}
-
-/** A preset drawn as proportional bars, so the shape reads before the label. */
-function barStyle(span: number) {
-    return { flex: `${span} 1 0%` }
 }
 
 /**
@@ -151,28 +144,10 @@ function draggable(source: DragSource): boolean {
                 <h3 class="library__heading">Add section</h3>
                 <p class="library__hint">Pick a column structure to start a row.</p>
 
-                <div class="library__structures">
-                    <button
-                        v-for="preset in presets"
-                        :key="preset.label"
-                        type="button"
-                        class="library__structure"
-                        :disabled="!capabilities.structure"
-                        :aria-label="`Add section: ${preset.label}`"
-                        :title="preset.label"
-                        @click="$emit('addSection', preset.spans)"
-                    >
-                        <span class="library__bars" aria-hidden="true">
-                            <span
-                                v-for="(span, index) in preset.spans"
-                                :key="index"
-                                class="library__bar"
-                                :style="barStyle(span)"
-                            />
-                        </span>
-                        <small>{{ preset.label }}</small>
-                    </button>
-                </div>
+                <BuilderStructurePicker
+                    :disabled="!capabilities.structure"
+                    @pick="$emit('addSection', $event)"
+                />
             </section>
 
             <p v-if="!canPlace && capabilities.structure" class="library__hint">
