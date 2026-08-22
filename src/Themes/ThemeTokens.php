@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Magna\Pages\Themes;
 
 use Illuminate\Support\Carbon;
+use Magna\Pages\PagesSettings;
 use Magna\Themes\ThemeManager;
 
 /**
@@ -96,12 +97,50 @@ class ThemeTokens
     }
 
     /**
-     * One package's tokens.json compiled to CSS variables (empty when the
-     * file is missing or malformed).
+     * The theme's DARK values: only the tokens that declare one.
+     *
+     * A token carries `dark` beside `value`, so a palette is one file with
+     * two readings rather than two palettes to keep in step. A token with
+     * no `dark` is simply the same in both schemes, which is the right
+     * default for a corner radius or a content width.
+     *
+     * Site overrides are deliberately not applied here. An override
+     * replaces what the theme declares for the LIGHT reading; making one
+     * value mean both would leave a site unable to express a palette that
+     * differs between them, which is the whole point of the feature.
      *
      * @return array<string, string>
      */
-    private function tokensFrom(string $packageName): array
+    public function darkVariables(): array
+    {
+        $active = $this->themes->active();
+        if ($active === null) {
+            return [];
+        }
+
+        $variables = $this->tokensFrom($active->name, dark: true);
+
+        foreach ($this->themes->activeAddons() as $addon) {
+            foreach ($this->tokensFrom($addon->name, dark: true) as $name => $value) {
+                if (! array_key_exists($name, $variables)) {
+                    $variables[$name] = $value;
+                }
+            }
+        }
+
+        return $variables;
+    }
+
+    /**
+     * One package's tokens.json compiled to CSS variables (empty when the
+     * file is missing or malformed).
+     *
+     * With $dark, only tokens that declare a `dark` value are returned, and
+     * that value is what they are worth.
+     *
+     * @return array<string, string>
+     */
+    private function tokensFrom(string $packageName, bool $dark = false): array
     {
         $tokensFile = $this->themes->pathFor($packageName).'/tokens.json';
         if (! is_file($tokensFile)) {
@@ -124,7 +163,16 @@ class ThemeTokens
                     continue;
                 }
 
-                $value = is_array($definition) ? ($definition['value'] ?? null) : $definition;
+                if ($dark) {
+                    // Only tokens that declare a dark reading take part.
+                    $value = is_array($definition) ? ($definition['dark'] ?? null) : null;
+                    if ($value === null) {
+                        continue;
+                    }
+                } else {
+                    $value = is_array($definition) ? ($definition['value'] ?? null) : $definition;
+                }
+
                 if (! is_string($value) && ! is_numeric($value)) {
                     continue;
                 }
@@ -156,12 +204,56 @@ class ThemeTokens
             return '';
         }
 
+        $scheme = PagesSettings::get()->color_scheme;
+        $dark = $this->darkVariables();
+
+        /*
+         * A site pinned to one scheme has one palette, and that is the end
+         * of it: no media query, no attribute, nothing for a visitor to
+         * flip. Dark values simply replace the light ones at the root.
+         */
+        if ($scheme === 'dark' && $dark !== []) {
+            return ':root{'.self::declare(array_merge($variables, $dark)).'}';
+        }
+
+        $css = ':root{'.self::declare($variables).'}';
+
+        if ($scheme === 'light' || $dark === []) {
+            return $css;
+        }
+
+        /*
+         * Following the visitor's system preference, in THREE states and
+         * one body.
+         *
+         * Every breakpoint of a responsive value already emits into one
+         * body so the shared page cache still applies; a scheme is the same
+         * kind of axis and gets the same treatment. Choosing server-side
+         * would make the page per-visitor and cost the cache entirely.
+         *
+         * The media query is guarded against an explicit `light` so a
+         * visitor who has chosen light is not overruled by their system,
+         * and the attribute rule repeats the dark values so an explicit
+         * `dark` wins in the other direction. Nothing here needs the theme
+         * to cooperate: a theme that never stamps `data-theme` still gets
+         * the system-preference reading, which is the common case.
+         */
+        $declarations = self::declare($dark);
+
+        return $css
+            .'@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){'.$declarations.'}}'
+            .':root[data-theme="dark"]{'.$declarations.'}';
+    }
+
+    /** @param array<string, string> $variables */
+    private static function declare(array $variables): string
+    {
         $lines = [];
         foreach ($variables as $name => $value) {
             $lines[] = $name.':'.$value;
         }
 
-        return ':root{'.implode(';', $lines).'}';
+        return implode(';', $lines);
     }
 
     /**

@@ -245,6 +245,25 @@
             return
         }
 
+        /*
+         * Colour-scheme preview.
+         *
+         * An attribute set and removed on the root, in builder mode only —
+         * the same category of change as the mask and the contenteditable
+         * attribute, and nothing of it ships. The page's own stylesheet
+         * already carries both readings, so this only chooses which one the
+         * canvas is showing; no re-render is needed and none happens.
+         */
+        if (data.type === 'scheme') {
+            if (data.scheme === 'light' || data.scheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', data.scheme)
+            } else {
+                document.documentElement.removeAttribute('data-theme')
+            }
+
+            return
+        }
+
         if (data.type === 'tokens' && data.tokens) {
             // The instant path for style edits: set the CSS variable and the
             // page restyles without a server round trip.

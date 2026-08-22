@@ -19,6 +19,9 @@ export type InspectTab = 'content' | 'style' | 'advanced'
 export type Drawer = 'layers' | 'checks' | 'history' | 'comments' | 'design' | null
 export type Breakpoint = 'desktop' | 'tablet' | 'mobile'
 
+/** Which reading of the palette the canvas is showing. Preview only. */
+export type Scheme = 'system' | 'light' | 'dark'
+
 const STORAGE_KEY = 'magna-builder-ui'
 
 const MIN_WIDTH = 260
@@ -41,6 +44,7 @@ interface State extends Persisted {
     inspectTab: InspectTab
     drawer: Drawer
     breakpoint: Breakpoint
+    scheme: Scheme
     search: string
 }
 
@@ -82,6 +86,7 @@ export const useUiStore = defineStore('ui', {
         inspectTab: 'content',
         drawer: null,
         breakpoint: 'desktop',
+        scheme: 'system',
         search: '',
         ...loadPersisted(),
     }),

@@ -26,6 +26,17 @@ class PagesSettings extends Settings
     public bool $maintenance_mode = false;
 
     /**
+     * How the site reads: `system` follows the visitor's preference,
+     * `light` and `dark` pin it.
+     *
+     * Expressed entirely in CSS — all three readings are emitted into one
+     * body, so the page stays identical for every visitor and the shared
+     * cache still applies. Choosing per visitor on the server would cost
+     * that cache, which is too much to pay for a palette.
+     */
+    public string $color_scheme = 'system';
+
+    /**
      * Content types mounted on the public site, as a list of
      * {type, prefix} maps — e.g. [{"type": "article", "prefix": "blog"}]
      * serves /blog (archive) and /blog/{slug} (single). Only types whose

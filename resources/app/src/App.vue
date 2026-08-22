@@ -36,7 +36,7 @@ import { classifyFailure } from './resilience'
 import { buildActions } from './palette'
 import type { BlockNode, SectionNode, StyleControl } from './document/types'
 import { useDocumentStore } from './stores/document'
-import { useUiStore, type Breakpoint } from './stores/ui'
+import { useUiStore, type Breakpoint, type Scheme } from './stores/ui'
 
 /**
  * The builder shell: one left panel, the canvas, a bottom dock.
@@ -151,6 +151,12 @@ const bridge = new CanvasBridge({
         // Keep the end gap on the last document section, so the add-here
         // affordance has in-flow room between the content and the footer.
         bridge.endGap(store.sections.at(-1)?.id ?? null, END_GAP)
+        // A reload is a new document, and the scheme attribute lived in the
+        // old one. Re-applied here rather than on reload, because this is
+        // the message that says the new document is ready.
+        if (ui.scheme !== 'system') {
+            bridge.setScheme(ui.scheme)
+        }
     },
     onSelect: (node) => {
         // A click on what is ALREADY selected starts typing, the way every
@@ -1094,6 +1100,18 @@ async function onRedo() {
     reloadCanvas()
 }
 
+/**
+ * Show the canvas in one reading of the palette.
+ *
+ * Re-applied after every canvas reload, because the attribute lives in the
+ * frame and a reload is a new document — without that, previewing dark and
+ * then editing anything would silently drop back to light.
+ */
+function onScheme(scheme: Scheme) {
+    ui.scheme = scheme
+    bridge.setScheme(scheme)
+}
+
 function reloadCanvas() {
     // Structural changes move enough nodes that per-node swaps are not worth
     // the bookkeeping — the full reload is under the plan's 1s budget.
@@ -1515,6 +1533,28 @@ onBeforeUnmount(() => {
                     >
                         {{ device }}
                     </button>
+
+                    <!--
+                        Which reading of the palette the canvas shows. A
+                        preview, not a setting: the page carries both
+                        readings in one stylesheet, so this chooses what is
+                        on screen and changes nothing about the document.
+                        Designing for dark without being able to see it is
+                        designing blind.
+                    -->
+                    <div class="builder__schemes" role="group" aria-label="Preview colour scheme">
+                        <button
+                            v-for="scheme in (['system', 'light', 'dark'] as const)"
+                            :key="scheme"
+                            type="button"
+                            class="builder__viewport"
+                            :class="{ 'is-active': ui.scheme === scheme }"
+                            :title="`Preview in ${scheme === 'system' ? 'the visitor’s preference' : scheme}`"
+                            @click="onScheme(scheme)"
+                        >
+                            {{ scheme }}
+                        </button>
+                    </div>
                 </div>
 
                 <div ref="stage" class="builder__stage" :style="{ width: BREAKPOINTS[ui.breakpoint] }">
@@ -2021,6 +2061,16 @@ body {
     align-items: center;
     min-width: 0;
     background: #0b0c10;
+}
+
+.builder__schemes {
+    display: flex;
+    gap: 3px;
+    /* Set apart from the device buttons: they answer different questions,
+       and a single run of six buttons reads as one choice of six. */
+    margin-left: 14px;
+    padding-left: 14px;
+    border-left: 1px solid var(--builder-border);
 }
 
 .builder__viewport-bar {

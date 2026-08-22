@@ -75,6 +75,16 @@ export class CanvasBridge {
     }
 
     /**
+     * Preview a colour scheme in the canvas.
+     *
+     * The page already carries every reading in one stylesheet, so this
+     * chooses which one shows rather than asking for a different page.
+     */
+    setScheme(scheme: 'system' | 'light' | 'dark'): void {
+        this.post({ type: 'scheme', scheme })
+    }
+
+    /**
      * Open (or close) the plain-text inline editor on a node's element.
      *
      * `selectAll` carries the gesture's intent through: a double-click

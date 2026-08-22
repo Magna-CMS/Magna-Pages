@@ -438,3 +438,51 @@ test('styles its own scrollbars', async ({ page }) => {
     // does not shove the whole panel sideways.
     expect(style.gutter).toBeGreaterThan(0)
 })
+
+/**
+ * Designing for dark without being able to see it is designing blind.
+ *
+ * The canvas already carries both readings of the palette in one
+ * stylesheet, so previewing is a matter of choosing which one shows —
+ * no re-render, no second document, and nothing written to this page.
+ */
+test('previews the page in both colour schemes', async ({ page }) => {
+    await newBuilderPage(page, 'Scheme')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await waitForNodes(page, 'section', 1)
+
+    const root = () =>
+        page
+            .locator('.builder__frame')
+            .evaluate((el) => {
+                const document_ = (el as HTMLIFrameElement).contentDocument
+                const html = document_?.documentElement
+
+                return {
+                    theme: html?.getAttribute('data-theme') ?? null,
+                    background: html
+                        ? getComputedStyle(document_!.body).backgroundColor
+                        : '',
+                }
+            })
+
+    const light = await root()
+    expect(light.theme).toBeNull()
+
+    await page.getByRole('group', { name: 'Preview colour scheme' })
+        .getByRole('button', { name: 'dark' })
+        .click()
+
+    await expect.poll(async () => (await root()).theme, { timeout: 10_000 }).toBe('dark')
+
+    // The palette actually changed, which is the point — the attribute on
+    // its own would prove only that a button was wired up.
+    const dark = await root()
+    expect(dark.background).not.toBe(light.background)
+
+    // And it survives a canvas reload: a reload is a new document, and the
+    // attribute lived in the old one.
+    await page.getByRole('button', { name: 'Add section: 50 / 50' }).click()
+    await waitForNodes(page, 'section', 2)
+    await expect.poll(async () => (await root()).theme, { timeout: 10_000 }).toBe('dark')
+})
