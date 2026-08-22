@@ -79,3 +79,28 @@ export function inlineTarget(
 
     return null
 }
+
+/**
+ * Why this block offers nothing to type over — in words, for saying out
+ * loud. `null` means it offers something.
+ *
+ * A refusal the editor cannot see is the same as a broken editor: they
+ * click, nothing happens, and they conclude the canvas does not edit. Both
+ * reasons here are recoverable, and both name the recovery.
+ */
+export function inlineBlockRefusal(
+    definition: BlockDefinition,
+    data: Record<string, unknown> | undefined,
+): string | null {
+    if (inlineTarget(definition, data) !== null) {
+        return null
+    }
+
+    if (inlineFieldsOf(definition).length === 0) {
+        return `${definition.label} has no text to type over — edit it in the panel.`
+    }
+
+    // Every candidate was bound: the words on the page came from data, and
+    // typing over them would quietly turn the binding into a literal.
+    return `This text comes from dynamic data. Unbind it in the panel to type over it.`
+}

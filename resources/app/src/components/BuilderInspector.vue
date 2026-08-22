@@ -961,6 +961,22 @@ select:disabled {
 .inspector__bindrow input,
 .inspector__bindrow > select:first-child {
     flex: 1;
+    /* Without this an input in a flex row refuses to shrink past its
+       intrinsic width — and the pickers beside it, sized by their widest
+       option, squeeze it to nothing. */
+    min-width: 0;
+}
+
+/*
+ * The tag picker is used in two layouts: a block under a textarea, and a
+ * narrow control inside a bind row. Sized for the first, it ate the row in
+ * the second and left the text field a sliver — which is what made a
+ * heading look like it had no editable text at all.
+ */
+.inspector__bindrow > .inspector__taginsert {
+    width: 40px;
+    flex: 0 0 auto;
+    margin-top: 0;
 }
 
 .inspector__bindpick {

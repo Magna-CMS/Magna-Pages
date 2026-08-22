@@ -98,6 +98,46 @@
         return document.querySelector('[data-magna-node="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]')
     }
 
+    /** The node's own text, ignoring anything its descendants contribute. */
+    function ownText(element) {
+        var text = ''
+        for (var i = 0; i < element.childNodes.length; i++) {
+            if (element.childNodes[i].nodeType === 3) {
+                text += element.childNodes[i].nodeValue
+            }
+        }
+
+        return text.replace(/\s+/g, '')
+    }
+
+    /*
+     * The element whose text IS the field's value.
+     *
+     * A block's MARKED element is usually a wrapper — the div carrying its
+     * alignment and style classes — with the words an element or two below
+     * it. Making the wrapper editable would flatten that structure into a
+     * string, so instead descend while the path stays unambiguous: exactly
+     * one element child, and no text of the parent's own to lose.
+     *
+     * Where the descent hits a fork — two element children, or text beside
+     * an element — there is no single field being typed over, and null says
+     * so. That is the case the inspector exists for.
+     */
+    function textElementOf(element) {
+        var current = element
+        for (var depth = 0; depth < 5; depth++) {
+            if (current.children.length === 0) {
+                return current
+            }
+            if (current.children.length > 1 || ownText(current) !== '') {
+                return null
+            }
+            current = current.children[0]
+        }
+
+        return null
+    }
+
     window.addEventListener('message', function (event) {
         var data = event.data
         if (!data || data.magna !== PROTOCOL) {
@@ -131,6 +171,8 @@
          */
         if (data.type === 'measure' && typeof data.node === 'string') {
             var measured = findNode(data.node)
+            // The words carry the typography, not the wrapper around them.
+            measured = measured ? textElementOf(measured) || measured : null
             if (measured) {
                 var computed = window.getComputedStyle(measured)
                 var copy = {}
@@ -203,50 +245,6 @@
             return
         }
 
-        /*
-         * Inline editing. The parent decides WHICH node is editable (it
-         * knows the block's field schema and the actor's permissions); this
-         * side only turns the real element into a text input and reports
-         * what was typed.
-         *
-         * Refused when the element contains child markup: this edits text,
-         * and writing innerText back over a node with structure inside it
-         * would silently destroy that structure. Rich text keeps using the
-         * inspector until an editor that understands markup is mounted here.
-         */
-        if (data.type === 'editable' && typeof data.node === 'string') {
-            var editing = findNode(data.node)
-            if (!editing) {
-                return
-            }
-
-            if (data.on === false) {
-                editing.removeAttribute('contenteditable')
-
-                return
-            }
-
-            if (editing.children.length > 0) {
-                send('uneditable', { node: data.node, reason: 'markup' })
-
-                return
-            }
-
-            editing.setAttribute('contenteditable', 'plaintext-only')
-            editing.focus()
-
-            editing.addEventListener('input', function () {
-                send('text', { node: data.node, text: editing.innerText })
-            })
-
-            editing.addEventListener('blur', function () {
-                editing.removeAttribute('contenteditable')
-                send('textcommit', { node: data.node, text: editing.innerText })
-            })
-
-            return
-        }
-
         if (data.type === 'tokens' && data.tokens) {
             // The instant path for style edits: set the CSS variable and the
             // page restyles without a server round trip.
@@ -273,7 +271,22 @@
          */
         if (data.type === 'editable' && typeof data.node === 'string') {
             if (data.editable) {
-                startInlineEdit(data.node)
+                /*
+                 * A double-click is three events: click, click, dblclick.
+                 * The second click already opened the editor by the time
+                 * the dblclick reached the parent and came back, so the
+                 * stronger intent arrives LAST and would otherwise be
+                 * dropped as "already editing". Honour it instead.
+                 */
+                if (inlineEditing !== null && inlineEditing.node === data.node) {
+                    if (data.selectAll === true) {
+                        selectAllIn(inlineEditing.element)
+                    }
+
+                    return
+                }
+
+                startInlineEdit(data.node, data.selectAll === true)
             } else if (inlineEditing !== null && inlineEditing.node === data.node) {
                 inlineEditing.element.blur()
             }
@@ -282,16 +295,29 @@
 
     var inlineEditing = null
 
-    function startInlineEdit(id) {
-        var element = findNode(id)
-        if (!element || inlineEditing !== null) {
+    /*
+     * Is this event happening INSIDE the open editor?
+     *
+     * The canvas normally swallows clicks — a click selects a node, it must
+     * not follow a link the way a visitor's would. But inside an open text
+     * editor those same clicks are how a person places a caret, selects a
+     * word with a double-click, or a line with a triple. Swallowing them
+     * there left the caret pinned wherever it started, which made typing
+     * feel like appending to a field rather than editing a page.
+     */
+    function editingContains(target) {
+        return inlineEditing !== null && target instanceof Node && inlineEditing.element.contains(target)
+    }
+
+    function startInlineEdit(id, selectAll) {
+        var marked = findNode(id)
+        if (!marked || inlineEditing !== null) {
             return
         }
 
-        // An element with child ELEMENTS carries markup; editing it as text
-        // would flatten that markup into a string. The inspector is the
-        // editing path for those.
-        if (element.children.length > 0) {
+        // Not the marked element itself: the one actually holding the words.
+        var element = textElementOf(marked)
+        if (element === null) {
             send('uneditable', { node: id, reason: 'markup' })
 
             return
@@ -311,16 +337,31 @@
         }
         element.focus()
 
-        var selection = window.getSelection()
-        if (selection) {
-            var range = document.createRange()
-            range.selectNodeContents(element)
-            selection.removeAllRanges()
-            selection.addRange(range)
+        /*
+         * Whose caret is it: a DOUBLE-click means "replace these words", so
+         * it selects them; a second single click means "put the cursor
+         * here", so it leaves the caret the click already placed. Selecting
+         * everything on a plain click would put an editor one keystroke
+         * away from wiping a paragraph they meant to amend.
+         */
+        if (selectAll) {
+            selectAllIn(element)
         }
 
         element.addEventListener('blur', finishInlineEdit)
         element.addEventListener('keydown', inlineEditKeys)
+    }
+
+    function selectAllIn(element) {
+        var selection = window.getSelection()
+        if (!selection) {
+            return
+        }
+
+        var range = document.createRange()
+        range.selectNodeContents(element)
+        selection.removeAllRanges()
+        selection.addRange(range)
     }
 
     function inlineEditKeys(event) {
@@ -361,6 +402,12 @@
     document.addEventListener(
         'dblclick',
         function (event) {
+            // Inside the editor a double-click selects a word. That is the
+            // browser's job and it does it better than we could.
+            if (editingContains(event.target)) {
+                return
+            }
+
             var id = nodeIdFrom(event.target)
             if (id !== null) {
                 event.preventDefault()
@@ -373,6 +420,10 @@
     document.addEventListener(
         'click',
         function (event) {
+            if (editingContains(event.target)) {
+                return
+            }
+
             var id = nodeIdFrom(event.target)
             if (id === null) {
                 return
@@ -416,6 +467,11 @@
     document.addEventListener(
         'pointerdown',
         function (event) {
+            // Dragging a selection across text is not dragging the block.
+            if (editingContains(event.target)) {
+                return
+            }
+
             var id = nodeIdFrom(event.target)
             if (id !== null) {
                 send('pointerdown', {

@@ -204,3 +204,60 @@ test('edits rich text on the canvas and stores the markup', async ({ page }) => 
         )
         .toMatch(/<strong>Bolded by a robot<\/strong>|<b>Bolded by a robot<\/b>/)
 })
+
+/**
+ * Typing on the page itself.
+ *
+ * Inline editing existed before this test and yet everyone still used the
+ * panel, because three things stood between the gesture and the words: a
+ * dead second handler in the bridge answered the "make this editable"
+ * message first and refused every block whose marked node is a WRAPPER
+ * (which is nearly all of them); the canvas swallowed the very clicks that
+ * place a caret; and the tag picker in the inspector, sized for a layout it
+ * was not in, squeezed the Text field down to a sliver so the panel looked
+ * broken too. All three are asserted here.
+ */
+test('edits a heading on the page, by both gestures', async ({ page }) => {
+    await newBuilderPage(page, 'Inline')
+
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.frameLocator('.builder__frame')
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    // Selecting a column flips the panel to Edit; Add is where blocks live.
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Heading', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    // The inspector's Text field is a field, not a sliver: one class used
+    // in two layouts is what collapsed it.
+    const field = page.locator('#field-text')
+    await expect(field).toBeVisible()
+    expect((await field.boundingBox())!.width).toBeGreaterThan(150)
+
+    // A double-click means "replace these words". The editable element is
+    // the h2 INSIDE the marked wrapper, which is the whole reason this
+    // used to refuse.
+    const heading = frame.locator('[data-magna-kind="block"]').first()
+    await heading.dblclick()
+    await expect(heading.locator('[contenteditable]')).toHaveCount(1)
+    await page.keyboard.type('Typed on the page')
+    await page.keyboard.press('Enter')
+    await expect(heading).toHaveText('Typed on the page')
+
+    // It reached the document, not only the pixels.
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 15_000 })
+    await expect(field).toHaveValue('Typed on the page')
+
+    // The toolbar carries the gesture as a visible affordance, so nobody
+    // has to know the gesture exists.
+    await expect(page.getByRole('button', { name: 'Edit text in place' })).toBeVisible()
+
+    // A second click on what is already selected types at the caret rather
+    // than replacing everything.
+    await heading.click()
+    await heading.click()
+    await expect(heading.locator('[contenteditable]')).toHaveCount(1)
+    await page.keyboard.type('!')
+    await page.keyboard.press('Enter')
+    await expect(heading).toHaveText(/Typed on the page/)
+})

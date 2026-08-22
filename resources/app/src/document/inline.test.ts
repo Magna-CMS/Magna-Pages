@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { inlineFieldsOf, inlineModeFor, inlineTarget } from './inline'
+import { inlineBlockRefusal, inlineFieldsOf, inlineModeFor, inlineTarget } from './inline'
 import type { BlockDefinition, BlockFieldDefinition } from './types'
 
 /**
@@ -116,5 +116,29 @@ describe('inlineTarget', () => {
         const definition = block([field({ handle: 'headline' })])
 
         expect(inlineTarget(definition, { headline: { $bind: 'page.title' } })).toBeNull()
+    })
+})
+
+describe('inlineBlockRefusal', () => {
+    it('says nothing when there is something to type over', () => {
+        expect(inlineBlockRefusal(block([field({ required: true })]), {})).toBeNull()
+    })
+
+    it('names the block that has no text at all', () => {
+        // A silent refusal is what teaches an editor that the canvas does
+        // not edit, so a block with nothing to type over has to say so.
+        const refusal = inlineBlockRefusal(block([field({ type: 'image' })]), {})
+
+        expect(refusal).toContain('Demo')
+        expect(refusal).toContain('panel')
+    })
+
+    it('explains a bound value instead of letting a click do nothing', () => {
+        const refusal = inlineBlockRefusal(block([field({ handle: 'text', required: true })]), {
+            text: { $bind: 'entry.title' },
+        })
+
+        expect(refusal).toContain('dynamic data')
+        expect(refusal).toContain('Unbind')
     })
 })

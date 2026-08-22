@@ -15,7 +15,7 @@ import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
 import { useCanvasDrag, type DropPlacement } from './canvasDrag'
 import { exportAsLibraryAsset, nestingMovesFor, sectionOf } from './document/edits'
-import { inlineTarget, type InlineMode } from './document/inline'
+import { inlineBlockRefusal, inlineTarget, type InlineMode } from './document/inline'
 import { responsiveStyleOperations, type Breakpoint as ResponsiveBreakpoint } from './document/responsive'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
 import {
@@ -148,7 +148,20 @@ const bridge = new CanvasBridge({
         // affordance has in-flow room between the content and the footer.
         bridge.endGap(store.sections.at(-1)?.id ?? null, END_GAP)
     },
-    onSelect: (node) => selectNode(node),
+    onSelect: (node) => {
+        // A click on what is ALREADY selected starts typing, the way every
+        // visual builder behaves: the first click chooses the thing, the
+        // second one writes in it. Double-click still works, and still
+        // reaches the same place — this only means an editor who never
+        // discovers the gesture finds the behaviour anyway.
+        if (node === store.selectedNode && inlineTargetFor(node) !== null) {
+            startInlineEdit(node, false)
+
+            return
+        }
+
+        selectNode(node)
+    },
     onHover: (node) => (hovered.value = node),
     onScroll: (y) => (scrollY.value = y),
 
@@ -179,23 +192,8 @@ const bridge = new CanvasBridge({
     },
 
     onEditRequest: (node) => {
-        const target = inlineTargetFor(node)
-        if (target === null) {
-            return
-        }
-
-        store.select(node)
-
-        if (target.mode === 'plain') {
-            bridge.setEditable(node, true)
-
-            return
-        }
-
-        // Rich: the overlay needs the node's typography before it can look
-        // like the page, so opening waits for the frame's answer.
-        richEdit.value = { node, handle: target.handle, styles: {} }
-        bridge.measure(node)
+        // Double-click: the gesture means "replace these words".
+        startInlineEdit(node, true)
     },
 
     onMeasured: (node, styles) => {
@@ -212,9 +210,69 @@ const bridge = new CanvasBridge({
     },
 
     onUneditable: () => {
-        // The element carries markup; the inspector is the editing path.
+        // The element carries markup, so a plain-text read of it would
+        // flatten that markup into a string. Say so: silence here is what
+        // teaches an editor that the canvas does not edit.
+        store.error = 'This element holds formatting — edit its text in the panel.'
     },
 })
+
+/**
+ * Open the inline editor on a node, or say why not.
+ *
+ * Refusals used to be silent, which is the whole reason the panel felt
+ * like the only way to change a word: you click the text, nothing happens,
+ * and you stop trying. Every branch below either edits or explains.
+ */
+function startInlineEdit(node: string, selectAll = true) {
+    const target = inlineTargetFor(node)
+    if (target === null) {
+        const reason = inlineRefusal(node)
+        if (reason !== null) {
+            store.error = reason
+        }
+
+        return
+    }
+
+    store.error = null
+    store.select(node)
+
+    if (target.mode === 'plain') {
+        bridge.setEditable(node, true, selectAll)
+
+        return
+    }
+
+    // Rich: the overlay needs the node's typography before it can look
+    // like the page, so opening waits for the frame's answer.
+    richEdit.value = { node, handle: target.handle, styles: {} }
+    bridge.measure(node)
+}
+
+/** Why this node cannot be typed over — or null when it can, or when the
+ *  click landed on something that was never meant to be typed over at all
+ *  (a section, a column) and so deserves no complaint. */
+function inlineRefusal(nodeId: string): string | null {
+    if (!store.capabilities.content) {
+        return 'Editing this page’s content needs the content permission.'
+    }
+    if (!store.lock.mine) {
+        return 'Someone else is editing this page — take over to make changes.'
+    }
+
+    const found = locate(store.blocks, nodeId)
+    if (!found || found.kind !== 'block') {
+        return null
+    }
+
+    const definition = store.blockDefinition(String((found.node as { block: string }).block))
+    if (!definition) {
+        return null
+    }
+
+    return inlineBlockRefusal(definition, (found.node as { data?: Record<string, unknown> }).data)
+}
 
 /**
  * The field inline editing writes to: the block's first plain-text field.
@@ -868,6 +926,12 @@ const toolbar = computed(() => {
         top: top >= TOOLBAR_HEIGHT ? top - TOOLBAR_HEIGHT : top + 2,
         left: rect?.left ?? 0,
         canDuplicate: structural && (kind === 'section' || kind === 'block'),
+        // Shown only when there IS something to type over, so the button is
+        // never an invitation that does nothing.
+        canEditText:
+            kind === 'block' &&
+            store.selectedNode !== null &&
+            inlineTargetFor(store.selectedNode) !== null,
         canDelete: structural && kind !== null,
         canMove: structural && kind === 'section',
     }
@@ -1470,6 +1534,15 @@ onBeforeUnmount(() => {
                             @click="onMoveSection(1)"
                         >
                             ↓
+                        </button>
+                        <button
+                            v-if="toolbar.canEditText"
+                            type="button"
+                            title="Edit text (or click the text again)"
+                            aria-label="Edit text in place"
+                            @click="store.selectedNode && startInlineEdit(store.selectedNode)"
+                        >
+                            ✎
                         </button>
                         <button
                             v-if="toolbar.canDuplicate"

@@ -74,9 +74,14 @@ export class CanvasBridge {
         this.post({ type: 'tokens', tokens })
     }
 
-    /** Open (or close) the plain-text inline editor on a node's element. */
-    setEditable(node: string, editable: boolean): void {
-        this.post({ type: 'editable', node, editable })
+    /**
+     * Open (or close) the plain-text inline editor on a node's element.
+     *
+     * `selectAll` carries the gesture's intent through: a double-click
+     * replaces the text, a click on an already-selected node types into it.
+     */
+    setEditable(node: string, editable: boolean, selectAll = false): void {
+        this.post({ type: 'editable', node, editable, selectAll })
     }
 
     requestRects(): void {

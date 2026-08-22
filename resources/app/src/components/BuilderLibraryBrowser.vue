@@ -200,11 +200,12 @@ function onKeydown(event: KeyboardEvent) {
                         <button
                             type="button"
                             class="lib__insert"
+                            :aria-label="`Import ${selected.name} to the page`"
                             :disabled="!canStructure"
                             :title="canStructure ? undefined : 'Needs the layout permission'"
                             @click="$emit('insert', selected.slug)"
                         >
-                            Insert “{{ selected.name }}”
+                            Import to Page
                         </button>
                     </footer>
                 </template>
