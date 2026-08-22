@@ -508,19 +508,18 @@ async function onAddBlock(handle: string) {
 }
 
 /**
- * Where the page's content ends — the bottom of the lowest section rect.
- * The add-here affordance sits just below it, the way Elementor's does.
+ * Where the add-here affordance sits: just below the whole rendered
+ * document. Anchoring to the last SECTION put it on top of the theme's
+ * footer, which renders straight after the sections — below the document
+ * there is nothing to collide with, and the white iframe background makes
+ * it read as part of the page.
  */
 const pageEndTop = computed<number | null>(() => {
-    if (!store.loaded || store.sections.length === 0) {
+    if (!store.loaded || store.sections.length === 0 || canvasHeight.value <= 0) {
         return null
     }
 
-    const bottoms = rects.value
-        .filter((rect) => rect.kind === 'section')
-        .map((rect) => rect.top + rect.height)
-
-    return bottoms.length > 0 ? Math.max(...bottoms) : null
+    return canvasHeight.value
 })
 
 /** The folder button: open the panel on the cloud library. */
@@ -1482,7 +1481,6 @@ onBeforeUnmount(() => {
                          session stalls; the way forward is the first step of
                          the workflow, not a decoration. -->
                     <div v-if="store.loaded && store.sections.length === 0" class="builder__empty">
-                        <p>This page is empty.</p>
                         <BuilderAddHere
                             :can-structure="store.capabilities.structure"
                             @add-section="onAddSection"
@@ -1924,18 +1922,10 @@ body {
 
 .builder__empty {
     position: absolute;
-    top: 40%;
+    top: 38%;
     left: 50%;
     transform: translate(-50%, -50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 20px 28px;
-    border: 1px dashed var(--builder-border);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--builder-surface) 92%, transparent);
-    text-align: center;
+    width: min(640px, calc(100% - 48px));
 }
 
 .builder__endzone {
@@ -1947,33 +1937,10 @@ body {
 
 .builder__endzone-item {
     position: absolute;
-    left: 24px;
-    right: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(640px, calc(100% - 48px));
     pointer-events: auto;
-}
-
-.builder__empty p {
-    margin: 0;
-    font-weight: 600;
-}
-
-.builder__empty small {
-    opacity: 0.65;
-}
-
-.builder__empty button {
-    padding: 5px 14px;
-    border: 0;
-    border-radius: 5px;
-    background: var(--builder-accent);
-    color: #fff;
-    font: inherit;
-    cursor: pointer;
-}
-
-.builder__empty button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 .builder__label {
