@@ -98,6 +98,15 @@ export class CanvasBridge {
         this.post({ type: 'mask', node, on })
     }
 
+    /**
+     * Reserve room after the given section (or none), so the add-here
+     * affordance can sit in the page flow, pushing the theme's footer down
+     * rather than covering it.
+     */
+    endGap(node: string | null, size: number): void {
+        this.post({ type: 'endgap', node, size })
+    }
+
     private post(message: Record<string, unknown>): void {
         this.frame?.contentWindow?.postMessage({ magna: PROTOCOL, ...message }, this.origin)
     }

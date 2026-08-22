@@ -21,6 +21,7 @@
 
     var PROTOCOL = 1
     var parentOrigin = null
+    var endGapTarget = null
 
     function nodes() {
         return Array.prototype.slice.call(document.querySelectorAll('[data-magna-node]'))
@@ -143,6 +144,34 @@
                 }
 
                 send('measured', { node: data.node, styles: copy })
+            }
+
+            return
+        }
+
+        /*
+         * Reserve room between the last document section and whatever the
+         * theme renders after it (its footer), so the editor's add-here
+         * affordance can sit IN the page flow the way Elementor's does —
+         * pushing the footer down rather than covering it. An inline style
+         * set and moved by the parent, builder mode only: the same category
+         * of change as mask and contenteditable, and nothing of it ships.
+         */
+        if (data.type === 'endgap') {
+            if (endGapTarget && endGapTarget.getAttribute('data-magna-node') !== data.node) {
+                endGapTarget.style.removeProperty('margin-bottom')
+                if (endGapTarget.getAttribute('style') === '') {
+                    endGapTarget.removeAttribute('style')
+                }
+                endGapTarget = null
+            }
+
+            if (typeof data.node === 'string') {
+                var gapEl = findNode(data.node)
+                if (gapEl && gapEl.style.marginBottom !== data.size + 'px') {
+                    gapEl.style.setProperty('margin-bottom', data.size + 'px')
+                    endGapTarget = gapEl
+                }
             }
 
             return

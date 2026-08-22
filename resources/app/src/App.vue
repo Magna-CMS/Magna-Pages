@@ -141,6 +141,9 @@ const bridge = new CanvasBridge({
     onRects: (next, height) => {
         rects.value = next
         canvasHeight.value = height
+        // Keep the end gap on the last document section, so the add-here
+        // affordance has in-flow room between the content and the footer.
+        bridge.endGap(store.sections.at(-1)?.id ?? null, END_GAP)
     },
     onSelect: (node) => selectNode(node),
     onHover: (node) => (hovered.value = node),
@@ -508,18 +511,26 @@ async function onAddBlock(handle: string) {
 }
 
 /**
- * Where the add-here affordance sits: just below the whole rendered
- * document. Anchoring to the last SECTION put it on top of the theme's
- * footer, which renders straight after the sections — below the document
- * there is nothing to collide with, and the white iframe background makes
- * it read as part of the page.
+ * How much in-flow room the bridge reserves after the last section — the
+ * body of the page, not the void under the footer, which is where
+ * Elementor puts it and where an editor's eye already is.
+ */
+const END_GAP = 150
+
+/**
+ * Where the add-here affordance sits: inside the gap the bridge reserves
+ * between the last document section and whatever the theme renders next.
  */
 const pageEndTop = computed<number | null>(() => {
-    if (!store.loaded || store.sections.length === 0 || canvasHeight.value <= 0) {
+    if (!store.loaded || store.sections.length === 0) {
         return null
     }
 
-    return canvasHeight.value
+    const bottoms = rects.value
+        .filter((rect) => rect.kind === 'section')
+        .map((rect) => rect.top + rect.height)
+
+    return bottoms.length > 0 ? Math.max(...bottoms) : null
 })
 
 /** The folder button: open the panel on the cloud library. */
