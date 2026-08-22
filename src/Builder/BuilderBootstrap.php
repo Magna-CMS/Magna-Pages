@@ -9,6 +9,7 @@ use Magna\Blocks\BlockDefinition;
 use Magna\Blocks\BlockField;
 use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\Conditions\DisplayConditionRegistry;
+use Magna\Blocks\Icons\IconRegistry;
 use Magna\Blocks\PageTreeValidator;
 use Magna\Content\Entry;
 use Magna\Pages\Render\BindingResolver;
@@ -71,6 +72,16 @@ final class BuilderBootstrap
             // means, so the builder must offer exactly what it will honour
             // rather than a list maintained beside it.
             'displayConditions' => $this->displayConditions(),
+            /*
+             * The icon vocabulary, shipped whole.
+             *
+             * The panel draws a tile per block and the inspector draws a
+             * picker; both need the geometry, and a round trip per icon
+             * would make either one crawl. It is a few kilobytes of
+             * server-owned markup, which is the same trade the style
+             * descriptor table already makes.
+             */
+            'icons' => app(IconRegistry::class)->all(),
         ];
     }
 
