@@ -49,6 +49,7 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     Route::get('/library/collections/{slug}', [BuilderLibraryController::class, 'collection'])->name('pages.builder.library.collection');
     Route::get('/library/{slug}/instance', [BuilderLibraryController::class, 'instance'])->name('pages.builder.library.instance');
     Route::get('/library/{slug}/preview', [BuilderLibraryController::class, 'preview'])->name('pages.builder.library.preview');
+    Route::post('/library/{slug}/install-chrome', [BuilderLibraryController::class, 'installChrome'])->name('pages.builder.library.install-chrome');
     Route::get('/patterns', [BuilderPatternController::class, 'index'])->name('pages.builder.patterns');
     Route::post('/patterns', [BuilderPatternController::class, 'store'])->name('pages.builder.patterns.store');
     Route::get('/patterns/{id}/instance', [BuilderPatternController::class, 'instance'])->name('pages.builder.patterns.instance');

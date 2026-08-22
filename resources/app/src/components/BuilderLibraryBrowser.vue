@@ -29,6 +29,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     insert: [slug: string]
+    /** A header or footer: installed as site chrome, not pasted into a page. */
+    install: [slug: string]
     close: []
 }>()
 
@@ -77,8 +79,25 @@ watch(
     { immediate: true },
 )
 
-/** What Insert will do, said before it is done. */
+/**
+ * Whether the selected asset is site chrome rather than page content.
+ *
+ * A header is an ordinary part that says what it is for, so nothing about
+ * the catalog changes — only where the thing lands when you take it.
+ */
+const chromeRole = computed(() => {
+    const role = selected.value?.role
+    const isChrome = selected.value?.kind === 'part' && (role === 'header' || role === 'footer')
+
+    return isChrome ? (role as 'header' | 'footer') : null
+})
+
+/** What the action will do, said before it is done. */
 const insertHint = computed(() => {
+    if (chromeRole.value !== null) {
+        return `Saves as a ${chromeRole.value} you can choose, without changing the live site`
+    }
+
     switch (selected.value?.kind) {
         case 'block':
             return 'Inserts into the selected column'
@@ -200,12 +219,16 @@ function onKeydown(event: KeyboardEvent) {
                         <button
                             type="button"
                             class="lib__insert"
-                            :aria-label="`Import ${selected.name} to the page`"
+                            :aria-label="
+                                chromeRole
+                                    ? `Install ${selected.name} as a ${chromeRole}`
+                                    : `Import ${selected.name} to the page`
+                            "
                             :disabled="!canStructure"
                             :title="canStructure ? undefined : 'Needs the layout permission'"
-                            @click="$emit('insert', selected.slug)"
+                            @click="chromeRole ? $emit('install', selected.slug) : $emit('insert', selected.slug)"
                         >
-                            Import to Page
+                            {{ chromeRole ? `Install ${chromeRole}` : 'Import to Page' }}
                         </button>
                     </footer>
                 </template>

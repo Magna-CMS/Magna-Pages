@@ -85,6 +85,16 @@ export function createApi(pageId: string, base = '/pages-builder') {
                 body: JSON.stringify({ settings }),
             }),
 
+        /**
+         * Install a library header or footer as a template part.
+         *
+         * A separate call from inserting, because a header does not belong
+         * in the middle of a page: what differs between the two is only
+         * where the asset lands.
+         */
+        installChrome: (slug: string): Promise<{ id: string; role: string; title: string }> =>
+            request(`${base}/library/${encodeURIComponent(slug)}/install-chrome`, { method: 'POST' }),
+
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
 
         /** The library browser's preview pane: a live local render. */

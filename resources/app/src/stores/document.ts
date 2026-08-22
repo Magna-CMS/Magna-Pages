@@ -119,6 +119,8 @@ export interface LibraryAssetSummary {
     slug: string
     name: string
     kind: string
+    /** Which chrome a part is, when it is one: 'header' | 'footer'. */
+    role?: string | null
     description: string | null
     missingBlocks: string[]
     downloads: number

@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Gate;
 use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTreeAuthorizer;
 use Magna\Blocks\PageTreeValidator;
+use Magna\Content\Entry;
+use Magna\Content\EntryManager;
 use Magna\Pages\Builder\DocumentIds;
 use Magna\Pages\Library\LibraryClient;
 use Magna\Pages\Render\PageRenderer;
@@ -101,6 +103,100 @@ final class BuilderLibraryController
             'missingBlocks' => $this->missingFrom($asset['requiredBlocks'] ?? null),
             'node' => DocumentIds::fresh($document),
         ]);
+    }
+
+    /**
+     * Install a header or footer from the library as a template part.
+     *
+     * A header asset is an ordinary `part` that says which chrome it is,
+     * so the hub needs no new kind and an older client seeing an unknown
+     * role treats it as the generic part it already is. What differs is
+     * only where it LANDS: pasting a header into the middle of a page is
+     * never what anyone meant by importing one.
+     *
+     * Design-tier, because it creates site chrome rather than editing one
+     * page — and it arrives unpublished, so installing a header never
+     * changes what visitors see until someone chooses it.
+     */
+    public function installChrome(
+        Request $request,
+        PageTreeValidator $validator,
+        PageTreeAuthorizer $authorizer,
+        EntryManager $entries,
+        string $slug,
+    ): JsonResponse {
+        Gate::authorize('pages.design');
+
+        $asset = $this->library->asset($slug);
+        if ($asset === null) {
+            throw new NotFoundHttpException('Library asset not found.');
+        }
+
+        if (($asset['licenseRequired'] ?? false) === true) {
+            return response()->json([
+                'message' => 'This asset needs a licence. Buy the product on the marketplace, and it unlocks here.',
+                'productSlug' => $asset['productSlug'] ?? null,
+            ], 402);
+        }
+
+        $role = $asset['role'] ?? null;
+        if (! is_string($role) || ! in_array($role, ['header', 'footer'], true)) {
+            return response()->json(['message' => 'This asset is not a header or a footer.'], 422);
+        }
+
+        /** @var array<mixed, mixed> $raw */
+        $raw = $asset['document'];
+        $document = array_is_list($raw) ? $raw : [$raw];
+
+        // The same walls the save path applies, before hub content becomes
+        // an entry: a document nobody could have authored here must not
+        // arrive by another door.
+        $errors = [
+            ...$validator->validate($document),
+            ...$authorizer->authorize($document, $request->user()),
+        ];
+        if ($errors !== []) {
+            return response()->json(['message' => implode(' ', $errors)], 422);
+        }
+
+        $name = is_string($asset['name'] ?? null) && $asset['name'] !== '' ? $asset['name'] : $slug;
+
+        $entry = $entries->create('pages_template', [
+            'title' => $name,
+            'slug' => $this->freeSlug($slug),
+            'kind' => 'part',
+            'role' => $role,
+            'blocks_data' => DocumentIds::fresh($document),
+        ], $request->user()?->getAuthIdentifier());
+
+        return response()->json([
+            'id' => $entry->getKey(),
+            'role' => $role,
+            'title' => $name,
+        ], 201);
+    }
+
+    /**
+     * A slug nothing else is using.
+     *
+     * Two sites importing the same asset twice should end up with two
+     * parts, not one overwritten one — and the slug space is shared with
+     * the "header"/"footer" fallback names, which must not be claimed by
+     * an import.
+     */
+    private function freeSlug(string $base): string
+    {
+        $base = trim(preg_replace('/[^a-z0-9-]+/', '-', strtolower($base)) ?? '', '-');
+        $base = $base === '' || in_array($base, ['header', 'footer'], true) ? 'library-'.$base : $base;
+
+        $slug = $base;
+        $suffix = 2;
+        while (Entry::type('pages_template')->where('slug', $slug)->exists()) {
+            $slug = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 
     /**

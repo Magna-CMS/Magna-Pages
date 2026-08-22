@@ -611,6 +611,30 @@ function onBrowseCloud() {
     libraryOpen.value = true
 }
 
+/**
+ * Install a library header or footer.
+ *
+ * The browser stays OPEN afterwards, unlike an insert. Nothing changed on
+ * this page — a part was added to the site's collection — so closing the
+ * catalogue would look like something had happened here, and an editor
+ * browsing chrome usually wants to look at the next one.
+ */
+async function onLibraryInstall(slug: string) {
+    try {
+        const installed = await api.installChrome(slug)
+        // Offer it immediately: an editor who just installed a header will
+        // look for it in this page's settings, not after a reload.
+        store.chrome[installed.role as 'header' | 'footer'].push({
+            id: installed.id,
+            title: installed.title,
+            slug: installed.id,
+        })
+        store.error = null
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    }
+}
+
 /** Insert from the browser: close it, then the ordinary insert flow. */
 async function onLibraryInsert(slug: string) {
     libraryOpen.value = false
@@ -1907,6 +1931,7 @@ onBeforeUnmount(() => {
             :preview-url="api.libraryPreviewUrl"
             :can-structure="store.capabilities.structure"
             @insert="onLibraryInsert"
+            @install="onLibraryInstall"
             @close="libraryOpen = false"
         />
 
