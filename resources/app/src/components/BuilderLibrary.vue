@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import { needsImportFlow, type DragSource } from '../document/placement'
+import BuilderIcon from './BuilderIcon.vue'
 import BuilderStructurePicker from './BuilderStructurePicker.vue'
 import type { BlockDefinition, Capabilities } from '../document/types'
 import type {
@@ -156,6 +157,19 @@ function draggable(source: DragSource): boolean {
                 Select a column (or a section) to place an element in.
             </p>
 
+            <!--
+                A grid of tiles rather than a list of rows.
+
+                An element is recognised by its shape long before its name
+                is read, so the icon does the finding and the label only
+                confirms it. Three to a row turns a column of twenty rows
+                into seven, which is the difference between scrolling to
+                find the image block and seeing it.
+
+                A blocked element stays VISIBLE and says why. An editor who
+                cannot find the HTML block assumes it is missing and files a
+                bug; one who sees it dimmed learns what to ask an admin for.
+            -->
             <section v-for="[category, blocks] in categories" :key="category" class="library__group">
                 <button
                     type="button"
@@ -168,25 +182,25 @@ function draggable(source: DragSource): boolean {
                     <small>{{ blocks.length }}</small>
                 </button>
 
-                <ul v-if="ui.categoryOpen(category)" class="library__list">
-                    <li v-for="definition in blocks" :key="definition.handle">
-                        <button
-                            type="button"
-                            class="library__card"
-                            :class="{ 'is-draggable': capabilities.structure }"
-                            :disabled="!canPlace || blocked(definition) !== null"
-                            :title="blocked(definition) ?? `${definition.label} — drag onto a column`"
-                            @click="$emit('add', definition.handle)"
-                            @pointerdown="
-                                capabilities.structure &&
-                                    $emit('dragStart', { kind: 'new', handle: definition.handle }, $event)
-                            "
-                        >
-                            {{ definition.label }}
-                            <small v-if="blocked(definition)">{{ blocked(definition) }}</small>
-                        </button>
-                    </li>
-                </ul>
+                <div v-if="ui.categoryOpen(category)" class="library__grid">
+                    <button
+                        v-for="definition in blocks"
+                        :key="definition.handle"
+                        type="button"
+                        class="library__tile"
+                        :class="{ 'is-draggable': capabilities.structure }"
+                        :disabled="!canPlace || blocked(definition) !== null"
+                        :title="blocked(definition) ?? `${definition.label} — drag onto a column`"
+                        @click="$emit('add', definition.handle)"
+                        @pointerdown="
+                            capabilities.structure &&
+                                $emit('dragStart', { kind: 'new', handle: definition.handle }, $event)
+                        "
+                    >
+                        <BuilderIcon :name="definition.icon" :size="22" />
+                        <span class="library__tile-label">{{ definition.label }}</span>
+                    </button>
+                </div>
             </section>
 
             <p v-if="categories.length === 0" class="library__hint">No element matches that search.</p>
@@ -406,6 +420,65 @@ function draggable(source: DragSource): boolean {
     margin: 0;
     padding: 0;
     list-style: none;
+}
+
+/*
+ * The element grid. Three to a row at the panel's usual width, and it
+ * reflows rather than clipping when the panel is dragged narrower — the
+ * panel is resizable, so a fixed three would eventually crush the labels.
+ */
+.library__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 4px;
+}
+
+.library__tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 68px;
+    padding: 9px 4px;
+    border: 1px solid var(--builder-border);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.library__tile:hover:not(:disabled) {
+    border-color: var(--builder-accent);
+    background: color-mix(in srgb, var(--builder-accent) 10%, transparent);
+}
+
+.library__tile:focus-visible {
+    outline: 2px solid var(--builder-accent);
+    outline-offset: 1px;
+}
+
+.library__tile.is-draggable:not(:disabled) {
+    cursor: grab;
+}
+
+.library__tile:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.library__tile-label {
+    font-size: 10px;
+    line-height: 1.25;
+    /* Two lines, then ellipsis: "Testimonials" must not push the tile
+       taller than its neighbours and break the grid's rhythm. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .library__card {

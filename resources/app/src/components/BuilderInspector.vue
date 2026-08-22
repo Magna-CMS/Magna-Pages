@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import BuilderColumnControls from './BuilderColumnControls.vue'
+import BuilderIconPicker from './BuilderIconPicker.vue'
 import BuilderStyleControls from './BuilderStyleControls.vue'
 import BuilderTagSuggest from './BuilderTagSuggest.vue'
 import type { Located } from '../document/locate'
@@ -299,6 +300,13 @@ function onInput(field: BlockFieldDefinition, event: Event) {
     }
 }
 
+/** The icon picker hands back a name, not an event. */
+function onPick(field: BlockFieldDefinition, value: string) {
+    if (props.located) {
+        emit('edit', props.located.pointer, field.handle, value)
+    }
+}
+
 function valueFor(field: BlockFieldDefinition): string {
     const value = data.value[field.handle]
 
@@ -587,6 +595,20 @@ const title = computed<string>(() => {
                         </option>
                     </select>
                 </template>
+
+                <!--
+                    An icon field used to render as a text input, which
+                    asked an editor to type `core:chevron-right` from
+                    memory — a control that only works for someone who
+                    already knows the answer.
+                -->
+                <BuilderIconPicker
+                    v-else-if="field.type === 'icon'"
+                    :id="`field-${field.handle}`"
+                    :value="valueFor(field)"
+                    :disabled="!editable"
+                    @pick="onPick(field, $event)"
+                />
 
                 <select
                     v-else-if="field.type === 'select' || field.type === 'alignment'"

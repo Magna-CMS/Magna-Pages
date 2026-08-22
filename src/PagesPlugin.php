@@ -169,7 +169,7 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             BlockDefinition::fromArray([
                 'handle' => 'loop',
                 'label' => 'Loop',
-                'icon' => 'heroicon-o-arrow-path-rounded-square',
+                'icon' => 'blocks:repeat',
                 'category' => 'dynamic',
                 'fields' => [
                     ['handle' => 'heading', 'type' => 'text', 'label' => 'Heading', 'required' => false],
@@ -186,7 +186,7 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             BlockDefinition::fromArray([
                 'handle' => 'embed',
                 'label' => 'Embed',
-                'icon' => 'heroicon-o-play-circle',
+                'icon' => 'blocks:video',
                 'category' => 'media',
                 'fields' => [
                     ['handle' => 'url', 'type' => 'link', 'label' => 'Video URL', 'required' => true],
@@ -196,14 +196,14 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             BlockDefinition::fromArray([
                 'handle' => 'locale-switcher',
                 'label' => 'Language switcher',
-                'icon' => 'heroicon-o-language',
+                'icon' => 'core:globe',
                 'category' => 'site',
                 'fields' => [],
             ]),
             BlockDefinition::fromArray([
                 'handle' => 'nav',
                 'label' => 'Navigation',
-                'icon' => 'heroicon-o-bars-3',
+                'icon' => 'blocks:menu',
                 'category' => 'site',
                 'fields' => [
                     [

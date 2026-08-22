@@ -316,3 +316,56 @@ test('never follows a link out of the canvas', async ({ page }) => {
     await page.waitForTimeout(1000)
     expect(await canvasUrl()).toBe(before)
 })
+
+/**
+ * The Add panel draws elements, not a list of words.
+ *
+ * A block definition has always named an icon and nothing drew it, so the
+ * panel was a column of text rows. The count assertion below is the part
+ * that matters over time: every installed block — core, first-party
+ * plugin, or third party — must resolve to real geometry, and a block
+ * whose icon name this install does not know falls back to a dashed
+ * circle rather than an empty box. Zero fallbacks means the shipped
+ * vocabulary actually covers the shipped blocks.
+ */
+test('offers every element as a tile with a real icon', async ({ page }) => {
+    await newBuilderPage(page, 'Panel')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+
+    const tiles = page.locator('.library__tile')
+    await expect(tiles.first()).toBeVisible()
+    expect(await tiles.count()).toBeGreaterThan(15)
+
+    // Three across at the panel's usual width: the tiles sit in rows, not
+    // in one column, which is the whole point of the redesign.
+    const first = (await tiles.nth(0).boundingBox())!
+    const second = (await tiles.nth(1).boundingBox())!
+    expect(second.y).toBe(first.y)
+    expect(second.x).toBeGreaterThan(first.x)
+
+    const fallbacks = await page.locator('.library__tile .bicon circle[stroke-dasharray]').count()
+    expect(fallbacks).toBe(0)
+
+    // The tile still adds the block it names.
+    await page.locator('.builder__frame').contentFrame().locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Icon', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+    const frame = page.locator('.builder__frame').contentFrame()
+    await expect(frame.locator('.magna-block--icon svg')).toBeVisible()
+
+    // The icon field is a picker, not a text box asking an editor to type
+    // `core:chevron-right` from memory.
+    await page.locator('#field-name').click()
+    // Scoped to the picker: every <select> in the inspector also has
+    // options, and role alone would count those too.
+    const options = page.locator('.iconpick__option')
+    await expect(options.first()).toBeVisible()
+    await page.getByPlaceholder('Search icons…').fill('heart')
+    await expect(options).toHaveCount(1)
+    await options.first().click()
+
+    // Picking one writes it to the document and redraws the canvas.
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 15_000 })
+    await expect(frame.locator('.magna-block--icon svg')).toBeVisible()
+})

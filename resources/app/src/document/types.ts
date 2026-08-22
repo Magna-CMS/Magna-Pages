@@ -148,6 +148,8 @@ export interface BootstrapPayload {
     bindingSources?: Record<string, string>
     styleControls?: StyleControls
     displayConditions?: DisplayConditionOption[]
+    /** The server's icon vocabulary: name => inner SVG geometry. */
+    icons?: Record<string, string>
     document: {
         id: string
         title: string

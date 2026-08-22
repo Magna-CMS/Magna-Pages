@@ -150,6 +150,7 @@ interface State {
     bindingSources: Record<string, string>
     styleControls: StyleControls
     displayConditions: DisplayConditionOption[]
+    icons: Record<string, string>
     undoStack: HistoryEntry[]
     redoStack: HistoryEntry[]
     saving: boolean
@@ -183,6 +184,7 @@ export const useDocumentStore = defineStore('document', {
         bindingSources: {},
         styleControls: {},
         displayConditions: [],
+        icons: {},
         undoStack: [],
         redoStack: [],
         saving: false,
@@ -267,6 +269,7 @@ export const useDocumentStore = defineStore('document', {
             this.bindingSources = payload.bindingSources ?? {}
             this.styleControls = payload.styleControls ?? {}
             this.displayConditions = payload.displayConditions ?? []
+            this.icons = payload.icons ?? {}
             this.loaded = true
         },
 
