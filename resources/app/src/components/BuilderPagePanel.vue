@@ -84,6 +84,11 @@ const ROLES = ['header', 'footer'] as const
                         @change="$emit('setChrome', role, ($event.target as HTMLSelectElement).value)"
                     >
                         <option value="">Site default</option>
+                        <!-- A CHOICE, not an absence: a landing page that
+                             wants no header is saying something, and saying
+                             it by clearing the field would be the same as
+                             never having decided. -->
+                        <option value="none">None — this page has no {{ role }}</option>
                         <!-- A draft is named and unselectable rather than
                              hidden: only a published part renders, and
                              hiding one tells an editor their work does not

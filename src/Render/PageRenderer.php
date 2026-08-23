@@ -76,6 +76,36 @@ final class PageRenderer
     }
 
     /**
+     * A header or footer being EDITED, drawn in the slot it occupies.
+     *
+     * Editing chrome used to render it bare, with `withParts: false`, on
+     * the reasoning that injecting the published header while editing the
+     * header would show two of it. True, but the cure was worse: with no
+     * part html the theme falls back to drawing its OWN header, and the
+     * part's sections land in the main slot — so the editor saw two
+     * headers anyway, neither of them the one they were editing, and
+     * nothing they typed appeared in a header at all.
+     *
+     * Drawn in its slot instead. A non-empty slot suppresses the theme's
+     * fallback, the editor sees the header AS a header, and what they type
+     * changes the thing they are looking at.
+     */
+    public function renderChrome(Entry $part, string $role, bool $builderMode = false): string
+    {
+        $document = $part->getAttribute('blocks_data');
+        $title = $part->getAttribute('title');
+
+        return $this->renderDocument(
+            is_array($document) ? $document : [],
+            is_string($title) ? $title : '',
+            $builderMode,
+            withParts: true,
+            context: $part,
+            chromeSlot: $role,
+        );
+    }
+
+    /**
      * A plugin frontend page (ProvidesFrontendPages): its view rendered
      * into the layout's main slot, with the same shell — header/footer
      * parts, theme tokens, header menu — every real page gets.
@@ -100,8 +130,36 @@ final class PageRenderer
      *
      * @param  array<mixed, mixed>  $document
      */
-    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null, ?string $chromeSlot = null): string
     {
+        /*
+         * The document IS this slot's chrome: render it there rather than
+         * as page content, and leave the main slot to say so. Its nodes
+         * carry no document marker, because it is the document this session
+         * opened — the marker means "somewhere else".
+         */
+        $chromeHtml = null;
+        if ($chromeSlot !== null) {
+            $chromeHtml = view('magna-pages::partials.sections', [
+                'tree' => PageTree::fromArray($document),
+                'registry' => $this->registry,
+                'resolver' => $this->resolver,
+                'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
+                'builderMode' => $builderMode,
+                'conditionsPass' => fn (array $settings): bool => true,
+                'resolveBindings' => fn (BlockNode $block): BlockNode => $block,
+            ])->render();
+
+            $mainHtml = $builderMode
+                ? '<div class="magna-chrome-editing" style="padding:3rem 1rem;text-align:center;opacity:0.55">'
+                    .'Page content appears here.</div>'
+                : '';
+
+            // The sections are in the slot now; printing them again as page
+            // content is the second header this used to show.
+            $document = [];
+        }
+
         // Ref sections splice their template part's sections in place
         // before parsing — parts compose pages, never the reverse.
         $tree = PageTree::fromArray($this->parts->expandRefs($document));
@@ -141,8 +199,12 @@ final class PageRenderer
             // withParts false = a template document editing itself bare;
             // injecting the published header while EDITING the header would
             // show two of it, one stale.
-            'headerPartHtml' => $withParts ? $this->renderPart('header', $context, $builderMode) : null,
-            'footerPartHtml' => $withParts ? $this->renderPart('footer', $context, $builderMode) : null,
+            'headerPartHtml' => $chromeSlot === 'header'
+                ? $chromeHtml
+                : ($withParts ? $this->renderPart('header', $context, $builderMode) : null),
+            'footerPartHtml' => $chromeSlot === 'footer'
+                ? $chromeHtml
+                : ($withParts ? $this->renderPart('footer', $context, $builderMode) : null),
             // Published popup documents as dismissible overlays, plus the
             // consent registry's scripts + banner — everything the layout
             // prints before </body>. Never in the builder canvas and never
@@ -354,6 +416,9 @@ final class PageRenderer
         if ($behaviour['sticky']) {
             $classes .= ' magna-chrome--sticky';
         }
+        if ($behaviour['stickyMobile']) {
+            $classes .= ' magna-chrome--sticky-mobile';
+        }
 
         /*
          * In the builder the wrapper also says WHICH chrome it is and
@@ -380,18 +445,45 @@ final class PageRenderer
     private function chromeCss(?Entry $context): string
     {
         $sticky = false;
+        $stickyMobile = false;
         foreach (['header', 'footer'] as $role) {
-            $entry = $this->parts->chromeEntry($role, $context);
-            if ($this->parts->chromeBehaviour($entry)['sticky']) {
-                $sticky = true;
-            }
+            $behaviour = $this->parts->chromeBehaviour($this->parts->chromeEntry($role, $context));
+            $sticky = $sticky || $behaviour['sticky'];
+            $stickyMobile = $stickyMobile || $behaviour['stickyMobile'];
         }
 
-        if (! $sticky) {
+        if (! $sticky && ! $stickyMobile) {
             return '';
         }
 
-        return '.magna-chrome--sticky,:where(header,footer,div,section):has(>.magna-chrome--sticky)'
-            .'{position:sticky;top:0;z-index:50}';
+        /*
+         * The rule names the wrapper AND whatever holds it: a theme puts
+         * our chrome inside its own <header>, and an element only sticks
+         * within its parent's box — so sticking the wrapper alone would
+         * emit correct CSS that does nothing.
+         *
+         * Desktop and mobile are separate rules rather than one, because
+         * they are separate answers: a header that follows you down a wide
+         * page can eat a third of a phone screen.
+         */
+        $stick = '{position:sticky;top:0;z-index:50}';
+        $unstick = '{position:static}';
+
+        $css = '';
+        if ($sticky) {
+            $css .= '@media (min-width: 768px){.magna-chrome--sticky,'
+                .':where(header,footer,div,section):has(>.magna-chrome--sticky)'.$stick.'}';
+        }
+        if ($stickyMobile) {
+            $css .= '@media (max-width: 767.98px){.magna-chrome--sticky-mobile,'
+                .':where(header,footer,div,section):has(>.magna-chrome--sticky-mobile)'.$stick.'}';
+        } else {
+            // Said explicitly: a header sticky on desktop must let go on a
+            // phone, and inheriting the desktop rule is how it would not.
+            $css .= '@media (max-width: 767.98px){.magna-chrome--sticky,'
+                .':where(header,footer,div,section):has(>.magna-chrome--sticky)'.$unstick.'}';
+        }
+
+        return $css;
     }
 }

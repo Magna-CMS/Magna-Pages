@@ -29,6 +29,14 @@ class TemplatePartResolver
 {
     public function __construct(private readonly SchemaRegistry $schemaRegistry) {}
 
+    /**
+     * What a page stores when it wants no chrome at all.
+     *
+     * Not an entry id, and deliberately not the empty string: empty means
+     * "never decided", which inherits the site default.
+     */
+    public const NONE = 'none';
+
     /** Documents may not nest refs endlessly; one level is the contract. */
     private const MAX_REF_DEPTH = 1;
 
@@ -59,6 +67,14 @@ class TemplatePartResolver
 
         $settings = $page?->getAttribute('page_settings');
         $chosen = is_array($settings) ? ($settings[$role] ?? null) : null;
+
+        // A page that has chosen NONE stops the chain here. Falling through
+        // to the site default would make "no header" mean "the usual one",
+        // which is the opposite of what was asked for.
+        if ($chosen === self::NONE) {
+            return null;
+        }
+
         if (is_string($chosen) && $chosen !== '') {
             $entry = $this->chromeById($chosen, $role);
             if ($entry !== null) {
@@ -163,13 +179,28 @@ class TemplatePartResolver
      * sticks is unusual but not wrong, and nothing here needs to know which
      * roles an editor thinks should be able to.
      *
-     * @return array{sticky: bool}
+     * @return array{sticky: bool, stickyMobile: bool}
      */
     public function chromeBehaviour(?Entry $entry): array
     {
         $behaviour = $entry?->getAttribute('behaviour');
+        $behaviour = is_array($behaviour) ? $behaviour : [];
 
-        return ['sticky' => is_array($behaviour) && ($behaviour['sticky'] ?? false) === true];
+        $sticky = ($behaviour['sticky'] ?? false) === true;
+
+        /*
+         * Sticky is asked TWICE because it is two different decisions.
+         *
+         * A header that follows you down a wide page is useful; the same
+         * header on a phone can eat a third of the screen, which is why
+         * tagDiv asks separately and why plenty of sites stick on one and
+         * not the other. Absent follows the desktop answer, so a site that
+         * only ever set one keeps behaving exactly as it did.
+         */
+        return [
+            'sticky' => $sticky,
+            'stickyMobile' => ($behaviour['stickyMobile'] ?? $sticky) === true,
+        ];
     }
 
     public function partTree(string $handle): ?PageTree

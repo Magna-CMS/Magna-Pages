@@ -144,10 +144,18 @@
                                 <x-filament::badge color="info">{{ $template['role'] }}</x-filament::badge>
                                 {{-- Sticky is chrome behaviour, so it is
                                      offered only on chrome. --}}
+                                {{-- Two questions, not one: a header that
+                                     follows you down a wide page can eat a
+                                     third of a phone screen. --}}
                                 <button type="button"
-                                        wire:click="toggleSticky('{{ $template['id'] }}')"
+                                        wire:click="toggleSticky('{{ $template['id'] }}', 'sticky')"
                                         class="text-xs underline decoration-dotted">
                                     {{ $template['sticky'] ? 'Sticky' : 'Not sticky' }}
+                                </button>
+                                <button type="button"
+                                        wire:click="toggleSticky('{{ $template['id'] }}', 'stickyMobile')"
+                                        class="text-xs underline decoration-dotted">
+                                    {{ $template['stickyMobile'] ? 'Sticky on phones' : 'Not sticky on phones' }}
                                 </button>
                             @endif
                         </td>

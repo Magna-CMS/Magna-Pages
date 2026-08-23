@@ -43,14 +43,31 @@ final class BuilderCanvasController
 
         $entry = $this->findDocument($id);
 
-        // A template part edits BARE — rendering the header part inside a
-        // shell that also injects the published header would show the
-        // editor two headers, one of them stale.
-        $html = $this->withBridge($this->renderer->render(
-            $entry,
-            builderMode: true,
-            withParts: $entry->getHandle() !== 'pages_template',
-        ));
+        /*
+         * Chrome is edited IN ITS SLOT.
+         *
+         * This used to render a template part bare, reasoning that a shell
+         * which also injected the published header would show two of them.
+         * The cure was worse: with no part html the theme draws its OWN
+         * header and the part's sections land in the main slot, so the
+         * editor saw two headers, neither the one they were editing, and
+         * nothing they typed appeared in a header at all.
+         */
+        $role = $entry->getHandle() === 'pages_template'
+            ? $entry->getAttribute('role')
+            : null;
+
+        $html = $this->withBridge(
+            is_string($role) && in_array($role, ['header', 'footer'], true)
+                ? $this->renderer->renderChrome($entry, $role, builderMode: true)
+                : $this->renderer->render(
+                    $entry,
+                    builderMode: true,
+                    // A part with no chrome role (a popup, a referenced
+                    // part) still edits bare: it has no slot to sit in.
+                    withParts: $entry->getHandle() !== 'pages_template',
+                ),
+        );
 
         return response($html, 200, [
             'Content-Type' => 'text/html; charset=utf-8',

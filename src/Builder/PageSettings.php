@@ -93,9 +93,20 @@ final class PageSettings
          */
         foreach (['header', 'footer'] as $role) {
             $chosen = $input[$role] ?? null;
-            if (is_string($chosen) && $chosen !== '') {
-                $settings[$role] = $chosen;
+            if (! is_string($chosen) || $chosen === '') {
+                continue;
             }
+
+            /*
+             * `none` is a CHOICE, not an absence.
+             *
+             * Absent means "whatever the site uses", which is the right
+             * default and cannot also mean "this page has none" — a landing
+             * page that wants no header is saying something, and saying it
+             * by clearing the field would be indistinguishable from never
+             * having decided.
+             */
+            $settings[$role] = $chosen;
         }
 
         return $settings;

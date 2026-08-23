@@ -127,8 +127,10 @@ class PagesIndexPage extends Page
      * not of anything inside it — there is no node in the document to
      * select and no panel that would obviously own it.
      */
-    public function toggleSticky(string $id): void
+    public function toggleSticky(string $id, string $which = 'sticky'): void
     {
+        $key = $which === 'stickyMobile' ? 'stickyMobile' : 'sticky';
+
         /** @var Entry|null $entry */
         $entry = Entry::type('pages_template')->find($id);
         if ($entry === null || ! in_array($entry->getAttribute('role'), ['header', 'footer'], true)) {
@@ -137,7 +139,15 @@ class PagesIndexPage extends Page
 
         $behaviour = $entry->getAttribute('behaviour');
         $behaviour = is_array($behaviour) ? $behaviour : [];
-        $behaviour['sticky'] = ($behaviour['sticky'] ?? false) !== true;
+
+        // Mobile follows desktop until somebody says otherwise, so the
+        // first mobile toggle starts from what desktop is doing rather
+        // than from false.
+        $current = $key === 'stickyMobile'
+            ? ($behaviour['stickyMobile'] ?? ($behaviour['sticky'] ?? false))
+            : ($behaviour['sticky'] ?? false);
+
+        $behaviour[$key] = $current !== true;
 
         $entry->setAttribute('behaviour', $behaviour);
         $entry->save();
@@ -145,8 +155,10 @@ class PagesIndexPage extends Page
         // Chrome is on every page, so its behaviour is too.
         app(PageCache::class)->flush();
 
+        $where = $key === 'stickyMobile' ? 'On phones' : 'On wide screens';
+
         Notification::make()
-            ->title($behaviour['sticky'] ? 'Sticks to the top now' : 'Scrolls with the page now')
+            ->title($where.($behaviour[$key] ? ': sticks to the top now' : ': scrolls with the page now'))
             ->success()
             ->send();
     }
@@ -233,6 +245,8 @@ class PagesIndexPage extends Page
                     'role' => (string) ($template->getAttribute('role') ?? 'generic'),
                     'sticky' => is_array($behaviour = $template->getAttribute('behaviour'))
                         && ($behaviour['sticky'] ?? false) === true,
+                    'stickyMobile' => is_array($behaviour)
+                        && ($behaviour['stickyMobile'] ?? ($behaviour['sticky'] ?? false)) === true,
                     'status' => $template->status->value,
                     'builderUrl' => url('/pages-builder/edit/'.$template->getKey()),
                 ])->all(),
