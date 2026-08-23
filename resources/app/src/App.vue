@@ -173,6 +173,20 @@ const bridge = new CanvasBridge({
             bridge.setScheme(ui.scheme)
         }
     },
+    /*
+     * A click landed in the header or the footer.
+     *
+     * Chrome is a different DOCUMENT, so it can never select a page node —
+     * which is why clicking the header used to do nothing at all and made
+     * the header look like something the builder could not touch. It says
+     * what it is instead, and offers the one thing worth offering: a way
+     * in.
+     */
+    onChrome: (chrome) => {
+        store.select(null)
+        chromeTarget.value = chrome
+    },
+
     onSelect: (node) => {
         // A click on what is ALREADY selected starts typing, the way every
         // visual builder behaves: the first click chooses the thing, the
@@ -1041,6 +1055,36 @@ async function onMoveNode(nodeId: string, delta: number) {
     }
 }
 
+/**
+ * The header or footer the pointer last landed on, and what can be done
+ * with it. Cleared whenever a real node is selected — two selections on
+ * screen at once is two answers to one question.
+ */
+const chromeTarget = ref<{
+    role: 'header' | 'footer'
+    id: string | null
+    title: string | null
+    rect: { top: number; left: number; width: number; height: number }
+} | null>(null)
+
+/**
+ * Make a header or footer out of the one the theme is drawing.
+ *
+ * The theme's own chrome has no document behind it, so there is nothing to
+ * open — but "go to another screen and make one" is a worse answer than
+ * making one here. It starts from a real starter document rather than
+ * empty, because an editor who asked to design a header wants to move a
+ * logo, not to build one from nothing.
+ */
+async function onCreateChrome(role: 'header' | 'footer') {
+    try {
+        const made = await api.createChrome(role)
+        window.location.href = `/pages-builder/edit/${encodeURIComponent(made.id)}`
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    }
+}
+
 /** Toolbar affordances for whatever is selected right now. */
 const TOOLBAR_HEIGHT = 26
 
@@ -1770,6 +1814,52 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
 
+                    <!--
+                        The header and footer, said out loud.
+
+                        Drawn like a selection because that is what it is —
+                        the difference is that the thing selected lives in
+                        another document, so the action is to go there
+                        rather than to edit here.
+                    -->
+                    <div
+                        v-if="chromeTarget"
+                        class="builder__chrome"
+                        :style="{
+                            top: `${chromeTarget.rect.top - scrollY}px`,
+                            left: `${chromeTarget.rect.left}px`,
+                            width: `${chromeTarget.rect.width}px`,
+                            height: `${chromeTarget.rect.height}px`,
+                        }"
+                    >
+                        <div class="builder__chrome-bar">
+                            <span>{{ chromeTarget.title ?? (chromeTarget.role === 'header' ? 'Site header' : 'Site footer') }}</span>
+
+                            <button
+                                v-if="chromeTarget.id"
+                                type="button"
+                                @click="onEditChrome(chromeTarget.id)"
+                            >
+                                Edit {{ chromeTarget.role }}
+                            </button>
+                            <button
+                                v-else
+                                type="button"
+                                :disabled="!store.capabilities.structure"
+                                :title="
+                                    store.capabilities.structure
+                                        ? 'Your theme draws this. Make one you can design.'
+                                        : 'Needs the layout permission'
+                                "
+                                @click="onCreateChrome(chromeTarget.role)"
+                            >
+                                Design a {{ chromeTarget.role }}
+                            </button>
+
+                            <button type="button" @click="chromeTarget = null">✕</button>
+                        </div>
+                    </div>
+
                     <InlineRichEditor
                         v-if="richEdit && richEditRect"
                         :key="richEdit.node"
@@ -2265,6 +2355,50 @@ body {
     border-radius: 2px;
     background: var(--builder-accent);
     box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.builder__chrome {
+    position: absolute;
+    z-index: 6;
+    border: 1px dashed var(--builder-accent);
+    background: color-mix(in srgb, var(--builder-accent) 8%, transparent);
+    pointer-events: none;
+}
+
+.builder__chrome-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px 3px 8px;
+    border-bottom-right-radius: 6px;
+    background: var(--builder-accent);
+    color: #fff;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: auto;
+}
+
+.builder__chrome-bar button {
+    padding: 2px 8px;
+    border: 1px solid rgb(255 255 255 / 45%);
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.builder__chrome-bar button:hover:not(:disabled) {
+    background: rgb(255 255 255 / 18%);
+}
+
+.builder__chrome-bar button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .builder__toolbar {

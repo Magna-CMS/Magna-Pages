@@ -82,6 +82,47 @@
         })
     }
 
+    /*
+     * The chrome a click landed in, if any.
+     *
+     * A header is a DIFFERENT document from the page, so a click in it can
+     * never select a page node — which is why, before this, clicking the
+     * header did nothing at all and the header looked uneditable. It
+     * reports what it is instead, and the parent offers to open it.
+     *
+     * When no header PART exists the theme draws its own, and there is no
+     * document behind it to open. That case still reports, without an id,
+     * so the parent can offer to make one FROM what is on screen rather
+     * than sending the editor away to find the right screen.
+     */
+    function chromeFrom(target) {
+        var element = target
+        while (element && element !== document.body) {
+            if (element.hasAttribute && element.hasAttribute('data-magna-chrome')) {
+                return {
+                    role: element.getAttribute('data-magna-chrome'),
+                    id: element.getAttribute('data-magna-chrome-id'),
+                    title: element.getAttribute('data-magna-chrome-title'),
+                    element: element,
+                }
+            }
+
+            // The theme's own chrome: no part behind it, but still a header.
+            if (element.tagName === 'HEADER' || element.tagName === 'FOOTER') {
+                return {
+                    role: element.tagName === 'HEADER' ? 'header' : 'footer',
+                    id: null,
+                    title: null,
+                    element: element,
+                }
+            }
+
+            element = element.parentElement
+        }
+
+        return null
+    }
+
     function nodeIdFrom(target) {
         var element = target
         while (element && element !== document.body) {
@@ -472,7 +513,31 @@
             var id = nodeIdFrom(event.target)
             if (id !== null) {
                 send('select', { node: id })
+
+                return
             }
+
+            // No page node here. If it is the header or the footer, say so:
+            // silence is what made the header look uneditable.
+            var chrome = chromeFrom(event.target)
+            if (chrome !== null) {
+                var box = chrome.element.getBoundingClientRect()
+                send('chrome', {
+                    role: chrome.role,
+                    id: chrome.id,
+                    title: chrome.title,
+                    rect: {
+                        top: box.top + window.scrollY,
+                        left: box.left,
+                        width: box.width,
+                        height: box.height,
+                    },
+                })
+
+                return
+            }
+
+            send('select', { node: null })
         },
         true,
     )

@@ -141,8 +141,8 @@ final class PageRenderer
             // withParts false = a template document editing itself bare;
             // injecting the published header while EDITING the header would
             // show two of it, one stale.
-            'headerPartHtml' => $withParts ? $this->renderPart('header', $context) : null,
-            'footerPartHtml' => $withParts ? $this->renderPart('footer', $context) : null,
+            'headerPartHtml' => $withParts ? $this->renderPart('header', $context, $builderMode) : null,
+            'footerPartHtml' => $withParts ? $this->renderPart('footer', $context, $builderMode) : null,
             // Published popup documents as dismissible overlays, plus the
             // consent registry's scripts + banner — everything the layout
             // prints before </body>. Never in the builder canvas and never
@@ -299,7 +299,7 @@ final class PageRenderer
      * A template part rendered through the same section pipeline, or null
      * when the part does not exist or is not published.
      */
-    private function renderPart(string $handle, ?Entry $context = null): ?string
+    private function renderPart(string $handle, ?Entry $context = null, bool $builderMode = false): ?string
     {
         /*
          * Which header or footer this page gets: the page's own choice,
@@ -350,7 +350,20 @@ final class PageRenderer
             $classes .= ' magna-chrome--sticky';
         }
 
-        return '<div class="'.$classes.'">'.$html.'</div>';
+        /*
+         * In the builder the wrapper also says WHICH chrome it is and
+         * which document holds it, so a click on the header can offer to
+         * edit the header. Two attributes on a wrapper we already emit —
+         * nothing of it reaches a published page.
+         */
+        $marker = '';
+        if ($builderMode) {
+            $marker = ' data-magna-chrome="'.$handle.'"'
+                .' data-magna-chrome-id="'.e((string) $entry->getKey()).'"'
+                .' data-magna-chrome-title="'.e((string) ($entry->getAttribute('title') ?? $handle)).'"';
+        }
+
+        return '<div class="'.$classes.'"'.$marker.'>'.$html.'</div>';
     }
 
     /**

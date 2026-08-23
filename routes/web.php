@@ -43,6 +43,7 @@ Route::post('/pages-preview', PagePreviewController::class)
 Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     // Literal segments first: they must win over the {id} routes below,
     // which would otherwise swallow "registry", "app" and the rest.
+    Route::post('/chrome', [BuilderApiController::class, 'createChrome'])->name('pages.builder.chrome.create');
     Route::get('/registry', [BuilderApiController::class, 'registry'])->name('pages.builder.registry');
     Route::get('/bridge.js', [BuilderCanvasController::class, 'bridge'])->name('pages.builder.bridge');
     Route::get('/library', [BuilderLibraryController::class, 'index'])->name('pages.builder.library');

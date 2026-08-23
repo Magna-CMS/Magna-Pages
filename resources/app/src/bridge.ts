@@ -39,6 +39,13 @@ export interface BridgeHandlers {
     /** A node's computed typography, for the rich-edit overlay to match. */
     onMeasured?: (node: string, styles: Record<string, string>) => void
     onEditRequest?: (node: string) => void
+    /** A click landed in the header or footer, which is another document. */
+    onChrome?: (chrome: {
+        role: 'header' | 'footer'
+        id: string | null
+        title: string | null
+        rect: { top: number; left: number; width: number; height: number }
+    }) => void
     onTextCommit?: (node: string, text: string) => void
     onUneditable?: (node: string, reason: string) => void
 }
@@ -178,6 +185,15 @@ export class CanvasBridge {
             case 'pointerup':
                 this.handlers.onPointerUp?.(pointerFrom(data))
                 break
+            case 'chrome':
+                this.handlers.onChrome?.({
+                    role: data.role === 'footer' ? 'footer' : 'header',
+                    id: typeof data.id === 'string' && data.id !== '' ? data.id : null,
+                    title: typeof data.title === 'string' && data.title !== '' ? data.title : null,
+                    rect: data.rect as { top: number; left: number; width: number; height: number },
+                })
+                break
+
             case 'editRequest':
                 this.handlers.onEditRequest?.(String(data.node))
                 break

@@ -713,3 +713,42 @@ test('creates a header from the pages screen and uses it', async ({ page }) => {
     await expect(draft).toHaveText(/draft — publish to use/)
     await expect(draft).toBeDisabled()
 })
+
+/**
+ * Clicking the header does something.
+ *
+ * Chrome is a different DOCUMENT from the page, so a click in it can never
+ * select a page node — which is why clicking the header used to do nothing
+ * at all, and why the header looked like a part of the builder you were
+ * not allowed to touch. Reported as "there is no option to edit the menu".
+ *
+ * When the theme draws its own header there is no document to open, so the
+ * offer is to MAKE one from what is on screen rather than to send the
+ * editor off to find the right button on another page.
+ */
+test('offers to design the header when you click it', async ({ page }) => {
+    await newBuilderPage(page, 'ClickHeader')
+    const frame = page.locator('.builder__frame').contentFrame()
+
+    // The theme's own header, which every install has before it has a part.
+    await frame.locator('header').first().click({ position: { x: 40, y: 20 } })
+
+    const bar = page.locator('.builder__chrome-bar')
+    await expect(bar).toBeVisible()
+    await expect(bar).toContainText('Site header')
+
+    const design = bar.getByRole('button', { name: /Design a header/i })
+    await expect(design).toBeVisible()
+    await design.click()
+
+    // It made one and took the editor into it, rather than describing
+    // where to go.
+    await page.waitForURL(/pages-builder\/edit\//, { timeout: 30_000 })
+    await expect(page.locator('.builder__frame')).toBeVisible()
+
+    // And it started from something real: an editor who asked to design a
+    // header wants to move a logo, not to build one from nothing.
+    await waitForNodes(page, 'block', 2)
+    const started = page.locator('.builder__frame').contentFrame()
+    await expect(started.locator('[data-magna-kind="block"]').first()).toBeVisible()
+})

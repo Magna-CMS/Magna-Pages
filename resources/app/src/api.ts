@@ -95,6 +95,19 @@ export function createApi(pageId: string, base = '/pages-builder') {
         installChrome: (slug: string): Promise<{ id: string; role: string; title: string }> =>
             request(`${base}/library/${encodeURIComponent(slug)}/install-chrome`, { method: 'POST' }),
 
+        /**
+         * Make a header or footer the site can design.
+         *
+         * Not scoped to this page: chrome belongs to the site, and the
+         * page is only where the editor happened to be standing when they
+         * asked for one.
+         */
+        createChrome: (role: 'header' | 'footer'): Promise<{ id: string; role: string; title: string }> =>
+            request(`${base}/chrome`, {
+                method: 'POST',
+                body: JSON.stringify({ role }),
+            }),
+
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
 
         /** The library browser's preview pane: a live local render. */

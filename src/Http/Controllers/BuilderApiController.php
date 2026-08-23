@@ -8,9 +8,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Magna\Blocks\BlockRegistry;
+use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Pages\Builder\ApprovalManager;
 use Magna\Pages\Builder\BuilderBootstrap;
+use Magna\Pages\Builder\ChromeStarter;
 use Magna\Pages\Builder\DocumentEditor;
 use Magna\Pages\Builder\Exceptions\PatchException;
 use Magna\Pages\Builder\FindsDocuments;
@@ -153,6 +155,67 @@ final class BuilderApiController
             'settings' => $settings,
             'updated_at' => $entry->fresh()?->updated_at?->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Make a header or footer the site can actually design.
+     *
+     * A theme draws its own chrome when no part exists, and that chrome
+     * belongs to the theme's Blade file — there is nothing behind it to
+     * open. Rather than sending an editor to another screen to find the
+     * right button, the builder makes one here, from the header they were
+     * looking at when they asked.
+     *
+     * It starts from a STARTER rather than empty. Someone who asks to
+     * design a header wants to move a logo and a menu around; handing them
+     * a blank document makes them build the obvious part first, and the
+     * obvious part is the same every time.
+     *
+     * Created as a draft: making one must not change what visitors see
+     * until it is published and chosen.
+     */
+    public function createChrome(Request $request, EntryManager $entries): JsonResponse
+    {
+        Gate::authorize('pages.layout');
+
+        $role = (string) $request->input('role');
+        if (! in_array($role, ['header', 'footer'], true)) {
+            return response()->json(['message' => 'A part is a header or a footer.'], 422);
+        }
+
+        $title = $role === 'header' ? 'Site header' : 'Site footer';
+
+        $entry = $entries->create('pages_template', [
+            'title' => $title,
+            'slug' => $this->freeChromeSlug($role),
+            'kind' => 'part',
+            'role' => $role,
+            'blocks_data' => ChromeStarter::document($role),
+        ], $request->user()?->getAuthIdentifier());
+
+        return response()->json([
+            'id' => $entry->getKey(),
+            'role' => $role,
+            'title' => $title,
+        ], 201);
+    }
+
+    /**
+     * A slug nothing else holds — and never "header" or "footer" alone,
+     * because those names are the fallback rung the resolver checks last.
+     * Claiming one here would silently change what every page renders.
+     */
+    private function freeChromeSlug(string $role): string
+    {
+        $base = 'site-'.$role;
+        $slug = $base;
+        $suffix = 2;
+        while (Entry::type('pages_template')->where('slug', $slug)->exists()) {
+            $slug = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 
     /** The installed block catalog — what the Add panel can offer. */
