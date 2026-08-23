@@ -36,6 +36,7 @@ use Magna\Pages\Console\BlockCheckCommand;
 use Magna\Pages\Console\E2eUserCommand;
 use Magna\Pages\Console\InstallDemoCommand;
 use Magna\Pages\Console\PruneCacheCommand;
+use Magna\Pages\Console\PruneFixturesCommand;
 use Magna\Pages\Console\SiteDiffCommand;
 use Magna\Pages\Console\SiteExportCommand;
 use Magna\Pages\Console\SiteSyncCommand;
@@ -90,6 +91,7 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         return [
             InstallDemoCommand::class,
             PruneCacheCommand::class,
+            PruneFixturesCommand::class,
             E2eUserCommand::class,
             SiteExportCommand::class,
             SiteDiffCommand::class,
