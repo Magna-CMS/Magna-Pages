@@ -48,11 +48,16 @@ function onResizeEnd(event: PointerEvent) {
  */
 const body = ref<HTMLElement | null>(null)
 
-const announcement = computed(() =>
-    ui.mode === 'library'
-        ? 'Add panel. Elements, patterns and cloud library.'
-        : `Edit panel. ${props.selectionLabel ?? 'Nothing selected'}.`,
-)
+const announcement = computed(() => {
+    if (ui.mode === 'library') {
+        return 'Add panel. Elements, patterns and cloud library.'
+    }
+    if (ui.mode === 'page') {
+        return 'Page panel. Background, header and footer.'
+    }
+
+    return `Edit panel. ${props.selectionLabel ?? 'Nothing selected'}.`
+})
 
 watch(
     () => ui.mode,
@@ -124,6 +129,25 @@ function onResizeKey(event: KeyboardEvent) {
                     Edit
                     <small v-if="props.selectionLabel">{{ props.selectionLabel }}</small>
                 </button>
+                <!--
+                    The page is a thing with settings, so it gets a tab.
+                    It used to be what Edit showed when nothing was
+                    selected, which meant reaching it required knowing to
+                    deselect first — a surface reachable only by accident.
+                -->
+                <button
+                    id="panel-mode-page"
+                    type="button"
+                    role="tab"
+                    class="panel__mode"
+                    :class="{ 'is-active': ui.mode === 'page' }"
+                    :aria-selected="ui.mode === 'page'"
+                    aria-controls="panel-body"
+                    :tabindex="ui.mode === 'page' ? 0 : -1"
+                    @click="ui.showPage()"
+                >
+                    Page
+                </button>
             </div>
 
             <!-- A tab with no panel is an ARIA error, not a cosmetic one:
@@ -134,9 +158,10 @@ function onResizeKey(event: KeyboardEvent) {
                 class="panel__body"
                 role="tabpanel"
                 tabindex="-1"
-                :aria-labelledby="ui.mode === 'library' ? 'panel-mode-library' : 'panel-mode-inspect'"
+                :aria-labelledby="`panel-mode-${ui.mode === 'library' ? 'library' : ui.mode === 'page' ? 'page' : 'inspect'}`"
             >
                 <slot v-if="ui.mode === 'library'" name="library" />
+                <slot v-else-if="ui.mode === 'page'" name="page" />
                 <slot v-else name="inspect" />
             </div>
 

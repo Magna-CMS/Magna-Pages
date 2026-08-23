@@ -383,12 +383,8 @@ test('paints the page from the panel with nothing selected', async ({ page }) =>
     await page.getByRole('button', { name: 'Add section: 1 column' }).click()
     await waitForNodes(page, 'section', 1)
 
-    // Deselect: the page is what the inspector shows when no node does.
-    await page.keyboard.press('Escape')
-    // The tab's name carries the selection label after it, so match on
-    // the id rather than on a name that changes with the selection.
-    await page.locator('#panel-mode-inspect').click()
-    await expect(page.locator('.inspector__block')).toHaveText('Page')
+    // The page has its own panel now; no deselecting required.
+    await page.locator('#panel-mode-page').click()
 
     const background = page.locator('#style-background')
     await expect(background).toBeVisible()
@@ -583,4 +579,92 @@ test('offers theme colours that follow the scheme', async ({ page }) => {
             { timeout: 20_000 },
         )
         .toContain('var(--color-')
+})
+
+/**
+ * The page's own settings are one click away.
+ *
+ * They used to be what Edit showed when nothing was selected, which meant
+ * reaching them required knowing to deselect first. A surface you reach by
+ * accident is a surface that does not exist, which is exactly how it was
+ * reported: "I can't see that".
+ */
+test('opens page settings from the panel, with something selected', async ({ page }) => {
+    await newBuilderPage(page, 'PagePanel')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await waitForNodes(page, 'section', 1)
+
+    // A node IS selected — the old route to these settings was blocked.
+    await page.locator('#panel-mode-page').click()
+
+    await expect(page.locator('#style-background')).toBeVisible()
+    await expect(page.locator('#page-header, .page__hint').first()).toBeVisible()
+
+    // The bar says which view a style edit will write, where the writing
+    // happens rather than only at the top of the canvas.
+    await expect(page.locator('.page__scope')).toHaveCount(0)
+    await page.getByRole('group', { name: 'Preview width' }).getByRole('button').nth(2).click()
+    await expect(page.locator('.page__scope')).toContainText('mobile')
+})
+
+/**
+ * A visitor's own light/dark switch.
+ *
+ * It changes nothing about what was served — the page already carries both
+ * readings — so this asserts the thing that matters: pressing it actually
+ * repaints, and the choice survives a reload.
+ */
+test('switches the palette for a visitor, and remembers it', async ({ page }) => {
+    await signIn(page)
+    await page.goto('/pages-index')
+    const slug = `switch-${Date.now()}`
+    await page.getByPlaceholder('About us').fill(slug)
+    await page.getByRole('button', { name: 'Create & open builder' }).click()
+    await page.waitForURL(/pages-builder\/edit\//)
+    await expect(page.getByRole('status')).toHaveText(/Saved/)
+
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await waitForNodes(page, 'section', 1)
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Light / dark switch', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    // Publish, then meet it as a visitor would.
+    await page.getByRole('button', { name: /^Publish$/ }).click()
+    await page.waitForTimeout(2500)
+
+    /*
+     * The PUBLISHED page, not the builder canvas. In the canvas every
+     * click is contained so it selects a node instead of acting — which is
+     * correct, and which is exactly why the switch has to be met where a
+     * visitor meets it.
+     */
+    const preview = await page.context().newPage()
+    await preview.goto(`/${slug}`)
+    const button = preview.locator('[data-magna-scheme-toggle]')
+    await expect(button).toBeVisible()
+
+    const background = () =>
+        preview.evaluate(() => getComputedStyle(document.body).backgroundColor)
+
+    const before = await background()
+    await button.click()
+    await preview.waitForTimeout(400)
+
+    expect(await background()).not.toBe(before)
+    expect(await preview.evaluate(() => document.documentElement.getAttribute('data-theme')))
+        .toMatch(/light|dark/)
+
+    // Remembered: the switch writes the visitor's choice to their browser,
+    // not to the page, which is what keeps the page cacheable.
+    const chosen = await preview.evaluate(() => localStorage.getItem('magna-theme'))
+    expect(chosen).toMatch(/light|dark/)
+
+    await preview.reload()
+    expect(await preview.evaluate(() => document.documentElement.getAttribute('data-theme')))
+        .toBe(chosen)
+
+    await preview.close()
 })

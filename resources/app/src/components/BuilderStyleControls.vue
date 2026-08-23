@@ -166,7 +166,7 @@ function swatch(control: StyleControl): string {
                 v-else
                 :id="`style-${control.key}`"
                 type="text"
-                placeholder="e.g. 24px"
+                :placeholder="control.control === 'image' ? '/media/hero.jpg' : 'e.g. 24px'"
                 :value="valueOf(control)"
                 :disabled="!canEdit"
                 @change="$emit('set', control.key, ($event.target as HTMLInputElement).value)"

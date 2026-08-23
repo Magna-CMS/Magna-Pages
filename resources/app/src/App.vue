@@ -5,11 +5,13 @@ import { createApi } from './api'
 import { CanvasBridge, debounceByKey, type NodeRect } from './bridge'
 import BuilderCommandPalette from './components/BuilderCommandPalette.vue'
 import BuilderDock from './components/BuilderDock.vue'
+import BuilderIcon from './components/BuilderIcon.vue'
 import BuilderInspector from './components/BuilderInspector.vue'
 import BuilderLayers from './components/BuilderLayers.vue'
 import BuilderAddHere from './components/BuilderAddHere.vue'
 import BuilderLibrary from './components/BuilderLibrary.vue'
 import BuilderNodeMenu from './components/BuilderNodeMenu.vue'
+import BuilderPagePanel from './components/BuilderPagePanel.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
 import BuilderTopBar from './components/BuilderTopBar.vue'
 import InlineRichEditor from './components/InlineRichEditor.vue'
@@ -89,6 +91,19 @@ const scrollY = ref(0)
  * browser applies, not an editor simulation of them.
  */
 const BREAKPOINTS: Record<Breakpoint, string> = { desktop: '100%', tablet: '768px', mobile: '390px' }
+
+/** A shape reads faster than a word, and reads the same in any language. */
+const DEVICE_ICONS: Record<Breakpoint, string> = {
+    desktop: 'blocks:hero',
+    tablet: 'blocks:columns',
+    mobile: 'blocks:text',
+}
+
+const SCHEME_ICONS: Record<Scheme, string> = {
+    system: 'core:eye',
+    light: 'core:sparkles',
+    dark: 'core:globe',
+}
 
 const stage = ref<HTMLElement | null>(null)
 
@@ -731,6 +746,19 @@ async function onPageChrome(role: 'header' | 'footer', id: string) {
     } catch (error) {
         store.error = error instanceof Error ? error.message : String(error)
     }
+}
+
+/**
+ * Open the part that IS this page's header or footer.
+ *
+ * Designing chrome means editing a different document, so the builder
+ * takes you there rather than describing where to look. A full navigation
+ * because it is one — the two documents have separate locks, histories
+ * and publish states, and pretending otherwise would be a lie the save
+ * path would eventually tell on.
+ */
+function onEditChrome(id: string) {
+    window.location.href = `/pages-builder/edit/${encodeURIComponent(id)}`
 }
 
 /** Row layout writes to `settings.row`, its own set beside `settings.style`. */
@@ -1548,6 +1576,23 @@ onBeforeUnmount(() => {
                     />
                 </template>
 
+                <template #page>
+                    <BuilderPagePanel
+                        :capabilities="store.capabilities"
+                        :controls="store.styleControls.page ?? []"
+                        :style="(store.pageSettings.style as Record<string, unknown>) ?? {}"
+                        :breakpoint="styleBreakpoint"
+                        :chrome-choices="store.chrome"
+                        :chrome-used="{
+                            header: (store.pageSettings.header as string) ?? '',
+                            footer: (store.pageSettings.footer as string) ?? '',
+                        }"
+                        @set-style="onPageStyle"
+                        @set-chrome="onPageChrome"
+                        @edit-chrome="onEditChrome"
+                    />
+                </template>
+
                 <template #inspect>
                     <BuilderInspector
                         :located="selected"
@@ -1569,15 +1614,6 @@ onBeforeUnmount(() => {
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
                         @set-style="onSetStyle"
-                        :chrome-choices="store.chrome"
-                        :chrome-used="{
-                            header: (store.pageSettings.header as string) ?? '',
-                            footer: (store.pageSettings.footer as string) ?? '',
-                        }"
-                        @page-chrome="onPageChrome"
-                        :page-controls="store.styleControls.page ?? []"
-                        :page-style="(store.pageSettings.style as Record<string, unknown>) ?? {}"
-                        @page-style="onPageStyle"
                         @set-row-style="onSetRowStyle"
                         @select="selectNode($event)"
                     />
@@ -1585,37 +1621,52 @@ onBeforeUnmount(() => {
             </BuilderPanel>
 
             <main class="builder__canvas">
-                <div class="builder__viewport-bar">
-                    <button
-                        v-for="(_width, device) in BREAKPOINTS"
-                        :key="device"
-                        type="button"
-                        class="builder__viewport"
-                        :class="{ 'is-active': ui.breakpoint === device }"
-                        @click="ui.breakpoint = device"
-                    >
-                        {{ device }}
-                    </button>
+                <!--
+                    What you are looking at, and therefore what you are
+                    editing.
 
-                    <!--
-                        Which reading of the palette the canvas shows. A
-                        preview, not a setting: the page carries both
-                        readings in one stylesheet, so this chooses what is
-                        on screen and changes nothing about the document.
-                        Designing for dark without being able to see it is
-                        designing blind.
-                    -->
-                    <div class="builder__schemes" role="group" aria-label="Preview colour scheme">
+                    Two segmented controls rather than six loose buttons:
+                    width and palette are different questions, and one run
+                    of six reads as one choice of six. Icons carry the
+                    meaning — a phone is a phone in any language — with the
+                    word beside the ACTIVE one only, so the bar says what
+                    is chosen without repeating four labels nobody is
+                    reading.
+                -->
+                <div class="builder__viewport-bar">
+                    <div class="builder__segment" role="group" aria-label="Preview width">
+                        <button
+                            v-for="(_width, device) in BREAKPOINTS"
+                            :key="device"
+                            type="button"
+                            class="builder__viewport"
+                            :class="{ 'is-active': ui.breakpoint === device }"
+                            :aria-pressed="ui.breakpoint === device"
+                            :title="`${device} — style edits write the ${device} view`"
+                            @click="ui.breakpoint = device"
+                        >
+                            <BuilderIcon :name="DEVICE_ICONS[device]" :size="15" />
+                            <span v-if="ui.breakpoint === device">{{ device }}</span>
+                        </button>
+                    </div>
+
+                    <div class="builder__segment" role="group" aria-label="Preview colour scheme">
                         <button
                             v-for="scheme in (['system', 'light', 'dark'] as const)"
                             :key="scheme"
                             type="button"
                             class="builder__viewport"
                             :class="{ 'is-active': ui.scheme === scheme }"
-                            :title="`Preview in ${scheme === 'system' ? 'the visitor’s preference' : scheme}`"
+                            :aria-pressed="ui.scheme === scheme"
+                            :title="
+                                scheme === 'system'
+                                    ? 'Follow the visitor’s own preference'
+                                    : `${scheme} — style edits write the ${scheme} view`
+                            "
                             @click="onScheme(scheme)"
                         >
-                            {{ scheme }}
+                            <BuilderIcon :name="SCHEME_ICONS[scheme]" :size="15" />
+                            <span v-if="ui.scheme === scheme">{{ scheme }}</span>
                         </button>
                     </div>
                 </div>
@@ -2127,15 +2178,6 @@ body {
     background: #0b0c10;
 }
 
-.builder__schemes {
-    display: flex;
-    gap: 3px;
-    /* Set apart from the device buttons: they answer different questions,
-       and a single run of six buttons reads as one choice of six. */
-    margin-left: 14px;
-    padding-left: 14px;
-    border-left: 1px solid var(--builder-border);
-}
 
 .builder__viewport-bar {
     display: flex;
@@ -2143,9 +2185,20 @@ body {
     padding: 6px;
 }
 
-.builder__viewport {
-    padding: 2px 10px;
+.builder__segment {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
     border: 1px solid var(--builder-border);
+    border-radius: 999px;
+}
+
+.builder__viewport {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border: 0;
     border-radius: 999px;
     background: transparent;
     color: inherit;

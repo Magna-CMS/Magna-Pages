@@ -19,7 +19,6 @@ import type {
     Capabilities,
     DisplayConditionOption,
     SectionNode,
-    ChromeChoice,
     StyleControl,
 } from '../document/types'
 import { useUiStore, type InspectTab } from '../stores/ui'
@@ -53,12 +52,6 @@ const props = defineProps<{
     styleBreakpoint: Breakpoint
     /** Row-layout controls, for a section: how its columns lay out. */
     rowControls?: StyleControl[]
-    /** The page's own controls and values — what nothing-selected means. */
-    pageControls?: StyleControl[]
-    pageStyle?: Record<string, unknown>
-    /** The chrome this page may choose between, and what it uses now. */
-    chromeChoices?: { header: ChromeChoice[]; footer: ChromeChoice[] }
-    chromeUsed?: { header: string; footer: string }
     /**
      * Every show/hide rule this install can evaluate, as the server listed
      * them. Only the plugin ones get a control here — the two built-ins have
@@ -75,10 +68,6 @@ const emit = defineEmits<{
     setSpans: [sectionId: string, spans: number[]]
     setStyle: [pointer: string, key: string, value: string]
     setRowStyle: [pointer: string, key: string, value: string]
-    /** The page's own style — no pointer, because the page is not a node. */
-    pageStyle: [key: string, value: string]
-    /** Which header or footer this page uses. '' hands it back to the site. */
-    pageChrome: [role: 'header' | 'footer', id: string]
     select: [nodeId: string]
 }>()
 
@@ -496,62 +485,12 @@ const title = computed<string>(() => {
 
 <template>
     <div class="inspector">
-        <!--
-            Nothing selected is not nothing to edit: the PAGE is selected.
-
-            That is the reading Elementor settled on and it is the right
-            one — the ground a document is drawn on is a real thing with
-            real settings, and hiding it behind a menu makes it feel like
-            an afterthought. The message stays underneath, because "click
-            something" is still the answer for an editor who wanted a
-            block.
-        -->
-        <template v-if="!located">
-            <p class="inspector__block">Page</p>
-
-            <BuilderStyleControls
-                v-if="pageControls && pageControls.length > 0"
-                :controls="pageControls"
-                :style="pageStyle ?? {}"
-                :can-edit="capabilities.style"
-                :breakpoint="styleBreakpoint"
-                @set="(key: string, value: string) => $emit('pageStyle', key, value)"
-            />
-
-            <!--
-                Which chrome this page uses.
-
-                A two-level chain says itself in the empty option: choosing
-                nothing is not "no header", it is the site's header, and the
-                label has to say so or an editor reads a blank select as an
-                absence. A role with nothing to choose is not shown at all,
-                because a select with one option teaches nothing.
-            -->
-            <template v-for="role in (['header', 'footer'] as const)" :key="role">
-                <div v-if="(chromeChoices?.[role] ?? []).length > 0" class="inspector__field">
-                    <label :for="`page-${role}`">{{ role === 'header' ? 'Header' : 'Footer' }}</label>
-                    <select
-                        :id="`page-${role}`"
-                        :value="chromeUsed?.[role] ?? ''"
-                        :disabled="!capabilities.style"
-                        @change="$emit('pageChrome', role, ($event.target as HTMLSelectElement).value)"
-                    >
-                        <option value="">Site default</option>
-                        <option v-for="choice in chromeChoices?.[role] ?? []" :key="choice.id" :value="choice.id">
-                            {{ choice.title }}
-                        </option>
-                    </select>
-                </div>
-            </template>
-
-            <p v-if="!capabilities.style" class="inspector__locked">
-                Page styling needs the design permission.
-            </p>
-
-            <p class="inspector__empty">
-                Select something on the page, or use Add to place a new element.
-            </p>
-        </template>
+        <!-- Nothing selected: the page's own settings live in their own
+             panel now, so this says where rather than showing them. -->
+        <p v-if="!located" class="inspector__empty">
+            Select something on the page, or open <strong>Page</strong> for the
+            background, header and footer.
+        </p>
 
         <template v-else>
             <p class="inspector__block">{{ title }}</p>

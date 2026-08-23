@@ -121,7 +121,9 @@ export interface ApprovalState {
 export interface StyleControl {
     key: string
     label: string
-    control: 'text' | 'color' | 'select'
+    /** `image` stores a URL and emits a url(); the server builds the
+     *  function, so the control only collects the address. */
+    control: 'text' | 'color' | 'select' | 'image'
     group: string
     options: string[]
 }

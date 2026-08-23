@@ -13,7 +13,15 @@ import { defineStore } from 'pinia'
  * panel meant it for tomorrow too.
  */
 
-export type PanelMode = 'library' | 'inspect'
+/*
+ * The three things the panel can be showing.
+ *
+ * `page` is its own mode rather than "whatever Edit shows when nothing is
+ * selected". The page's settings were reachable only by deselecting, which
+ * is a gesture nobody discovers — a surface you can only reach by
+ * accident is a surface that does not exist.
+ */
+export type PanelMode = 'library' | 'inspect' | 'page'
 export type LibraryTab = 'elements' | 'patterns' | 'cloud'
 export type InspectTab = 'content' | 'style' | 'advanced'
 export type Drawer = 'layers' | 'checks' | 'history' | 'comments' | 'design' | null
@@ -106,6 +114,11 @@ export const useUiStore = defineStore('ui', {
             this.inspectTab = tab
             this.panelCollapsed = false
             this.persist()
+        },
+
+        /** The page itself: its ground, and the chrome around it. */
+        showPage(): void {
+            this.mode = 'page'
         },
 
         /** Back to the element library, clearing the last search. */
