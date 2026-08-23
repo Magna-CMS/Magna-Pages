@@ -142,7 +142,21 @@ final class BuilderBootstrap
             'label' => $field->label,
             'required' => $field->required,
             'default' => $field->default,
-            'options' => $field->options,
+            /*
+             * RESOLVED options, not the static array.
+             *
+             * A select may name a ProvidesOptions class instead of listing
+             * its choices, because the choices are not known until runtime
+             * — the menus that exist, the content types installed, the data
+             * sources enabled plugins registered. Sending $field->options
+             * shipped an empty list for every one of those, so the Loop,
+             * Navigation and Entries blocks could be inserted but never
+             * configured: the dropdown had nothing in it.
+             *
+             * The Livewire editor already resolved these at render time;
+             * this is the same call, on the payload the Vue builder reads.
+             */
+            'options' => $field->resolveOptions(),
             'multiple' => $field->multiple,
             // Which tab this field belongs on. Null means Content, which
             // is where every field was before a block could say otherwise.

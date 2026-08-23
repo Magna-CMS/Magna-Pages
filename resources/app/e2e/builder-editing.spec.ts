@@ -970,3 +970,30 @@ test('draws the tabs a block declares', async ({ page }) => {
     await expect(page.locator('#field-text')).toBeVisible()
     await expect(page.locator('#inspector-tab-buttons')).toHaveCount(0)
 })
+
+test('offers a plugin data source in the Loop block', async ({ page }) => {
+    /*
+     * The whole seam between an installed plugin and visual page building:
+     * the blog registers feeds through RegistersDataSources, and they have
+     * to arrive in the Loop block's picker with no builder change at all.
+     * Only the real page proves that — the registry is wired at plugin
+     * enable-time, so a unit test asserting the registry would pass while
+     * the dropdown an editor actually uses stayed empty.
+     */
+    await newBuilderPage(page, 'Loop source')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Loop', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    const source = page.locator('#field-source')
+    await expect(source).toBeVisible()
+
+    // The core source is always there; the blog's two are there because
+    // the plugin is enabled, which is the half that can regress.
+    await expect(source.locator('option', { hasText: 'Latest pages' })).toHaveCount(1)
+    await expect(source.locator('option', { hasText: 'Blog — latest posts' })).toHaveCount(1)
+    await expect(source.locator('option', { hasText: 'Blog — featured posts' })).toHaveCount(1)
+})
