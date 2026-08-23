@@ -104,7 +104,25 @@ function write<T>(node: T, segments: string[], op: string, value: unknown): Appl
         }
     }
 
-    const next = shallowCopy(container)
+    let next: Record<string, unknown> | unknown[] = shallowCopy(container)
+
+    /*
+     * An EMPTY array might be an empty object.
+     *
+     * PHP cannot tell the two apart: an empty associative array encodes as
+     * `[]`, so a node whose `settings` are `{}` comes back from the server
+     * as a list. Adding `settings/style` to it then reads `style` as an
+     * array index and fails — which is why the first style edit on a
+     * freshly added section reported "index out of range".
+     *
+     * Reinterpreted only when the array is empty and the key is not an
+     * index, because that is the only case where the ambiguity exists. A
+     * populated list is unambiguously a list.
+     */
+    if (Array.isArray(next) && next.length === 0 && key !== '-' && Number.isNaN(Number(key))) {
+        next = {}
+    }
+
     const isList = Array.isArray(next)
 
     if (op === 'add') {

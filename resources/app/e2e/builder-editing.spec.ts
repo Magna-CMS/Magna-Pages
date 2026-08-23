@@ -543,3 +543,44 @@ test('sticks chrome to the top of the page it is on', async ({ page }) => {
     await page.waitForTimeout(200)
     expect(await top()).toBeLessThan(-100)
 })
+
+/**
+ * Per-node dark mode, without a second style axis.
+ *
+ * A hex frozen into a document has one reading and can never have two; a
+ * token has both, because the palette carries both. So the colour control
+ * offers the theme's colours beside the hex field, and choosing one
+ * writes a var() that follows the scheme. That is the whole feature — a
+ * `$scheme` sentinel would have doubled every style key, emitter and
+ * control to reach the same place.
+ */
+test('offers theme colours that follow the scheme', async ({ page }) => {
+    await newBuilderPage(page, 'Tokens')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    await waitForNodes(page, 'section', 1)
+
+    // A section has only style settings, so no tab strip is drawn for it —
+    // the controls are already on screen.
+    // Adding a section leaves the panel in Add, so the next element is one
+    // click away. The inspector is the other tab.
+    await page.locator('#panel-mode-inspect').click()
+
+    const picker = page.getByRole('combobox', { name: /Use a theme colour for Background/i })
+    await expect(picker).toBeVisible()
+    await picker.selectOption({ index: 1 })
+
+    // It wrote a var(), not a hex — which is what can have two readings.
+    await expect(page.locator('#style-background')).toHaveValue(/^var\(--color-/, { timeout: 15_000 })
+
+    await expect
+        .poll(
+            () =>
+                page
+                    .locator('.builder__frame')
+                    .evaluate(
+                        (el) => (el as HTMLIFrameElement).contentDocument?.body?.innerHTML ?? '',
+                    ),
+            { timeout: 20_000 },
+        )
+        .toContain('var(--color-')
+})

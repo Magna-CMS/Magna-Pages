@@ -10,6 +10,7 @@ use Magna\Admin\Resources\EntryResource;
 use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Pages\Builder\ApprovalManager;
+use Magna\Pages\Cache\PageCache;
 
 /**
  * The Pages screen: every page on the site, with the three doors an editor
@@ -37,6 +38,15 @@ class PagesIndexPage extends Page
     public string $newPageTitle = '';
 
     public string $newPartTitle = '';
+
+    /**
+     * What the new part is FOR: generic, or the site's header or footer.
+     *
+     * Asked at creation rather than left to be set later, because a part
+     * with no role is invisible to the chrome pickers — a header nobody
+     * can choose is a header nobody made.
+     */
+    public string $newPartRole = 'generic';
 
     public string $newPopupTitle = '';
 
@@ -79,13 +89,49 @@ class PagesIndexPage extends Page
             return;
         }
 
+        $role = in_array($this->newPartRole, ['generic', 'header', 'footer'], true)
+            ? $this->newPartRole
+            : 'generic';
+
         $entry = $entries->create('pages_template', [
             'title' => $title,
             'kind' => 'part',
+            'role' => $role,
             'blocks_data' => [],
         ], auth()->id() !== null ? (string) auth()->id() : null);
 
         $this->redirect(url('/pages-builder/edit/'.$entry->getKey()));
+    }
+
+    /**
+     * Turn a piece of chrome's sticky behaviour on or off.
+     *
+     * Here rather than in the builder because it is a property of the PART,
+     * not of anything inside it — there is no node in the document to
+     * select and no panel that would obviously own it.
+     */
+    public function toggleSticky(string $id): void
+    {
+        /** @var Entry|null $entry */
+        $entry = Entry::type('pages_template')->find($id);
+        if ($entry === null || ! in_array($entry->getAttribute('role'), ['header', 'footer'], true)) {
+            return;
+        }
+
+        $behaviour = $entry->getAttribute('behaviour');
+        $behaviour = is_array($behaviour) ? $behaviour : [];
+        $behaviour['sticky'] = ($behaviour['sticky'] ?? false) !== true;
+
+        $entry->setAttribute('behaviour', $behaviour);
+        $entry->save();
+
+        // Chrome is on every page, so its behaviour is too.
+        app(PageCache::class)->flush();
+
+        Notification::make()
+            ->title($behaviour['sticky'] ? 'Sticks to the top now' : 'Scrolls with the page now')
+            ->success()
+            ->send();
     }
 
     /**
@@ -146,6 +192,9 @@ class PagesIndexPage extends Page
                     'title' => (string) ($template->getAttribute('title') ?? 'Untitled'),
                     'slug' => (string) ($template->getAttribute('slug') ?? ''),
                     'kind' => (string) ($template->getAttribute('kind') ?? 'part'),
+                    'role' => (string) ($template->getAttribute('role') ?? 'generic'),
+                    'sticky' => is_array($behaviour = $template->getAttribute('behaviour'))
+                        && ($behaviour['sticky'] ?? false) === true,
                     'status' => $template->status->value,
                     'builderUrl' => url('/pages-builder/edit/'.$template->getKey()),
                 ])->all(),

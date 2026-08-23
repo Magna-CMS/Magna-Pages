@@ -93,3 +93,44 @@ describe('toPointer', () => {
         expect(toPointer([0, 'columns', 1, 'blocks', 2])).toBe('/0/columns/1/blocks/2')
     })
 })
+
+describe('empty maps that arrived as empty arrays', () => {
+    /*
+     * PHP cannot tell `{}` from `[]`: an empty associative array encodes
+     * as a list. A section whose settings are empty therefore comes back
+     * from the server as `settings: []`, and writing its FIRST style read
+     * the key as an array index — which is why the very first colour set
+     * on a freshly added section failed with "index out of range".
+     */
+    it('writes a key into a settings map that came back as a list', () => {
+        const document = [{ id: 's1', type: 'section', settings: [], columns: [] }]
+
+        const applied = applyPatch(document as never, [
+            { op: 'add', path: '/0/settings/style', value: { background: '#123456' } },
+        ])
+
+        expect((applied.document as never[])[0]).toMatchObject({
+            settings: { style: { background: '#123456' } },
+        })
+    })
+
+    it('still treats a populated list as a list', () => {
+        // The ambiguity exists only when the array is empty. A list with
+        // anything in it is unambiguously a list, and must stay one.
+        const document = [{ id: 's1', type: 'section', settings: {}, columns: [{ id: 'c1' }] }]
+
+        const applied = applyPatch(document as never, [
+            { op: 'add', path: '/0/columns/-', value: { id: 'c2' } },
+        ])
+
+        expect(((applied.document as never[])[0] as { columns: unknown[] }).columns).toHaveLength(2)
+    })
+
+    it('still refuses a real out-of-range index', () => {
+        const document = [{ id: 's1', columns: [{ id: 'c1' }] }]
+
+        expect(() =>
+            applyPatch(document as never, [{ op: 'add', path: '/0/columns/9', value: { id: 'c2' } }]),
+        ).toThrow()
+    })
+})

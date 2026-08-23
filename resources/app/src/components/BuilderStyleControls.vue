@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import { declaredAt, effectiveAt, inheritsAt, type Breakpoint } from '../document/responsive'
 import type { StyleControl } from '../document/types'
+import { useDocumentStore } from '../stores/document'
 
 /**
  * The Style tab's controls, drawn from the table the server ships.
@@ -31,6 +32,8 @@ const props = defineProps<{
 
 defineEmits<{ set: [key: string, value: string] }>()
 
+const store = useDocumentStore()
+
 /** Controls in the groups the server named, in the order it named them. */
 const groups = computed(() => {
     const grouped = new Map<string, StyleControl[]>()
@@ -45,6 +48,24 @@ const groups = computed(() => {
 })
 
 /** What the control shows: this breakpoint's value, or the inherited one. */
+/**
+ * The theme's colour tokens, as values a control can write.
+ *
+ * This is the answer to per-node dark mode, and it is deliberately NOT a
+ * second sentinel beside `$responsive`. A hex frozen into a document has
+ * one reading and can never have two; a token has both, because the
+ * palette carries both. Adding a `$scheme` axis would double every style
+ * key (breakpoint x scheme), every emitter and every control — which is
+ * precisely the duplicated, unmanageable styling this design set out to
+ * avoid. Making the flipping value as easy to pick as the frozen one
+ * solves the same problem with one axis instead of two.
+ */
+const colorTokens = computed(() =>
+    Object.keys(store.tokens)
+        .filter((name) => name.startsWith('--color-'))
+        .map((name) => ({ name, label: name.replace('--color-', '').replace(/-/g, ' ') })),
+)
+
 function valueOf(control: StyleControl): string {
     return effectiveAt(props.style[control.key], props.breakpoint)
 }
@@ -121,6 +142,24 @@ function swatch(control: StyleControl): string {
                     :aria-label="`${control.label} colour picker`"
                     @change="$emit('set', control.key, ($event.target as HTMLInputElement).value)"
                 />
+                <!-- A token follows the palette, including into dark mode.
+                     A hex cannot, which is why this sits beside it. -->
+                <select
+                    v-if="colorTokens.length > 0"
+                    class="styles__tokenpick"
+                    :disabled="!canEdit"
+                    :aria-label="`Use a theme colour for ${control.label}`"
+                    :value="''"
+                    @change="
+                        $emit('set', control.key, `var(${($event.target as HTMLSelectElement).value})`);
+                        ($event.target as HTMLSelectElement).value = ''
+                    "
+                >
+                    <option value="" disabled selected>🎨</option>
+                    <option v-for="token in colorTokens" :key="token.name" :value="token.name">
+                        {{ token.label }}
+                    </option>
+                </select>
             </span>
 
             <input
@@ -190,6 +229,11 @@ function swatch(control: StyleControl): string {
 .styles__field input:disabled,
 .styles__field select:disabled {
     opacity: 0.5;
+}
+
+.styles__tokenpick {
+    width: 34px;
+    flex: 0 0 auto;
 }
 
 .styles__color {

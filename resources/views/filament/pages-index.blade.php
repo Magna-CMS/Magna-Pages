@@ -78,6 +78,18 @@
                    placeholder="Header"
                    class="w-64 rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
         </div>
+        <div>
+            {{-- Asked at creation, not left for later: a part with no role
+                 is invisible to the header and footer pickers, so a header
+                 nobody can choose is a header nobody made. --}}
+            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Used as</label>
+            <select wire:model="newPartRole"
+                    class="rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                <option value="generic">A part referenced by a page</option>
+                <option value="header">The site header</option>
+                <option value="footer">The site footer</option>
+            </select>
+        </div>
         <x-filament::button color="gray" wire:click="createPart">Create part &amp; open builder</x-filament::button>
         <div>
             <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New popup</label>
@@ -97,7 +109,19 @@
                     <tr class="border-b border-gray-100 last:border-0 dark:border-white/5">
                         <td class="px-4 py-2.5 font-medium text-gray-900 dark:text-white">{{ $template['title'] }}</td>
                         <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400">{{ $template['slug'] }}</td>
-                        <td class="px-4 py-2.5"><x-filament::badge color="gray">{{ $template['kind'] }}</x-filament::badge></td>
+                        <td class="px-4 py-2.5">
+                            <x-filament::badge color="gray">{{ $template['kind'] }}</x-filament::badge>
+                            @if($template['role'] !== 'generic')
+                                <x-filament::badge color="info">{{ $template['role'] }}</x-filament::badge>
+                                {{-- Sticky is chrome behaviour, so it is
+                                     offered only on chrome. --}}
+                                <button type="button"
+                                        wire:click="toggleSticky('{{ $template['id'] }}')"
+                                        class="text-xs underline decoration-dotted">
+                                    {{ $template['sticky'] ? 'Sticky' : 'Not sticky' }}
+                                </button>
+                            @endif
+                        </td>
                         <td class="px-4 py-2.5">
                             <x-filament::badge :color="$template['status'] === 'published' ? 'success' : 'gray'">
                                 {{ $template['status'] }}
