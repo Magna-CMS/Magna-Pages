@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import BuilderColumnControls from './BuilderColumnControls.vue'
 import BuilderIconPicker from './BuilderIconPicker.vue'
@@ -69,6 +69,32 @@ const props = defineProps<{
  * attribute of the same name, and the template resolves the DOM one
  * instead — silently, and only at type-check.
  */
+/** Narrows a long settings list to what an editor is looking for. */
+const settingSearch = ref('')
+
+/**
+ * The fields on the open tab, narrowed by the search.
+ *
+ * A field with no group belongs to Content, which is what every field was
+ * before blocks could group anything.
+ */
+const visibleFields = computed(() => {
+    const fields = (props.definition?.fields ?? []).filter(
+        (field) => (field.group ?? 'content').toLowerCase() === tab.value,
+    )
+
+    const needle = settingSearch.value.trim().toLowerCase()
+    if (needle === '') {
+        return fields
+    }
+
+    return fields.filter(
+        (field) =>
+            field.label.toLowerCase().includes(needle) ||
+            field.handle.toLowerCase().includes(needle),
+    )
+})
+
 const switchedOff = computed(
     () =>
         ((props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
@@ -125,7 +151,27 @@ const tabs = computed<InspectTab[]>(() => {
     }
 
     if (props.definition) {
-        const groups: InspectTab[] = props.definition.fields.length > 0 ? ['content'] : []
+        /*
+         * A block groups its own settings.
+         *
+         * Tabs used to be a fixed three, which meant a block with fifteen
+         * fields had one long tab and no say in it. A field naming a group
+         * gets its own tab, in the order the block declares them — the same
+         * promise the schema-driven inspector already makes about what the
+         * fields ARE, extended to how they are arranged.
+         *
+         * Absent means Content, so a block that says nothing looks exactly
+         * as it did.
+         */
+        const declared: InspectTab[] = []
+        for (const field of props.definition.fields) {
+            const group = (field.group ?? 'content').toLowerCase()
+            if (!declared.includes(group as InspectTab)) {
+                declared.push(group as InspectTab)
+            }
+        }
+
+        const groups: InspectTab[] = props.definition.fields.length > 0 ? declared : []
         // A block styles itself through the same table sections use; the
         // renderer decides which keys it offers.
         if ((props.styleControls ?? []).length > 0) {
@@ -586,7 +632,17 @@ const title = computed<string>(() => {
         </template>
 
         <template v-else-if="located && definition && tab === 'content'">
-            <div v-for="field in definition.fields" :key="field.handle" class="inspector__field">
+            <!--
+                Finding a setting among many. Shown only when there are
+                enough to hunt through: a search box above four fields is
+                furniture, not help.
+            -->
+            <label v-if="definition.fields.length > 6" class="inspector__search">
+                <span class="inspector__label">Search settings</span>
+                <input v-model="settingSearch" type="search" placeholder="Search settings…" />
+            </label>
+
+            <div v-for="field in visibleFields" :key="field.handle" class="inspector__field">
                 <label :for="`field-${field.handle}`">
                     {{ field.label }}
                     <span v-if="field.required" aria-hidden="true">*</span>

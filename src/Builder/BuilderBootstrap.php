@@ -144,6 +144,9 @@ final class BuilderBootstrap
             'default' => $field->default,
             'options' => $field->options,
             'multiple' => $field->multiple,
+            // Which tab this field belongs on. Null means Content, which
+            // is where every field was before a block could say otherwise.
+            'group' => $field->group,
             'fields' => array_map($this->fieldPayload(...), $field->fields),
         ];
     }

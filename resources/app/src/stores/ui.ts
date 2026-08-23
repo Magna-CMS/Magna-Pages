@@ -23,7 +23,17 @@ import { defineStore } from 'pinia'
  */
 export type PanelMode = 'library' | 'inspect' | 'page'
 export type LibraryTab = 'elements' | 'patterns' | 'cloud'
-export type InspectTab = 'content' | 'style' | 'advanced'
+/*
+ * The inspector's tabs.
+ *
+ * `content`, `style` and `advanced` are the ones the builder itself draws
+ * for sections, columns and styling. A BLOCK may name others: a field
+ * declares the group it belongs on, so a block with fifteen settings can
+ * arrange them rather than being handed one long tab. Widened to a string
+ * for exactly that, with the three named so the built-ins stay readable
+ * wherever they are referred to by name.
+ */
+export type InspectTab = 'content' | 'style' | 'advanced' | (string & {})
 export type Drawer = 'layers' | 'checks' | 'history' | 'comments' | 'design' | null
 export type Breakpoint = 'desktop' | 'tablet' | 'mobile'
 

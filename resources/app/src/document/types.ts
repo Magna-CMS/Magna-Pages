@@ -52,6 +52,12 @@ export interface PatchOperation {
 }
 
 export interface BlockFieldDefinition {
+    /**
+     * Which inspector tab this field belongs on, as the block declares it.
+     * Absent means Content — where every field lived before blocks could
+     * group their own settings.
+     */
+    group?: string | null
     handle: string
     type: string
     label: string
