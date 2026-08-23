@@ -269,3 +269,73 @@ export function newId(): string {
 
     return id
 }
+
+/** One step of the chain from the document root down to a node. */
+export interface Ancestor {
+    id: string
+    kind: NodeKind
+    /** What to call it: a section's own label when it has one, else the kind. */
+    label: string
+}
+
+/**
+ * The chain of nodes containing a node, outermost first, ending with the
+ * node itself.
+ *
+ * Selecting a section by clicking is hard — its children cover it, so a
+ * click almost always lands on a block. Every visual builder answers this
+ * the same way, by listing what contains what and letting you jump up the
+ * chain. This is the data behind that, used by both the canvas chips and
+ * the panel's breadcrumb so the two can never disagree about the shape of
+ * the document.
+ */
+export function ancestorsOf(document: BlockDocument, nodeId: string): Ancestor[] {
+    const sections = sectionsOf(document)
+
+    for (const section of sections) {
+        const sectionStep: Ancestor = {
+            id: section.id,
+            kind: 'section',
+            label: typeof section.settings?.label === 'string' && section.settings.label !== ''
+                ? (section.settings.label as string)
+                : 'Section',
+        }
+
+        if (section.id === nodeId) {
+            return [sectionStep]
+        }
+
+        for (const column of section.columns ?? []) {
+            const columnStep: Ancestor = { id: column.id, kind: 'column', label: 'Column' }
+
+            if (column.id === nodeId) {
+                return [sectionStep, columnStep]
+            }
+
+            const found = blockChain(column.blocks ?? [], nodeId)
+            if (found !== null) {
+                return [sectionStep, columnStep, ...found]
+            }
+        }
+    }
+
+    return []
+}
+
+/** The chain within a column's blocks, which may nest through containers. */
+function blockChain(blocks: BlockNode[], nodeId: string): Ancestor[] | null {
+    for (const block of blocks) {
+        const step: Ancestor = { id: block.id, kind: 'block', label: block.block }
+
+        if (block.id === nodeId) {
+            return [step]
+        }
+
+        const deeper = blockChain(block.children ?? [], nodeId)
+        if (deeper !== null) {
+            return [step, ...deeper]
+        }
+    }
+
+    return null
+}

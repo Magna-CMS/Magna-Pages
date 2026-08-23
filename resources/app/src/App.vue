@@ -25,6 +25,7 @@ import {
 } from './document/responsive'
 import { nodeActions, type NodeAction, type NodeActionKey } from './document/actions'
 import {
+    ancestorsOf,
     blockParents,
     locate,
     parentOf,
@@ -601,6 +602,33 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
     }
 }
 
+/**
+ * Switch the selection off the site, or back on.
+ *
+ * `remove` rather than storing `false`, because absent is what "on" has
+ * always meant — a document that has never used this renders exactly as it
+ * did, and one that is switched back on returns to that same shape rather
+ * than carrying a key that says "normal".
+ */
+async function onSetHidden(hidden: boolean) {
+    const found = store.selectedNode ? locate(store.blocks, store.selectedNode) : null
+    if (!found) {
+        return
+    }
+
+    const ok = await store.edit(
+        activeApi.value,
+        hidden ? 'Switch off' : 'Switch on',
+        hidden
+            ? [{ op: 'add', path: `${found.pointer}/settings/hidden`, value: true }]
+            : [{ op: 'remove', path: `${found.pointer}/settings/hidden` }],
+    )
+
+    if (ok) {
+        reloadCanvas()
+    }
+}
+
 async function onSettingEdit(pointer: string, key: string, value: unknown) {
     // `add` rather than `replace`: settings keys (visibility, anchor) may
     // not exist on the node yet, and add-on-an-object is upsert.
@@ -1159,6 +1187,19 @@ async function backToPage() {
         store.error = error instanceof Error ? error.message : String(error)
     }
 }
+
+/**
+ * What contains what, from the section down to the selection.
+ *
+ * A section is nearly impossible to click: its children cover it, so a
+ * press almost always lands on a block. Listing the chain and letting an
+ * editor step up it is how every visual builder answers that, and it is
+ * the same data behind the canvas chips and the panel's breadcrumb — one
+ * source, so the two can never disagree about the document's shape.
+ */
+const ancestors = computed(() =>
+    store.selectedNode === null ? [] : ancestorsOf(store.blocks, store.selectedNode),
+)
 
 /** Toolbar affordances for whatever is selected right now. */
 const TOOLBAR_HEIGHT = 26
@@ -1780,6 +1821,8 @@ onBeforeUnmount(() => {
                         @add-column="onAddColumn"
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
+                        :ancestors="ancestors"
+                        @set-hidden="onSetHidden"
                         @set-style="onSetStyle"
                         @set-row-style="onSetRowStyle"
                         @select="selectNode($event)"
@@ -1884,7 +1927,25 @@ onBeforeUnmount(() => {
                         class="builder__toolbar"
                         :style="{ top: `${toolbar.top}px`, left: `${toolbar.left}px` }"
                     >
-                        <span class="builder__toolbar-kind">{{ selectionLabel }}</span>
+                        <!--
+                            Step out to what contains this. Named rather
+                            than numbered, so "Section" is a place and not
+                            a level, and the last chip is the selection
+                            itself — present so the strip reads as a path
+                            rather than as a list of somewhere-elses.
+                        -->
+                        <button
+                            v-for="(step, index) in ancestors"
+                            :key="step.id"
+                            type="button"
+                            class="builder__crumb"
+                            :class="{ 'is-current': index === ancestors.length - 1 }"
+                            :disabled="index === ancestors.length - 1"
+                            :title="`Select this ${step.kind}`"
+                            @click="selectNode(step.id)"
+                        >
+                            {{ step.label }}
+                        </button>
 
                         <button
                             v-if="toolbar.canMove"
@@ -2530,6 +2591,29 @@ body {
     border-radius: 4px;
     background: var(--builder-accent);
     box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.builder__crumb {
+    padding: 1px 7px;
+    border: 0;
+    border-radius: 4px;
+    background: rgb(255 255 255 / 16%);
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    text-transform: capitalize;
+    cursor: pointer;
+}
+
+.builder__crumb:hover:not(:disabled) {
+    background: rgb(255 255 255 / 32%);
+}
+
+/* The selection itself: shown for the path, not offered as a jump. */
+.builder__crumb.is-current {
+    background: transparent;
+    font-weight: 600;
+    cursor: default;
 }
 
 .builder__toolbar-kind {

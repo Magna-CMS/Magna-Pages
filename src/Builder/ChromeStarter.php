@@ -62,14 +62,13 @@ final class ChromeStarter
                     'settings' => ['style' => ['alignItems' => 'center']],
                     'blocks' => [[
                         'id' => self::id(),
-                        'block' => 'heading',
+                        // The logo block, not a heading: it is what an
+                        // editor is looking for when they open a header,
+                        // and it already knows how to be an image, a
+                        // wordmark, and a link home.
+                        'block' => 'logo',
                         'settings' => [],
-                        // The site's name as LITERAL text, not a binding.
-                        // A starter exists to be edited, and a bound value
-                        // cannot be typed over on the canvas — an editor
-                        // replacing this with their own wordmark should not
-                        // have to learn about bindings to do it.
-                        'data' => ['text' => self::siteName(), 'level' => 'h1', 'align' => 'left'],
+                        'data' => ['text' => self::siteName(), 'url' => '/'],
                     ]],
                 ],
                 [

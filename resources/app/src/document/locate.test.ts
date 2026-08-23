@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    ancestorsOf,
     blockParents,
     locate,
     newId,
@@ -164,5 +165,62 @@ describe('newId', () => {
         expect(id).toHaveLength(26)
         expect(id).toMatch(/^[0-9a-hjkmnp-tv-z]{26}$/)
         expect(newId()).not.toBe(id)
+    })
+})
+
+describe('ancestorsOf', () => {
+    /*
+     * Selecting a section by clicking is hard: its children cover it, so a
+     * click almost always lands on a block. The chain is what lets an
+     * editor step back out to what contains what they hit.
+     */
+    const nested: BlockDocument = [
+        {
+            id: 'sec-1',
+            type: 'section',
+            settings: { label: 'Hero row' },
+            columns: [
+                {
+                    id: 'col-1',
+                    span: 12,
+                    settings: {},
+                    blocks: [
+                        {
+                            id: 'box-1',
+                            block: 'container',
+                            settings: {},
+                            data: {},
+                            children: [{ id: 'blk-1', block: 'heading', settings: {}, data: {} }],
+                        },
+                    ],
+                },
+            ],
+        },
+    ]
+
+    it('names every step from the section down to the node', () => {
+        expect(ancestorsOf(nested, 'blk-1')).toEqual([
+            { id: 'sec-1', kind: 'section', label: 'Hero row' },
+            { id: 'col-1', kind: 'column', label: 'Column' },
+            { id: 'box-1', kind: 'block', label: 'container' },
+            { id: 'blk-1', kind: 'block', label: 'heading' },
+        ])
+    })
+
+    it('ends at the node itself, whatever kind it is', () => {
+        expect(ancestorsOf(nested, 'sec-1')).toHaveLength(1)
+        expect(ancestorsOf(nested, 'col-1')).toHaveLength(2)
+    })
+
+    it('falls back to the kind when a section has no label of its own', () => {
+        const plain: BlockDocument = [
+            { id: 'sec-2', type: 'section', settings: {}, columns: [] },
+        ]
+
+        expect(ancestorsOf(plain, 'sec-2')[0].label).toBe('Section')
+    })
+
+    it('returns nothing for a node the document does not have', () => {
+        expect(ancestorsOf(nested, 'gone')).toEqual([])
     })
 })

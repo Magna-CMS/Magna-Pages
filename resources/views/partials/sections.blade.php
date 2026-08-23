@@ -95,7 +95,18 @@
     };
 
     // Display conditions: absent closure (older include sites) = show all.
-    $passes = $conditionsPass ?? fn (array $settings): bool => true;
+    $conditionsAllow = $conditionsPass ?? fn (array $settings): bool => true;
+
+    /*
+     * `settings.hidden` is an editor's own switch: off means "not on the
+     * site", without deleting the work. It is checked here beside the
+     * display conditions because it answers the same question, and it is
+     * checked ONLY outside the builder for the same reason conditions are —
+     * you cannot switch a node back on if it vanishes when you switch it
+     * off.
+     */
+    $passes = fn (array $settings): bool => $conditionsAllow($settings)
+        && ($inBuilder || ($settings['hidden'] ?? false) !== true);
     // Bindings: absent closure = literals pass through untouched.
     $bound = $resolveBindings ?? fn ($block) => $block;
 @endphp

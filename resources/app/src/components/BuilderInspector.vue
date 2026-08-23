@@ -50,6 +50,8 @@ const props = defineProps<{
     styleControls?: StyleControl[]
     /** The device being previewed; style edits land on this breakpoint. */
     styleBreakpoint: Breakpoint
+    /** What contains the selection, outermost first, ending with it. */
+    ancestors?: { id: string; kind: string; label: string }[]
     /** Row-layout controls, for a section: how its columns lay out. */
     rowControls?: StyleControl[]
     /**
@@ -60,6 +62,19 @@ const props = defineProps<{
     displayConditions?: DisplayConditionOption[]
 }>()
 
+/**
+ * Whether the selection is switched off the site.
+ *
+ * Deliberately not named `hidden`: that collides with the native HTML
+ * attribute of the same name, and the template resolves the DOM one
+ * instead — silently, and only at type-check.
+ */
+const switchedOff = computed(
+    () =>
+        ((props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+            ?.hidden ?? false) === true,
+)
+
 const emit = defineEmits<{
     edit: [pointer: string, handle: string, value: unknown]
     editSetting: [pointer: string, key: string, value: unknown]
@@ -69,6 +84,8 @@ const emit = defineEmits<{
     setStyle: [pointer: string, key: string, value: string]
     setRowStyle: [pointer: string, key: string, value: string]
     select: [nodeId: string]
+    /** Switch the selection off the site, or back on. */
+    setHidden: [hidden: boolean]
 }>()
 
 function onStyleSet(key: string, value: string) {
@@ -493,7 +510,39 @@ const title = computed<string>(() => {
         </p>
 
         <template v-else>
-            <p class="inspector__block">{{ title }}</p>
+            <!--
+                The element, and whether it is on.
+
+                Off takes it off the site without deleting the work — the
+                switch every builder has, and the reason "hide it for now"
+                does not mean "rebuild it later". It stays VISIBLE in the
+                canvas while off, because a node that vanished when you
+                switched it off could never be switched back on.
+            -->
+            <div class="inspector__head">
+                <!-- What contains this, so a section is reachable without
+                     hunting for a sliver of it to click. -->
+                <p v-if="(ancestors ?? []).length > 1" class="inspector__crumbs">
+                    <template v-for="(step, index) in (ancestors ?? []).slice(0, -1)" :key="step.id">
+                        <button type="button" @click="$emit('select', step.id)">{{ step.label }}</button>
+                        <span v-if="index < (ancestors ?? []).length - 2" aria-hidden="true">›</span>
+                    </template>
+                </p>
+
+                <div class="inspector__title">
+                    <p class="inspector__block">{{ title }}</p>
+
+                    <label class="inspector__onoff" :title="switchedOff ? 'Off: not on the site' : 'On'">
+                        <input
+                            type="checkbox"
+                            :checked="!switchedOff"
+                            :disabled="!capabilities.structure"
+                            @change="$emit('setHidden', !($event.target as HTMLInputElement).checked)"
+                        />
+                        <span>{{ switchedOff ? 'Off' : 'On' }}</span>
+                    </label>
+                </div>
+            </div>
 
             <div v-if="tabs.length > 1" class="inspector__tabs" role="tablist" aria-label="Settings group">
                 <button
@@ -872,6 +921,52 @@ const title = computed<string>(() => {
 </template>
 
 <style scoped>
+.inspector__head {
+    margin-bottom: 8px;
+}
+
+.inspector__crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    margin: 0 0 3px;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.inspector__crumbs button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    text-transform: capitalize;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.inspector__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.inspector__onoff {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.inspector__onoff input:disabled {
+    cursor: not-allowed;
+}
+
 .inspector__block {
     margin: 0 0 8px;
     font-weight: 600;

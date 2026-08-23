@@ -841,3 +841,48 @@ test('edits the header in place, then comes back to the page', async ({ page }) 
     await expect(page.locator('.builder__focusbar')).toHaveCount(0)
     expect(page.url()).toBe(pageUrl)
 })
+
+/**
+ * The pieces tagDiv shows around a selected element: what contains it, and
+ * whether it is on.
+ *
+ * A section is nearly impossible to click — its children cover it — so the
+ * chain is the only reliable way to reach one. And switching an element
+ * off has to leave it visible in the canvas, or there would be no way to
+ * switch it back on.
+ */
+test('walks up to what contains a block, and switches it off', async ({ page }) => {
+    await newBuilderPage(page, 'Chain')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Heading', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    // The chain, ending with the selection itself so it reads as a path.
+    const crumbs = page.locator('.builder__crumb')
+    await expect(crumbs).toHaveCount(3)
+    await expect(crumbs.nth(0)).toHaveText(/section/i)
+    await expect(crumbs.nth(2)).toBeDisabled()
+
+    // Step out to the section, which no click on the canvas could reach.
+    await crumbs.nth(0).click()
+    await expect(page.locator('.inspector__block')).toHaveText(/section/i)
+
+    // Back to the heading, and switch it off.
+    await frame.locator('[data-magna-kind="block"]').first().click()
+    const toggle = page.locator('.inspector__onoff input')
+    await expect(toggle).toBeChecked()
+    await toggle.uncheck()
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 15_000 })
+    await expect(page.locator('.inspector__onoff')).toContainText('Off')
+
+    // Still on the canvas: a node that vanished when switched off could
+    // never be switched back on.
+    await expect(frame.locator('[data-magna-kind="block"]').first()).toBeVisible()
+
+    // And back on again.
+    await toggle.check()
+    await expect(page.locator('.inspector__onoff')).toContainText('On')
+})

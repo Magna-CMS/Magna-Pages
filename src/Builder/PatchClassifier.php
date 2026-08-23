@@ -93,6 +93,15 @@ final class PatchClassifier
             if (in_array('label', $segments, true)) {
                 return PatchKind::Content;
             }
+            /*
+             * Switching a node off takes it off the page. That is the same
+             * kind of decision as removing it — reversible, but structural
+             * — and calling it styling would let anyone who may recolour a
+             * heading also make it disappear for every visitor.
+             */
+            if (in_array('hidden', $segments, true)) {
+                return PatchKind::Structure;
+            }
 
             return PatchKind::Style;
         }
