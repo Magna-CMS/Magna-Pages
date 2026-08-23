@@ -196,6 +196,15 @@ const tabs = computed<InspectTab[]>(() => {
  * The tab actually rendered. The store keeps the editor's last choice, but
  * a selection that has no such group must not render a blank panel.
  */
+/**
+ * The tabs the BUILDER owns, whatever a block says.
+ *
+ * Style and Advanced have panels of their own — the style descriptor
+ * table and the visibility/condition controls — so a block may not claim
+ * those names for its fields.
+ */
+const BUILDER_TABS: InspectTab[] = ['style', 'advanced']
+
 const tab = computed<InspectTab | null>(() =>
     tabs.value.includes(ui.inspectTab) ? ui.inspectTab : (tabs.value[0] ?? null),
 )
@@ -635,7 +644,14 @@ const title = computed<string>(() => {
             </p>
         </template>
 
-        <template v-else-if="located && definition && tab === 'content'">
+        <!--
+            Any tab a BLOCK declared shows that block's fields. Keyed on
+            "not one of the builder's own" rather than on the literal
+            'content', which is what it was: tabs became schema-declared
+            while the panel stayed pinned to one name, so every group a
+            block invented drew an empty panel.
+        -->
+        <template v-else-if="located && definition && tab !== null && !BUILDER_TABS.includes(tab)">
             <!--
                 Finding a setting among many. Shown only when there are
                 enough to hunt through: a search box above four fields is

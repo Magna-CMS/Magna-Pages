@@ -932,3 +932,41 @@ test('chooses a picture for a logo, by library or by paste', async ({ page }) =>
     // It reached the document and the canvas drew it.
     await expect(frame.locator('.magna-logo__image')).toBeVisible({ timeout: 20_000 })
 })
+
+/**
+ * A block arranges its own settings.
+ *
+ * Tabs used to be a fixed three, so a block with eight fields had one long
+ * tab and no say in it. The hero declares Content, Appearance and Buttons
+ * — its own words, because "Buttons" is what an editor is looking for.
+ */
+test('draws the tabs a block declares', async ({ page }) => {
+    await newBuilderPage(page, 'Tabs')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Hero', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    for (const name of ['content', 'appearance', 'buttons']) {
+        await expect(page.locator(`#inspector-tab-${name}`)).toBeVisible()
+    }
+
+    // Each tab shows ITS fields and not the others'.
+    await expect(page.locator('#field-headline')).toBeVisible()
+    await expect(page.locator('#field-cta_primary_label')).toHaveCount(0)
+
+    await page.locator('#inspector-tab-buttons').click()
+    await expect(page.locator('#field-cta_primary_label')).toBeVisible()
+    await expect(page.locator('#field-headline')).toHaveCount(0)
+
+    // A block that declares nothing still gets the one Content tab it
+    // always had — grouping is opt-in, and silence means unchanged.
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Heading', exact: true }).click()
+    await waitForNodes(page, 'block', 2)
+    await expect(page.locator('#field-text')).toBeVisible()
+    await expect(page.locator('#inspector-tab-buttons')).toHaveCount(0)
+})
