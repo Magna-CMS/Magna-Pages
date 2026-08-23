@@ -404,7 +404,7 @@ async function onRichCommit(html: string) {
     }
 
     await store.edit(activeApi.value, 'Edit text', [
-        { op: 'replace', path: `${found.pointer}/data/${editing.handle}`, value: html },
+        { op: 'add', path: `${found.pointer}/data/${editing.handle}`, value: html },
     ])
 
     // Re-render either way: on success the canvas shows the stored
@@ -421,7 +421,7 @@ async function commitText(nodeId: string, text: string) {
     }
 
     const ok = await store.edit(activeApi.value, 'Edit text', [
-        { op: 'replace', path: `${found.pointer}/data/${handle}`, value: text },
+        { op: 'add', path: `${found.pointer}/data/${handle}`, value: text },
     ])
 
     // Re-render the node either way: on success the canvas shows the stored
@@ -593,7 +593,14 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
     const ok = await store.edit(
         activeApi.value,
         `Edit ${handle}`,
-        [{ op: 'replace', path: `${pointer}/data/${handle}`, value }],
+        /*
+         * `add`, not `replace`: add-on-an-object is upsert, and a field
+         * whose block.json gives no default is simply absent from the
+         * node — which `replace` refuses with "path does not exist". A
+         * media field never has a default, because there is no default
+         * picture, so choosing the first one always failed.
+         */
+        [{ op: 'add', path: `${pointer}/data/${handle}`, value }],
         `field:${pointer}:${handle}`,
     )
 
@@ -1822,6 +1829,7 @@ onBeforeUnmount(() => {
                         @remove-column="onRemoveColumn"
                         @set-spans="onSetSpans"
                         :ancestors="ancestors"
+                        :api="activeApi"
                         @set-hidden="onSetHidden"
                         @set-style="onSetStyle"
                         @set-row-style="onSetRowStyle"

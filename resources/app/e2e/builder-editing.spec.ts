@@ -886,3 +886,49 @@ test('walks up to what contains a block, and switches it off', async ({ page }) 
     await toggle.check()
     await expect(page.locator('.inspector__onoff')).toContainText('On')
 })
+
+/**
+ * Choosing a picture.
+ *
+ * Reported as "no option to paste svg code, no option to upload image". A
+ * `media` field rendered as a plain text box, which asked an editor to
+ * type a media id from memory — so a logo had no way to get a picture and
+ * neither did the image block.
+ *
+ * The second half of this is the bug the first half uncovered: writing the
+ * chosen id used `replace`, which refuses a key that is not there, and a
+ * field whose block.json gives no default is absent from the node. A media
+ * field never has a default, because there is no default picture.
+ */
+test('chooses a picture for a logo, by library or by paste', async ({ page }) => {
+    await newBuilderPage(page, 'Logo')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Logo', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    // A PICKER, not a box asking for an id.
+    const picker = page.locator('#field-media_id')
+    await expect(picker).toBeVisible()
+    expect(await picker.evaluate((el) => el.tagName)).toBe('BUTTON')
+    await picker.click()
+
+    await expect(page.locator('.media__panel')).toBeVisible()
+    await expect(page.getByText('Upload a picture')).toBeVisible()
+    await expect(page.getByText(/paste SVG markup/i)).toBeVisible()
+
+    // Pasting markup adds it and chooses it in one go: somebody who just
+    // added a picture meant to use it.
+    await page.locator('.media__paste textarea').fill(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/></svg>',
+    )
+    await page.getByRole('button', { name: /Add that SVG/i }).click()
+
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+    await expect(page.locator('.builder__error')).toHaveCount(0)
+
+    // It reached the document and the canvas drew it.
+    await expect(frame.locator('.magna-logo__image')).toBeVisible({ timeout: 20_000 })
+})

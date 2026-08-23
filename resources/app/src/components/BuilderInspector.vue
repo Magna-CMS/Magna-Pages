@@ -3,8 +3,10 @@ import { computed, ref } from 'vue'
 
 import BuilderColumnControls from './BuilderColumnControls.vue'
 import BuilderIconPicker from './BuilderIconPicker.vue'
+import BuilderMediaPicker from './BuilderMediaPicker.vue'
 import BuilderStyleControls from './BuilderStyleControls.vue'
 import BuilderTagSuggest from './BuilderTagSuggest.vue'
+import type { BuilderApi } from '../api'
 import type { Located } from '../document/locate'
 import type { Breakpoint } from '../document/responsive'
 import { insertTag } from '../document/tags'
@@ -52,6 +54,8 @@ const props = defineProps<{
     styleBreakpoint: Breakpoint
     /** What contains the selection, outermost first, ending with it. */
     ancestors?: { id: string; kind: string; label: string }[]
+    /** The document's API — a media picker has to fetch and upload. */
+    api: BuilderApi
     /** Row-layout controls, for a section: how its columns lay out. */
     rowControls?: StyleControl[]
     /**
@@ -710,6 +714,20 @@ const title = computed<string>(() => {
                     memory — a control that only works for someone who
                     already knows the answer.
                 -->
+                <!--
+                    A media field rendered as a text box before this, which
+                    asked an editor to type a media id from memory — so a
+                    logo had no way to get a picture at all.
+                -->
+                <BuilderMediaPicker
+                    v-else-if="field.type === 'media'"
+                    :id="`field-${field.handle}`"
+                    :value="valueFor(field)"
+                    :disabled="!editable"
+                    :api="api"
+                    @pick="onPick(field, $event)"
+                />
+
                 <BuilderIconPicker
                     v-else-if="field.type === 'icon'"
                     :id="`field-${field.handle}`"

@@ -24,12 +24,20 @@ function csrfToken(): string {
 }
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
+    /*
+     * FormData sets its OWN content type, including the multipart boundary
+     * the server needs to split the parts. Declaring JSON over it produces
+     * a request the server cannot read at all — so the header is omitted
+     * for exactly that case rather than always sent.
+     */
+    const isForm = init.body instanceof FormData
+
     const response = await fetch(url, {
         credentials: 'same-origin',
         ...init,
         headers: {
             Accept: 'application/json',
-            'Content-Type': 'application/json',
+            ...(isForm ? {} : { 'Content-Type': 'application/json' }),
             'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-TOKEN': csrfToken(),
             ...(init.headers ?? {}),
@@ -54,6 +62,15 @@ export interface PatchResult {
 export interface FragmentResult {
     node: string
     html: string
+}
+
+/** A picture the builder can offer, as the server describes it. */
+export interface MediaSummary {
+    id: string
+    name: string
+    alt: string | null
+    url: string
+    mime: string
 }
 
 export function createApi(pageId: string, base = '/pages-builder') {
@@ -107,6 +124,30 @@ export function createApi(pageId: string, base = '/pages-builder') {
                 method: 'POST',
                 body: JSON.stringify({ role }),
             }),
+
+        /** Pictures already here, newest first. */
+        media: (search = ''): Promise<{ media: MediaSummary[] }> =>
+            request(`${base}/media${search === '' ? '' : `?q=${encodeURIComponent(search)}`}`),
+
+        /**
+         * Add a picture — a file, or SVG markup.
+         *
+         * Both go through the same upload, so pasted markup passes the
+         * same SVG sanitiser a file does. FormData rather than JSON
+         * because one of the two is a file, and one request shape is
+         * easier to keep safe than two.
+         */
+        uploadMedia: (input: { file?: File; svg?: string }): Promise<MediaSummary> => {
+            const body = new FormData()
+            if (input.file) {
+                body.append('file', input.file)
+            }
+            if (input.svg) {
+                body.append('svg', input.svg)
+            }
+
+            return request(`${base}/media`, { method: 'POST', body })
+        },
 
         canvasUrl: (): string => `${base}/${pageId}/canvas`,
 

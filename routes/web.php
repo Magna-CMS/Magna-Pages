@@ -10,6 +10,7 @@ use Magna\Pages\Http\Controllers\BuilderApprovalController;
 use Magna\Pages\Http\Controllers\BuilderCanvasController;
 use Magna\Pages\Http\Controllers\BuilderCommentController;
 use Magna\Pages\Http\Controllers\BuilderLibraryController;
+use Magna\Pages\Http\Controllers\BuilderMediaController;
 use Magna\Pages\Http\Controllers\BuilderPatternController;
 use Magna\Pages\Http\Controllers\BuilderPerformanceController;
 use Magna\Pages\Http\Controllers\BuilderRevisionController;
@@ -44,6 +45,8 @@ Route::middleware('auth')->prefix('pages-builder')->group(function (): void {
     // Literal segments first: they must win over the {id} routes below,
     // which would otherwise swallow "registry", "app" and the rest.
     Route::post('/chrome', [BuilderApiController::class, 'createChrome'])->name('pages.builder.chrome.create');
+    Route::get('/media', [BuilderMediaController::class, 'index'])->name('pages.builder.media');
+    Route::post('/media', [BuilderMediaController::class, 'store'])->name('pages.builder.media.store');
     Route::get('/registry', [BuilderApiController::class, 'registry'])->name('pages.builder.registry');
     Route::get('/bridge.js', [BuilderCanvasController::class, 'bridge'])->name('pages.builder.bridge');
     Route::get('/library', [BuilderLibraryController::class, 'index'])->name('pages.builder.library');

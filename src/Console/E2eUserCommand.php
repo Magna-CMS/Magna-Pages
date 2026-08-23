@@ -37,6 +37,9 @@ class E2eUserCommand extends Command
             'panel.access',
             'pages.content', 'pages.layout', 'pages.design', 'pages.publish', 'pages.settings',
             'blocks.preview',
+            // The builder chooses pictures now, and an account that cannot
+            // is not a realistic page editor to test with.
+            'media.view', 'media.upload',
         );
 
         $user = User::query()->updateOrCreate(
