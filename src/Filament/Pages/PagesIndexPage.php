@@ -10,6 +10,7 @@ use Magna\Admin\Resources\EntryResource;
 use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Pages\Builder\ApprovalManager;
+use Magna\Pages\Builder\ChromeStarter;
 use Magna\Pages\Cache\PageCache;
 
 /**
@@ -108,7 +109,12 @@ class PagesIndexPage extends Page
             'title' => $title,
             'kind' => 'part',
             'role' => $role,
-            'blocks_data' => [],
+            // Chrome starts from a starter, the same one the builder's own
+            // "Design a header" offers. Two on-ramps to the same thing that
+            // hand back different documents is a difference nobody can
+            // explain — and an EMPTY header renders nothing at all, so a
+            // site that published one would wonder why nothing changed.
+            'blocks_data' => $role === 'generic' ? [] : ChromeStarter::document($role),
         ], auth()->id() !== null ? (string) auth()->id() : null);
 
         $this->redirect(url('/pages-builder/edit/'.$entry->getKey()));

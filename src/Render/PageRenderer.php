@@ -325,6 +325,11 @@ final class PageRenderer
             'registry' => $this->registry,
             'resolver' => $this->resolver,
             'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
+            // In the builder a part's nodes are marked like any other, plus
+            // the entry they belong to — a header is a different document
+            // from the page it sits on, and an edit must reach the right one.
+            'builderMode' => $builderMode,
+            'partDocumentId' => $builderMode ? (string) $entry->getKey() : null,
             // Parts obey conditions on the public site like any section.
             'conditionsPass' => fn (array $settings): bool => $this->conditions
                 ->evaluate($settings, auth()->user(), now())->visible,

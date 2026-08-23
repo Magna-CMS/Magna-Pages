@@ -24,13 +24,28 @@ final class BuilderMarkup
     /**
      * Attach node markers to the outermost element of a rendered fragment.
      */
-    public function mark(string $html, string $nodeId, string $kind): string
+    public function mark(string $html, string $nodeId, string $kind, ?string $documentId = null): string
     {
         $attributes = sprintf(
             ' data-magna-node="%s" data-magna-kind="%s"',
             e($nodeId),
             e($kind),
         );
+
+        /*
+         * Which ENTRY this node lives in, when it is not the one the
+         * session opened.
+         *
+         * Absent means "the document being edited", which is every node of
+         * the page itself — so a page render carries exactly the bytes it
+         * carried before parts became editable. Present means a header or
+         * footer: a different entry, with its own lock, history and
+         * publish state, and the builder has to know that before it sends
+         * an edit anywhere.
+         */
+        if ($documentId !== null && $documentId !== '') {
+            $attributes .= sprintf(' data-magna-doc="%s"', e($documentId));
+        }
 
         $offset = $this->firstElementOffset($html);
 

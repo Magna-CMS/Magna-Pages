@@ -27,7 +27,11 @@ export interface PointerPosition {
 
 export interface BridgeHandlers {
     onRects?: (rects: NodeRect[], height: number) => void
-    onSelect?: (node: string) => void
+    /**
+     * `doc` names the entry the node lives in when it is NOT the one this
+     * session opened — a header or footer. Null means the opened document.
+     */
+    onSelect?: (node: string, doc: string | null) => void
     onHover?: (node: string | null) => void
     onScroll?: (scrollY: number) => void
     onReady?: () => void
@@ -168,7 +172,10 @@ export class CanvasBridge {
                 })
                 break
             case 'select':
-                this.handlers.onSelect?.(String(data.node))
+                this.handlers.onSelect?.(
+                    String(data.node),
+                    typeof data.doc === 'string' && data.doc !== '' ? data.doc : null,
+                )
                 break
             case 'hover':
                 this.handlers.onHover?.(data.node === null ? null : String(data.node))

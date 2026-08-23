@@ -11,8 +11,15 @@
 --}}
 @php
     $inBuilder = ($builderMode ?? false) === true;
+    /*
+     * `$documentId` is set only when this partial is rendering a TEMPLATE
+     * PART — a header or footer, which is a different entry from the page
+     * around it. Marks then carry it, so a click in the header can be told
+     * apart from a click in the page and sent to the right document.
+     */
+    $documentId = $partDocumentId ?? null;
     $mark = fn (string $html, string $id, string $kind): string => $inBuilder
-        ? app(\Magna\Pages\Render\BuilderMarkup::class)->mark($html, $id, $kind)
+        ? app(\Magna\Pages\Render\BuilderMarkup::class)->mark($html, $id, $kind, $documentId)
         : $html;
 
     // Per-device visibility (settings.visibility, written by both editors).

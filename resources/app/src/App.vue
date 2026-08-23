@@ -187,7 +187,21 @@ const bridge = new CanvasBridge({
         chromeTarget.value = chrome
     },
 
-    onSelect: (node) => {
+    onSelect: (node, doc) => {
+        /*
+         * A node in the header or the footer.
+         *
+         * That is a different ENTRY, so before it can be selected the
+         * session has to be editing it — otherwise the edit would be sent
+         * to the page and rejected, or worse, accepted against a node id
+         * the page does not have.
+         */
+        if (doc !== null && doc !== store.pageId) {
+            void focusChrome(doc, node)
+
+            return
+        }
+
         // A click on what is ALREADY selected starts typing, the way every
         // visual builder behaves: the first click chooses the thing, the
         // second one writes in it. Double-click still works, and still
@@ -388,7 +402,7 @@ async function onRichCommit(html: string) {
         return
     }
 
-    await store.edit(api, 'Edit text', [
+    await store.edit(activeApi.value, 'Edit text', [
         { op: 'replace', path: `${found.pointer}/data/${editing.handle}`, value: html },
     ])
 
@@ -405,7 +419,7 @@ async function commitText(nodeId: string, text: string) {
         return
     }
 
-    const ok = await store.edit(api, 'Edit text', [
+    const ok = await store.edit(activeApi.value, 'Edit text', [
         { op: 'replace', path: `${found.pointer}/data/${handle}`, value: text },
     ])
 
@@ -425,7 +439,7 @@ async function onDrop(source: DragSource, at: DropPlacement) {
     const inParent = 'parent' in at
 
     if (source.kind === 'move') {
-        if (inParent && (await store.moveBlock(api, source.nodeId, at.parent, at.index))) {
+        if (inParent && (await store.moveBlock(activeApi.value, source.nodeId, at.parent, at.index))) {
             reloadCanvas()
         }
 
@@ -433,7 +447,7 @@ async function onDrop(source: DragSource, at: DropPlacement) {
     }
 
     if (source.kind === 'new') {
-        if (inParent && (await store.addBlock(api, at.parent, source.handle, at.index))) {
+        if (inParent && (await store.addBlock(activeApi.value, at.parent, source.handle, at.index))) {
             ui.inspect('content')
             reloadCanvas()
         }
@@ -442,22 +456,28 @@ async function onDrop(source: DragSource, at: DropPlacement) {
     }
 
     if (source.kind === 'pattern') {
-        if (await store.insertPattern(api, source.id, at)) {
+        if (await store.insertPattern(activeApi.value, source.id, at)) {
             reloadCanvas()
         }
 
         return
     }
 
-    if (confirmMissingBlocks(source.slug) && (await store.insertLibraryAsset(api, source.slug, at))) {
+    if (confirmMissingBlocks(source.slug) && (await store.insertLibraryAsset(activeApi.value, source.slug, at))) {
         reloadCanvas()
     }
 }
 
-/** Re-render one node from current (unsaved) state and swap it in. */
+/**
+ * Re-render one node from current (unsaved) state and swap it in.
+ *
+ * Through the FOCUSED document's fragment endpoint, because the node being
+ * re-rendered belongs to whichever document is being edited — asking the
+ * page to render a node that lives in its header would find nothing.
+ */
 const refreshFragment = debounceByKey(async (node: string) => {
     try {
-        const result = await api.fragment(node, store.blocks)
+        const result = await activeApi.value.fragment(node, store.blocks)
         bridge.applyFragment(node, result.html)
     } catch {
         // A failed fragment leaves the last good markup on screen; the
@@ -570,7 +590,7 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
     // One field is one gesture: typing into it, or dragging its picker,
     // collapses to a single undo step rather than one per keystroke.
     const ok = await store.edit(
-        api,
+        activeApi.value,
         `Edit ${handle}`,
         [{ op: 'replace', path: `${pointer}/data/${handle}`, value }],
         `field:${pointer}:${handle}`,
@@ -584,7 +604,7 @@ async function onFieldEdit(pointer: string, handle: string, value: unknown) {
 async function onSettingEdit(pointer: string, key: string, value: unknown) {
     // `add` rather than `replace`: settings keys (visibility, anchor) may
     // not exist on the node yet, and add-on-an-object is upsert.
-    const ok = await store.edit(api, `Edit ${key}`, [
+    const ok = await store.edit(activeApi.value, `Edit ${key}`, [
         { op: 'add', path: `${pointer}/settings/${key}`, value },
     ])
 
@@ -603,7 +623,7 @@ async function onSettingEdit(pointer: string, key: string, value: unknown) {
 const targetParent = computed<string | null>(() => store.insertionParent)
 
 async function onAddBlock(handle: string) {
-    if (targetParent.value && (await store.addBlock(api, targetParent.value, handle))) {
+    if (targetParent.value && (await store.addBlock(activeApi.value, targetParent.value, handle))) {
         // A placed element is one the editor wants to fill in next.
         ui.inspect('content')
         reloadCanvas()
@@ -675,7 +695,7 @@ async function onLibraryInsert(slug: string) {
 }
 
 async function onAddSection(spans: number[] = [12]) {
-    if (await store.addSection(api, spans)) {
+    if (await store.addSection(activeApi.value, spans)) {
         // Stay in the library: the next step of the workflow is dropping an
         // element into the row that just appeared.
         reloadCanvas()
@@ -683,7 +703,7 @@ async function onAddSection(spans: number[] = [12]) {
 }
 
 async function onDelete() {
-    if (store.selectedNode && (await store.removeNode(api, store.selectedNode))) {
+    if (store.selectedNode && (await store.removeNode(activeApi.value, store.selectedNode))) {
         reloadCanvas()
     }
 }
@@ -808,7 +828,7 @@ async function writeStyle(pointer: string, settingsKey: string, key: string, val
     // picker must not bury the rest of the history under its own steps.
     const gesture = `style:${pointer}:${settingsKey}:${key}:${styleBreakpoint.value}`
 
-    if (await store.edit(api, `Style ${key}`, operations, gesture)) {
+    if (await store.edit(activeApi.value, `Style ${key}`, operations, gesture)) {
         // Styles land on wrappers the per-node fragment loop does not
         // re-render.
         reloadCanvas()
@@ -816,25 +836,25 @@ async function writeStyle(pointer: string, settingsKey: string, key: string, val
 }
 
 async function onAddColumn(sectionId: string) {
-    if (await store.addColumn(api, sectionId)) {
+    if (await store.addColumn(activeApi.value, sectionId)) {
         reloadCanvas()
     }
 }
 
 async function onRemoveColumn(sectionId: string, columnId: string) {
-    if (await store.removeColumn(api, sectionId, columnId)) {
+    if (await store.removeColumn(activeApi.value, sectionId, columnId)) {
         reloadCanvas()
     }
 }
 
 async function onSetSpans(sectionId: string, spans: number[]) {
-    if (await store.setSpans(api, sectionId, spans)) {
+    if (await store.setSpans(activeApi.value, sectionId, spans)) {
         reloadCanvas()
     }
 }
 
 async function onDuplicate() {
-    if (store.selectedNode && (await store.duplicateNode(api, store.selectedNode))) {
+    if (store.selectedNode && (await store.duplicateNode(activeApi.value, store.selectedNode))) {
         reloadCanvas()
     }
 }
@@ -856,7 +876,7 @@ async function onMoveSection(delta: number) {
         return
     }
 
-    if (await store.moveSection(api, id, target)) {
+    if (await store.moveSection(activeApi.value, id, target)) {
         reloadCanvas()
     }
 }
@@ -963,7 +983,7 @@ async function onNodeAction(key: NodeActionKey) {
             typeof current === 'string' ? current : '',
         )
         if (name !== null) {
-            await store.renameNode(api, node, name)
+            await store.renameNode(activeApi.value, node, name)
         }
 
         return
@@ -974,14 +994,14 @@ async function onNodeAction(key: NodeActionKey) {
         return
     }
     if (key === 'pasteStyles') {
-        if (await store.pasteStyles(api, node)) {
+        if (await store.pasteStyles(activeApi.value, node)) {
             reloadCanvas()
         }
 
         return
     }
     if (key === 'paste') {
-        if (await store.pasteNode(api)) {
+        if (await store.pasteNode(activeApi.value)) {
             reloadCanvas()
         }
 
@@ -1022,7 +1042,7 @@ async function onNestNode(nodeId: string, direction: 'into' | 'out') {
         return
     }
 
-    if (await store.moveBlock(api, nodeId, target.parent, target.index)) {
+    if (await store.moveBlock(activeApi.value, nodeId, target.parent, target.index)) {
         reloadCanvas()
     }
 }
@@ -1050,7 +1070,7 @@ async function onMoveNode(nodeId: string, delta: number) {
         return
     }
 
-    if (await store.moveBlock(api, nodeId, position.parent, target)) {
+    if (await store.moveBlock(activeApi.value, nodeId, position.parent, target)) {
         reloadCanvas()
     }
 }
@@ -1080,6 +1100,61 @@ async function onCreateChrome(role: 'header' | 'footer') {
     try {
         const made = await api.createChrome(role)
         window.location.href = `/pages-builder/edit/${encodeURIComponent(made.id)}`
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    }
+}
+
+/**
+ * A second API, for the document being edited when it is not the one this
+ * session opened. Cached so repeated clicks in the header do not build a
+ * new client each time.
+ */
+const chromeApis = new Map<string, ReturnType<typeof createApi>>()
+
+function apiFor(documentId: string) {
+    let cached = chromeApis.get(documentId)
+    if (!cached) {
+        cached = createApi(documentId)
+        chromeApis.set(documentId, cached)
+    }
+
+    return cached
+}
+
+/** The API for whatever is focused — what every edit must be sent through. */
+const activeApi = computed(() => (store.focus === null ? api : apiFor(store.focus.id)))
+
+/**
+ * Edit the header or footer a click landed in, without leaving the page.
+ *
+ * The canvas keeps rendering the PAGE, so the header stays in context and
+ * you can see what you are changing against what surrounds it. Only the
+ * edit target moves.
+ */
+async function focusChrome(documentId: string, node: string | null) {
+    const known = [...store.chrome.header, ...store.chrome.footer].find((c) => c.id === documentId)
+    const role = store.chrome.footer.some((c) => c.id === documentId) ? 'footer' : 'header'
+
+    try {
+        await store.focusDocument(apiFor(documentId), {
+            id: documentId,
+            title: known?.title ?? (role === 'header' ? 'Site header' : 'Site footer'),
+            role,
+        })
+        if (node !== null) {
+            selectNode(node)
+        }
+    } catch (error) {
+        store.error = error instanceof Error ? error.message : String(error)
+    }
+}
+
+/** Back to the page, with its history intact. */
+async function backToPage() {
+    try {
+        await store.unfocus(api)
+        chromeTarget.value = null
     } catch (error) {
         store.error = error instanceof Error ? error.message : String(error)
     }
@@ -1224,12 +1299,12 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 async function onUndo() {
-    await store.undo(api)
+    await store.undo(activeApi.value)
     reloadCanvas()
 }
 
 async function onRedo() {
-    await store.redo(api)
+    await store.redo(activeApi.value)
     reloadCanvas()
 }
 
@@ -1257,13 +1332,30 @@ function reloadCanvas() {
  */
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
+/**
+ * Every document this session is holding a lock on.
+ *
+ * Usually one. Editing a header means holding two — the page, so nobody
+ * takes it out from under you, and the header you are changing — and both
+ * need their leases kept alive. A heartbeat that only covered the page
+ * would let the header's lock expire under an editor still typing in it.
+ */
+function documentsInPlay(): ReturnType<typeof createApi>[] {
+    const inPlay = [api]
+    for (const client of chromeApis.values()) {
+        inPlay.push(client)
+    }
+
+    return inPlay
+}
+
 function startHeartbeat() {
     heartbeatTimer = setInterval(async () => {
         if (!store.lock.mine) {
             return
         }
         try {
-            await api.heartbeat()
+            await Promise.all(documentsInPlay().map((client) => client.heartbeat()))
         } catch (error) {
             // Only a server ANSWER takes the lock away. A network failure
             // means offline — the server-side TTL is the arbiter there, and
@@ -1276,7 +1368,7 @@ function startHeartbeat() {
 }
 
 async function onPublish() {
-    await store.publish(api)
+    await store.publish(activeApi.value)
 }
 
 async function onRequestPublish() {
@@ -1285,7 +1377,7 @@ async function onRequestPublish() {
         return
     }
 
-    await store.requestPublish(api, note.trim() === '' ? null : note.trim())
+    await store.requestPublish(activeApi.value, note.trim() === '' ? null : note.trim())
 }
 
 /** Design tab state: theme tokens + site overrides. */
@@ -1359,7 +1451,7 @@ async function onInsertLibrary(slug: string) {
     // end of whatever the selection sits in. A drag supplies an exact one.
     const at = targetParent.value ? { parent: targetParent.value } : undefined
 
-    if (await store.insertLibraryAsset(api, slug, at)) {
+    if (await store.insertLibraryAsset(activeApi.value, slug, at)) {
         reloadCanvas()
     }
 }
@@ -1368,7 +1460,7 @@ async function onImportPage(mode: 'replace' | 'append') {
     const asset = pendingImport.value
     pendingImport.value = null
 
-    if (asset && confirmMissingBlocks(asset.slug) && (await store.importPageAsset(api, asset.slug, mode))) {
+    if (asset && confirmMissingBlocks(asset.slug) && (await store.importPageAsset(activeApi.value, asset.slug, mode))) {
         reloadCanvas()
     }
 }
@@ -1378,7 +1470,7 @@ async function onInsertPattern(id: string) {
     // in, a section pattern appends. A drag supplies an exact target.
     const at = targetParent.value ? { parent: targetParent.value } : undefined
 
-    if (await store.insertPattern(api, id, at)) {
+    if (await store.insertPattern(activeApi.value, id, at)) {
         reloadCanvas()
     }
 }
@@ -1417,7 +1509,7 @@ async function onSavePattern() {
         return
     }
 
-    await store.saveAsPattern(api, name)
+    await store.saveAsPattern(activeApi.value, name)
 }
 
 /** Checks & History panel state (pull surfaces — loaded on demand). */
@@ -1518,13 +1610,20 @@ async function onRestoreRevision(revisionId: string) {
 }
 
 async function onTakeOver() {
-    await store.takeOver(api)
+    await store.takeOver(activeApi.value)
     reloadCanvas()
 }
 
 function onUnload() {
-    if (store.lock.mine) {
-        api.release()
+    if (! store.lock.mine) {
+        return
+    }
+
+    // Every lock, not only the page's: a header opened in this session is
+    // held by it, and leaving without saying so strands that header until
+    // its lease expires.
+    for (const client of documentsInPlay()) {
+        client.release()
     }
 }
 
@@ -1532,7 +1631,7 @@ function onUnload() {
 let replayTimer: ReturnType<typeof setInterval> | null = null
 
 function onOnline() {
-    void store.replayQueue(api)
+    void store.replayQueue(activeApi.value)
 }
 
 onMounted(async () => {
@@ -1542,12 +1641,12 @@ onMounted(async () => {
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('pagehide', onUnload)
     window.addEventListener('online', onOnline)
-    replayTimer = setInterval(() => void store.replayQueue(api), 15_000)
+    replayTimer = setInterval(() => void store.replayQueue(activeApi.value), 15_000)
 
-    await store.load(api)
-    await store.restoreQueue(api)
-    void store.loadPatterns(api)
-    void store.loadLibrary(api)
+    await store.load(activeApi.value)
+    await store.restoreQueue(activeApi.value)
+    void store.loadPatterns(activeApi.value)
+    void store.loadLibrary(activeApi.value)
     void loadStyles()
     startHeartbeat()
 })
@@ -1593,6 +1692,26 @@ onBeforeUnmount(() => {
             @request-publish="onRequestPublish"
             @export-library="onExportLibrary"
         />
+
+        <!--
+            Which document the edits are landing in.
+
+            Not decoration. The canvas still shows the page, so without
+            this an editor changing the header has no way to tell that
+            their next keystroke goes somewhere other than the page they
+            opened — and "my edits went into the wrong thing" is a bug
+            report they would be right to file.
+        -->
+        <!-- A region, not a status: this describes WHERE you are editing
+             for as long as you are there, and a second live status beside
+             the save indicator would announce over it. -->
+        <div v-if="store.focus" class="builder__focusbar" role="region" aria-label="Editing context">
+            <span>
+                Editing <strong>{{ store.focus.title }}</strong> — this
+                {{ store.focus.role }} appears on every page that uses it
+            </span>
+            <button type="button" @click="backToPage">Back to the page</button>
+        </div>
 
         <div v-if="!store.lock.mine && store.loaded" class="builder__lockbar" role="alert">
             <span>
@@ -2474,6 +2593,32 @@ body {
     border-radius: 3px 3px 0 0;
     background: var(--builder-accent);
     color: #fff;
+}
+
+.builder__focusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 14px;
+    background: var(--builder-accent);
+    color: #fff;
+    font-size: 12px;
+}
+
+.builder__focusbar button {
+    padding: 3px 12px;
+    border: 1px solid rgb(255 255 255 / 50%);
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.builder__focusbar button:hover {
+    background: rgb(255 255 255 / 18%);
 }
 
 .builder__lockbar {

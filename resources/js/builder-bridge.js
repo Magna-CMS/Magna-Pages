@@ -124,10 +124,27 @@
     }
 
     function nodeIdFrom(target) {
+        var found = nodeFrom(target)
+
+        return found === null ? null : found.node
+    }
+
+    /*
+     * The node under a click, and WHICH DOCUMENT it lives in.
+     *
+     * A header is a different entry from the page around it, so a node
+     * carries `data-magna-doc` when it is not part of the document this
+     * session opened. Absent means the opened one, which is every node of
+     * the page itself.
+     */
+    function nodeFrom(target) {
         var element = target
         while (element && element !== document.body) {
             if (element.hasAttribute && element.hasAttribute('data-magna-node')) {
-                return element.getAttribute('data-magna-node')
+                return {
+                    node: element.getAttribute('data-magna-node'),
+                    doc: element.getAttribute('data-magna-doc'),
+                }
             }
             element = element.parentElement
         }
@@ -510,9 +527,9 @@
                 return
             }
 
-            var id = nodeIdFrom(event.target)
-            if (id !== null) {
-                send('select', { node: id })
+            var found = nodeFrom(event.target)
+            if (found !== null) {
+                send('select', { node: found.node, doc: found.doc })
 
                 return
             }

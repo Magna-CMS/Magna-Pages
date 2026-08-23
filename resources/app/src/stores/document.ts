@@ -168,6 +168,39 @@ interface State {
     clipboard: ClipboardEntry | null
     /** A copied style set, kept apart from the node clipboard. */
     styleClipboard: Record<string, unknown> | null
+    /**
+     * The document the session opened, when a different one is focused.
+     *
+     * A page and its header are two ENTRIES with separate locks, histories
+     * and publish states. The store holds exactly one at a time — that is
+     * what keeps its actions simple, and it is worth keeping — so editing a
+     * header is a SWAP, and this is what to swap back to.
+     */
+    home: DocumentStash | null
+    /** What is focused now, when it is not the document that was opened. */
+    focus: { id: string; title: string; role: string } | null
+}
+
+/**
+ * Everything that belongs to ONE document.
+ *
+ * Stashed on a focus change and restored on the way back, so returning to
+ * the page keeps its undo history rather than reloading it away. The send
+ * queue is in here for the reason that matters most: a batch queued against
+ * the header must never replay into the page.
+ */
+interface DocumentStash {
+    pageId: string
+    title: string
+    status: string
+    blocks: BlockDocument
+    pageSettings: Record<string, unknown>
+    selectedNode: string | null
+    undoStack: HistoryEntry[]
+    redoStack: HistoryEntry[]
+    sendQueue: QueuedBatch[]
+    lock: LockState
+    approval: ApprovalState | null
 }
 
 export const useDocumentStore = defineStore('document', {
@@ -202,6 +235,8 @@ export const useDocumentStore = defineStore('document', {
         replaying: false,
         clipboard: null,
         styleClipboard: null,
+        home: null,
+        focus: null,
     }),
 
     getters: {
@@ -281,6 +316,103 @@ export const useDocumentStore = defineStore('document', {
             this.pageSettings = payload.document?.settings ?? {}
             this.chrome = payload.chrome ?? { header: [], footer: [] }
             this.loaded = true
+        },
+
+        /**
+         * Everything that belongs to the document currently loaded.
+         *
+         * Deliberately explicit rather than a spread of the whole state:
+         * the registry, the icon vocabulary and the style controls are the
+         * SITE's, not the document's, and copying them per focus would
+         * duplicate a few kilobytes for nothing and invite them to drift.
+         */
+        stashCurrent(): DocumentStash {
+            return {
+                pageId: this.pageId,
+                title: this.title,
+                status: this.status,
+                blocks: this.blocks,
+                pageSettings: this.pageSettings,
+                selectedNode: this.selectedNode,
+                undoStack: this.undoStack,
+                redoStack: this.redoStack,
+                sendQueue: this.sendQueue,
+                lock: this.lock,
+                approval: this.approval,
+            }
+        },
+
+        /**
+         * Edit a different document — a header or footer — without leaving
+         * the session.
+         *
+         * The queue is flushed to storage under the OUTGOING document's id
+         * before anything swaps. That is the step that stops a batch queued
+         * against the header replaying into the page: after the swap the id
+         * has changed, and a queue persisted under the wrong one would come
+         * back attached to the wrong document.
+         */
+        async focusDocument(
+            api: BuilderApi,
+            focus: { id: string; title: string; role: string },
+        ): Promise<void> {
+            if (this.focus?.id === focus.id) {
+                return
+            }
+
+            await persistQueue(this.pageId, [...this.sendQueue])
+
+            // Only the FIRST focus stashes: focusing header then footer
+            // must still come home to the page, not to the header.
+            if (this.home === null) {
+                this.home = this.stashCurrent()
+            }
+
+            this.sendQueue = []
+            this.undoStack = []
+            this.redoStack = []
+            this.selectedNode = null
+            this.focus = focus
+
+            await this.load(api)
+        },
+
+        /**
+         * Back to the document this session opened.
+         *
+         * Restored from the stash rather than reloaded, so the page's undo
+         * history survives the trip into its header. A stash that is
+         * somehow missing falls back to a reload, which is correct and only
+         * loses history.
+         */
+        async unfocus(api: BuilderApi): Promise<void> {
+            if (this.focus === null) {
+                return
+            }
+
+            await persistQueue(this.pageId, [...this.sendQueue])
+
+            const home = this.home
+            this.focus = null
+            this.home = null
+
+            if (home === null) {
+                await this.load(api)
+
+                return
+            }
+
+            this.pageId = home.pageId
+            this.title = home.title
+            this.status = home.status
+            this.blocks = home.blocks
+            this.pageSettings = home.pageSettings
+            this.selectedNode = home.selectedNode
+            this.undoStack = home.undoStack
+            this.redoStack = home.redoStack
+            this.sendQueue = home.sendQueue
+            this.lock = home.lock
+            this.approval = home.approval
         },
 
         async requestPublish(api: BuilderApi, note: string | null): Promise<boolean> {

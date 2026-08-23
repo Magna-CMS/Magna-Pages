@@ -146,7 +146,10 @@ class TemplatePartResolver
                 'id' => $id,
                 'title' => $title,
                 'slug' => $slug,
-                'published' => $entry->getAttribute('status') === EntryStatus::Published->value,
+                // `status` is cast to an enum, so comparing the attribute
+                // to a string is always false — which reported every
+                // published part as a draft and left it unselectable.
+                'published' => $entry->status === EntryStatus::Published,
             ];
         }
 

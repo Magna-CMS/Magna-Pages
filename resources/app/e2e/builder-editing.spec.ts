@@ -752,3 +752,92 @@ test('offers to design the header when you click it', async ({ page }) => {
     const started = page.locator('.builder__frame').contentFrame()
     await expect(started.locator('[data-magna-kind="block"]').first()).toBeVisible()
 })
+
+/**
+ * Editing the header from the page, without leaving the page.
+ *
+ * A page and its header are two ENTRIES with separate locks, histories and
+ * publish states, so this is the assertion that matters: a click in the
+ * header edits the HEADER, the change survives, and coming back leaves the
+ * page where it was. If focus leaked, the edit would land on the page —
+ * which is the failure this exists to catch.
+ */
+test('edits the header in place, then comes back to the page', async ({ page }) => {
+    await signIn(page)
+
+    // A published header, so a page actually renders one.
+    await page.goto('/pages-index')
+    const name = `Inplace header ${Date.now()}`
+    await page.getByPlaceholder('Header').fill(name)
+    await page.getByLabel('Used as').selectOption('header')
+    await page.getByRole('button', { name: /Create part & open builder/i }).click()
+    await page.waitForURL(/pages-builder\/edit\//)
+    await expect(page.getByRole('status')).toHaveText(/Saved/)
+    await page.getByRole('button', { name: /^Publish$/ }).click()
+    await page.waitForTimeout(3000)
+
+    // A page that uses it.
+    await page.goto('/pages-index')
+    await page.getByPlaceholder('About us').fill(`Inplace page ${Date.now()}`)
+    await page.getByRole('button', { name: 'Create & open builder' }).click()
+    await page.waitForURL(/pages-builder\/edit\//)
+    await expect(page.getByRole('status')).toHaveText(/Saved/)
+    const pageUrl = page.url()
+
+    await page.locator('#panel-mode-page').click()
+    // By VALUE: the option's text carries the template's own whitespace,
+    // so an exact-label match is matching the markup, not the choice.
+    const headerValue = await page.locator('#page-header option').evaluateAll(
+        (options, wanted) =>
+            (options as HTMLOptionElement[]).find((o) => o.textContent?.includes(wanted))?.value ?? '',
+        name,
+    )
+    expect(headerValue).not.toBe('')
+    await page.locator('#page-header').selectOption(headerValue)
+
+    // The canvas re-renders the page with the chosen header in it. Polled,
+    // because that is a save plus a full canvas reload.
+    await expect
+        .poll(
+            () =>
+                page.locator('.builder__frame').evaluate(
+                    (el) => !!(el as HTMLIFrameElement).contentDocument?.querySelector('[data-magna-doc]'),
+                ),
+            { timeout: 30_000 },
+        )
+        .toBe(true)
+
+    // Click a node INSIDE the header. It belongs to another document.
+    const frame = page.locator('.builder__frame').contentFrame()
+    const headerNode = frame.locator('[data-magna-doc]').first()
+    await expect(headerNode).toBeVisible()
+    await headerNode.click()
+
+    // The session says where the edits are going, and never left the page.
+    await expect(page.locator('.builder__focusbar')).toContainText(name)
+    expect(page.url()).toBe(pageUrl)
+
+    // Edit it, in place.
+    await page.locator('#panel-mode-inspect').click()
+    const text = page.locator('#field-text')
+    await expect(text).toBeVisible()
+    await text.fill('Edited in place')
+    await text.dispatchEvent('change')
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 15_000 })
+
+    // It reached the HEADER, which the canvas re-renders in context.
+    await expect
+        .poll(
+            () =>
+                page.locator('.builder__frame').evaluate(
+                    (el) => (el as HTMLIFrameElement).contentDocument?.body?.innerText ?? '',
+                ),
+            { timeout: 20_000 },
+        )
+        .toContain('Edited in place')
+
+    // Back to the page: the banner goes, and the page is what is edited.
+    await page.getByRole('button', { name: /Back to the page/i }).click()
+    await expect(page.locator('.builder__focusbar')).toHaveCount(0)
+    expect(page.url()).toBe(pageUrl)
+})

@@ -302,3 +302,111 @@ describe('undo travels the same road as an edit', () => {
         expect(store.redoStack.map((entry) => entry.label)).toEqual(['Edit one'])
     })
 })
+
+describe('editing a header without leaving the page', () => {
+    /**
+     * A page and its header are two ENTRIES with separate locks, histories
+     * and publish states. The store holds one at a time, so focusing a
+     * header is a swap — and the thing that must never happen is one
+     * document's pending work reaching the other.
+     */
+    function bootstrapApi(id: string, title: string): BuilderApi {
+        return {
+            bootstrap: vi.fn(async () => ({
+                document: { id, title, slug: id, path: null, status: 'draft', updated_at: null, blocks: [] },
+                registry: [],
+                tokens: {},
+                capabilities: { content: true, structure: true, style: true, publish: true },
+                lock: { mine: true, holder: null },
+            })),
+            patch: vi.fn(async () => ({ document: [] })),
+        } as unknown as BuilderApi
+    }
+
+    it('never lets one document’s queued work reach another', async () => {
+        const store = useDocumentStore()
+        store.pageId = 'page-1'
+        store.blocks = documentWith('Page')
+
+        // Work queued against the PAGE, still unacknowledged.
+        store.enqueue([{ op: 'add', path: '/0/settings/style', value: { background: '#fff' } }])
+        expect(store.sendQueue).toHaveLength(1)
+
+        await store.focusDocument(bootstrapApi('header-1', 'Site header'), {
+            id: 'header-1',
+            title: 'Site header',
+            role: 'header',
+        })
+
+        // The header starts with an empty queue. Carrying the page's batch
+        // across would replay a page edit into the header.
+        expect(store.pageId).toBe('header-1')
+        expect(store.sendQueue).toHaveLength(0)
+
+        // Work queued against the HEADER now.
+        store.enqueue([{ op: 'add', path: '/0/settings/style', value: { background: '#000' } }])
+        expect(store.sendQueue).toHaveLength(1)
+
+        await store.unfocus(bootstrapApi('page-1', 'Page'))
+
+        // Home again, with the PAGE's batch — not the header's.
+        expect(store.pageId).toBe('page-1')
+        expect(store.sendQueue).toHaveLength(1)
+        expect(store.sendQueue[0].operations[0].value).toEqual({ background: '#fff' })
+    })
+
+    it('keeps the page’s undo history across a trip into its header', async () => {
+        const store = useDocumentStore()
+        store.pageId = 'page-1'
+        store.blocks = documentWith('Page')
+
+        const api = acceptingApi(store)
+        await store.edit(api, 'Edit text', setText('Edited'), 'field:blk-1:text')
+        vi.advanceTimersByTime(50)
+        expect(store.canUndo).toBe(true)
+
+        await store.focusDocument(bootstrapApi('header-1', 'Site header'), {
+            id: 'header-1',
+            title: 'Site header',
+            role: 'header',
+        })
+
+        // A fresh document starts with a fresh history: undo must not step
+        // backwards through a document you are not looking at.
+        expect(store.canUndo).toBe(false)
+
+        await store.unfocus(bootstrapApi('page-1', 'Page'))
+
+        // Restored rather than reloaded, so the page's history survived.
+        expect(store.canUndo).toBe(true)
+        expect(store.title).toBe('')
+    })
+
+    it('comes home to the page even after focusing twice', async () => {
+        const store = useDocumentStore()
+        store.pageId = 'page-1'
+        store.blocks = documentWith('Page')
+
+        await store.focusDocument(bootstrapApi('header-1', 'H'), { id: 'header-1', title: 'H', role: 'header' })
+        await store.focusDocument(bootstrapApi('footer-1', 'F'), { id: 'footer-1', title: 'F', role: 'footer' })
+
+        // Header then footer must still come home to the PAGE, not to the
+        // header — only the first focus stashes.
+        await store.unfocus(bootstrapApi('page-1', 'Page'))
+        expect(store.pageId).toBe('page-1')
+        expect(store.focus).toBeNull()
+    })
+
+    it('does nothing when asked to focus what is already focused', async () => {
+        const store = useDocumentStore()
+        store.pageId = 'page-1'
+
+        const api = bootstrapApi('header-1', 'H')
+        await store.focusDocument(api, { id: 'header-1', title: 'H', role: 'header' })
+        await store.focusDocument(api, { id: 'header-1', title: 'H', role: 'header' })
+
+        // A second focus would stash the HEADER as home and strand the page.
+        expect(api.bootstrap).toHaveBeenCalledTimes(1)
+        expect(store.home?.pageId).toBe('page-1')
+    })
+})
