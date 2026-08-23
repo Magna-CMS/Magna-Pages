@@ -78,10 +78,10 @@ final class StyleDescriptors
      * @var array<string, array{property: string, control: string, group: string, label: string, options: list<string>, appliesTo: list<string>}>
      */
     private const KEYS = [
-        'paddingTop' => ['property' => 'padding-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding top', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
-        'paddingRight' => ['property' => 'padding-right', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding right', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
-        'paddingBottom' => ['property' => 'padding-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
-        'paddingLeft' => ['property' => 'padding-left', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding left', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER]],
+        'paddingTop' => ['property' => 'padding-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding top', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER, self::PAGE]],
+        'paddingRight' => ['property' => 'padding-right', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding right', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER, self::PAGE]],
+        'paddingBottom' => ['property' => 'padding-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER, self::PAGE]],
+        'paddingLeft' => ['property' => 'padding-left', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Padding left', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::BLOCK, self::CONTAINER, self::PAGE]],
         'marginTop' => ['property' => 'margin-top', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin top', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK, self::CONTAINER]],
         'marginBottom' => ['property' => 'margin-bottom', 'control' => 'text', 'group' => 'Spacing', 'label' => 'Margin bottom', 'options' => [], 'appliesTo' => [self::SECTION, self::BLOCK, self::CONTAINER]],
 
