@@ -111,7 +111,7 @@ class TemplatePartResolver
      * Every part that may be chosen for a role — what the builder offers
      * and the settings screen lists.
      *
-     * @return list<array{id: string, title: string, slug: string}>
+     * @return list<array{id: string, title: string, slug: string, published: bool}>
      */
     public function chromeChoices(string $role): array
     {
@@ -123,15 +123,31 @@ class TemplatePartResolver
         foreach (Entry::type('pages_template')
             ->where('kind', 'part')
             ->where('role', $role)
-            ->where('status', EntryStatus::Published->value)
             ->orderBy('title')
             ->get() as $entry) {
             $id = $entry->getKey();
             $title = $entry->getAttribute('title');
             $slug = $entry->getAttribute('slug');
-            if (is_string($id) && is_string($title) && is_string($slug)) {
-                $choices[] = ['id' => $id, 'title' => $title, 'slug' => $slug];
+            if (! is_string($id) || ! is_string($title) || ! is_string($slug)) {
+                continue;
             }
+
+            /*
+             * Drafts are LISTED and marked, not hidden.
+             *
+             * Only a published part renders — the resolver refuses the rest
+             * every time, and that is the right rule. But hiding a draft
+             * meant someone who had just designed a header was told none
+             * existed, which is a lie the screen tells about work they can
+             * see they did. Named and unselectable teaches what to do next;
+             * absent teaches that the feature is broken.
+             */
+            $choices[] = [
+                'id' => $id,
+                'title' => $title,
+                'slug' => $slug,
+                'published' => $entry->getAttribute('status') === EntryStatus::Published->value,
+            ];
         }
 
         return $choices;

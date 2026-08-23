@@ -48,6 +48,17 @@ class PagesIndexPage extends Page
      */
     public string $newPartRole = 'generic';
 
+    /** Narrows the page list. Templates live below it, so its length matters. */
+    public string $pageSearch = '';
+
+    /**
+     * How many pages the shortcut list shows.
+     *
+     * A shortcut to recent work, deliberately — the full index is the
+     * entry resource, which paginates and sorts properly.
+     */
+    private const PAGE_LIMIT = 25;
+
     public string $newPopupTitle = '';
 
     public static function canAccess(): bool
@@ -163,13 +174,32 @@ class PagesIndexPage extends Page
      */
     protected function getViewData(): array
     {
-        $pages = Entry::type('page')
-            ->orderByDesc('updated_at')
-            ->get();
+        /*
+         * BOUNDED, and searchable.
+         *
+         * This used to fetch every page on the site and render all of
+         * them. On a site with a few hundred pages that is a slow query,
+         * a huge document, and — because the templates section sits below
+         * this table — a header nobody can scroll to. The list is a
+         * shortcut to recent work, not the canonical index; the full one
+         * is the entry resource, linked from the view.
+         */
+        $query = Entry::type('page');
+
+        $search = trim($this->pageSearch);
+        if ($search !== '') {
+            $query->where('title', 'like', '%'.$search.'%');
+        }
+
+        $total = (clone $query)->count();
+
+        $pages = $query->orderByDesc('updated_at')->limit(self::PAGE_LIMIT)->get();
 
         $approvals = app(ApprovalManager::class);
 
         return [
+            'pageTotal' => $total,
+            'pageLimit' => self::PAGE_LIMIT,
             'pages' => $pages->map(fn (Entry $page): array => [
                 'id' => (string) $page->getKey(),
                 'title' => (string) ($page->getAttribute('title') ?? 'Untitled'),
@@ -184,6 +214,8 @@ class PagesIndexPage extends Page
                     : null,
             ])->all(),
             'createFieldsUrl' => EntryResource::getUrl('create', ['type' => 'page']),
+            // The canonical index, for when the shortcut list is not enough.
+            'allPagesUrl' => EntryResource::getUrl('index', ['type' => 'page']),
             'templates' => Entry::type('pages_template')
                 ->orderByDesc('updated_at')
                 ->get()

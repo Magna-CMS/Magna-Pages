@@ -223,7 +223,11 @@ class PagesSettingsPage extends Page implements HasForms
     {
         $options = [];
         foreach (app(TemplatePartResolver::class)->chromeChoices($role) as $choice) {
-            $options[$choice['id']] = $choice['title'];
+            // A draft is named rather than hidden, and says why it cannot
+            // be the site default yet: only a published part renders.
+            $options[$choice['id']] = $choice['published']
+                ? $choice['title']
+                : $choice['title'].' (draft — publish to use)';
         }
 
         return $options;

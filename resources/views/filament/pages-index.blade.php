@@ -2,8 +2,9 @@
     {{-- New page: title in, builder open. --}}
     <div class="flex flex-wrap items-end gap-2">
         <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New page</label>
+            <label for="new-page-title" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New page</label>
             <input type="text"
+                   id="new-page-title"
                    wire:model="newPageTitle"
                    wire:keydown.enter="createPage"
                    placeholder="About us"
@@ -13,7 +14,24 @@
         <x-filament::button tag="a" color="gray" href="{{ $createFieldsUrl }}">Create with fields</x-filament::button>
     </div>
 
-    {{-- Every page, newest change first. --}}
+    {{-- Recent work, newest change first — a shortcut, not the index.
+         Bounded on purpose: this table used to render every page on the
+         site, which pushed the templates section below it out of reach. --}}
+    <div class="flex flex-wrap items-center justify-between gap-2">
+        <input type="search"
+               wire:model.live.debounce.300ms="pageSearch"
+               placeholder="Search pages…"
+               class="w-64 rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+            @if($pageTotal > $pageLimit)
+                Showing the {{ $pageLimit }} most recently changed of {{ $pageTotal }}.
+                <a href="{{ $allPagesUrl }}" class="underline">See all pages</a>.
+            @else
+                {{ $pageTotal }} {{ Str::plural('page', $pageTotal) }}.
+            @endif
+        </p>
+    </div>
+
     <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
         <table class="w-full text-sm">
             <thead>
@@ -67,12 +85,21 @@
         </table>
     </div>
 
-    {{-- Templates: header/footer parts and page templates. A part whose
-         slug is "header" or "footer" is live in that slot once published. --}}
+    {{-- Templates: the site's header, footer, and reusable parts.
+
+         Its own heading because it was previously an unlabelled block
+         below the page table, and on a site with more than a screenful of
+         pages that made "design the header" something you had to already
+         know was down here. --}}
+    <h2 class="mt-6 text-base font-semibold text-gray-900 dark:text-white">Headers, footers &amp; parts</h2>
+    <p class="-mt-4 text-sm text-gray-500 dark:text-gray-400">
+        Design a header once and use it on every page, or give one page its own.
+    </p>
     <div class="flex flex-wrap items-end gap-2">
         <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New template part</label>
+            <label for="new-part-title" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New template part</label>
             <input type="text"
+                   id="new-part-title"
                    wire:model="newPartTitle"
                    wire:keydown.enter="createPart"
                    placeholder="Header"
@@ -82,8 +109,9 @@
             {{-- Asked at creation, not left for later: a part with no role
                  is invisible to the header and footer pickers, so a header
                  nobody can choose is a header nobody made. --}}
-            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Used as</label>
-            <select wire:model="newPartRole"
+            <label for="new-part-role" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Used as</label>
+            <select id="new-part-role"
+                    wire:model="newPartRole"
                     class="rounded-lg border-gray-300 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
                 <option value="generic">A part referenced by a page</option>
                 <option value="header">The site header</option>
@@ -92,8 +120,9 @@
         </div>
         <x-filament::button color="gray" wire:click="createPart">Create part &amp; open builder</x-filament::button>
         <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New popup</label>
+            <label for="new-popup-title" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New popup</label>
             <input type="text"
+                   id="new-popup-title"
                    wire:model="newPopupTitle"
                    wire:keydown.enter="createPopup"
                    placeholder="Summer sale"

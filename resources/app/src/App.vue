@@ -643,6 +643,10 @@ async function onLibraryInstall(slug: string) {
             id: installed.id,
             title: installed.title,
             slug: installed.id,
+            // Installed as a draft, so it is offered and marked rather
+            // than immediately usable — installing chrome must not change
+            // what visitors see until somebody chooses it.
+            published: false,
         })
         store.error = null
     } catch (error) {

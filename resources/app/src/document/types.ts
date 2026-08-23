@@ -148,6 +148,8 @@ export interface ChromeChoice {
     id: string
     title: string
     slug: string
+    /** Only a published part renders, so a draft is offered but not usable. */
+    published: boolean
 }
 
 export interface BootstrapPayload {

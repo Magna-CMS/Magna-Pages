@@ -84,8 +84,17 @@ const ROLES = ['header', 'footer'] as const
                         @change="$emit('setChrome', role, ($event.target as HTMLSelectElement).value)"
                     >
                         <option value="">Site default</option>
-                        <option v-for="choice in chromeChoices[role]" :key="choice.id" :value="choice.id">
-                            {{ choice.title }}
+                        <!-- A draft is named and unselectable rather than
+                             hidden: only a published part renders, and
+                             hiding one tells an editor their work does not
+                             exist. -->
+                        <option
+                            v-for="choice in chromeChoices[role]"
+                            :key="choice.id"
+                            :value="choice.id"
+                            :disabled="!choice.published"
+                        >
+                            {{ choice.title }}{{ choice.published ? '' : ' (draft — publish to use)' }}
                         </option>
                     </select>
 

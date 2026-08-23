@@ -668,3 +668,48 @@ test('switches the palette for a visitor, and remembers it', async ({ page }) =>
 
     await preview.close()
 })
+
+/**
+ * Making a header, and then choosing it — the whole path.
+ *
+ * Reported as "there is no option to create/edit the header menu". The
+ * controls existed; the page they sat on rendered EVERY page on the site
+ * above them, so on this install they were twenty thousand pixels down.
+ * This walks the path a person walks: make one, design it, choose it.
+ */
+test('creates a header from the pages screen and uses it', async ({ page }) => {
+    await signIn(page)
+    await page.goto('/pages-index')
+
+    // The section is reachable without scrolling past the whole site.
+    await expect(page.getByRole('heading', { name: /Headers, footers/i })).toBeVisible()
+    const box = (await page.getByRole('heading', { name: /Headers, footers/i }).boundingBox())!
+    expect(box.y).toBeLessThan(4000)
+
+    const name = `Brand header ${Date.now()}`
+    await page.getByPlaceholder('Header').fill(name)
+    await page.getByLabel('Used as').selectOption('header')
+    await page.getByRole('button', { name: /Create part & open builder/i }).click()
+
+    // It opens in the builder, ready to design.
+    await page.waitForURL(/pages-builder\/edit\//)
+    await expect(page.locator('.builder__frame')).toBeVisible()
+
+    // And it is offered to a page as its header.
+    await page.goto('/pages-index')
+    await page.getByPlaceholder('About us').fill(`Header user ${Date.now()}`)
+    await page.getByRole('button', { name: 'Create & open builder' }).click()
+    await page.waitForURL(/pages-builder\/edit\//)
+    await expect(page.getByRole('status')).toHaveText(/Saved/)
+
+    await page.locator('#panel-mode-page').click()
+    const select = page.locator('#page-header')
+    await expect(select).toBeVisible()
+
+    // Listed as the draft it is, and NOT selectable: only a published part
+    // renders. Hidden would have told the editor their work did not exist.
+    const draft = select.locator('option', { hasText: name })
+    await expect(draft).toHaveCount(1)
+    await expect(draft).toHaveText(/draft — publish to use/)
+    await expect(draft).toBeDisabled()
+})
