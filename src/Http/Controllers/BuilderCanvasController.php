@@ -157,6 +157,21 @@ final class BuilderCanvasController
             outline: 1px dashed rgba(61, 139, 253, 0.55);
             outline-offset: -4px;
         }
+        /*
+         * A block that renders nothing until it is given something — an
+         * image with no picture, a download with no file. It gets a marker
+         * node so it stays selectable; without a size that node is still
+         * unclickable, which is the same problem one step later.
+         *
+         * aria-hidden on the element keeps it out of the accessibility
+         * tree; this is scaffolding for a pointer, not content.
+         */
+        [data-magna-empty="true"] {
+            display: block;
+            min-height: 44px;
+            border: 1px dashed rgba(61, 139, 253, 0.55);
+            border-radius: 4px;
+        }
         CSS;
 
     /** The bridge script itself. */

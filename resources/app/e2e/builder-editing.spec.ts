@@ -997,3 +997,123 @@ test('offers a plugin data source in the Loop block', async ({ page }) => {
     await expect(source.locator('option', { hasText: 'Blog — latest posts' })).toHaveCount(1)
     await expect(source.locator('option', { hasText: 'Blog — featured posts' })).toHaveCount(1)
 })
+
+test('picks a file, not a picture, for a download block', async ({ page }) => {
+    /*
+     * The media picker listed images only, so a block wanting a file could
+     * be inserted and never given one — the same shape of bug as a select
+     * with no options. `accept` on the field is what widens it, and only
+     * the real picker proves the field's value reached the request.
+     */
+    await newBuilderPage(page, 'File block')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'File download', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    // The picker says what it is offering, and it is not pictures.
+    await page.locator('#field-media_id').click()
+    await expect(page.getByRole('listbox', { name: 'files' })).toBeVisible()
+    await expect(page.getByLabel('Search files')).toBeVisible()
+})
+
+test('builds a table from pasted rows', async ({ page }) => {
+    await newBuilderPage(page, 'Table block')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Table', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    // Select the RENDERED block before editing it. Straight after an
+    // optimistic insert the inspector can still be bound to the detached
+    // pre-render node, and an edit written there goes nowhere.
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+    await frame.locator('[data-magna-kind="block"]').first().click()
+
+    await page.locator('#field-separator').selectOption('pipe')
+    const rows = page.locator('#field-rows')
+    await rows.fill('Region|Revenue\nNorth|120')
+    // fill() alone does not commit a textarea here — the inspector saves on
+    // change, the same as the page-background field above.
+    await rows.dispatchEvent('change')
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+
+    // The canvas is the production renderer, so a real <table> there is the
+    // proof — not the inspector echoing back what was typed. Polled through
+    // the frame's own DOM: the canvas reloads, and a frameLocator can pin
+    // the detached pre-reload frame and wait on it forever.
+    await expect
+        .poll(
+            () =>
+                page.locator('.builder__frame').evaluate((el) => {
+                    const document = (el as HTMLIFrameElement).contentDocument
+
+                    return [
+                        document?.querySelector('table.magna-table__table th')?.textContent?.trim(),
+                        document?.querySelector('table.magna-table__table td')?.textContent?.trim(),
+                    ].join('/')
+                }),
+            { timeout: 25_000 },
+        )
+        .toBe('Region/North')
+})
+
+test('places the blog FAQ, with its templates, on a page', async ({ page }) => {
+    /*
+     * A plugin block whose markup and stylesheet come from the PLUGIN, not
+     * from core or the theme — the case that proves a plugin can ship a
+     * real block rather than only feed data into one of ours.
+     */
+    await newBuilderPage(page, 'Blog FAQ')
+    await page.getByRole('button', { name: 'Add section: 1 column' }).click()
+    const frame = page.locator('.builder__frame').contentFrame()
+    await frame.locator('[data-magna-kind="column"]').first().click()
+    await page.getByRole('tab', { name: 'Add', exact: true }).click()
+    await page.getByRole('button', { name: 'Styled FAQ', exact: true }).click()
+    await waitForNodes(page, 'block', 1)
+
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+    await frame.locator('[data-magna-kind="block"]').first().click()
+
+    // Twenty styles, read off the blog's own schema rather than a list
+    // maintained beside it.
+    const template = page.locator('#field-template')
+    await expect(template.locator('option')).toHaveCount(20)
+    await template.selectOption('neon')
+
+    // A repeater field: until the inspector could edit one, an FAQ could be
+    // inserted and never filled in.
+    await page.getByRole('button', { name: 'Add questions' }).click()
+    const question = page.locator('.repeater__item input').first()
+    await question.fill('Do you ship?')
+    await question.dispatchEvent('change')
+    const answer = page.locator('.repeater__item textarea').first()
+    await answer.fill('Yes, worldwide.')
+    await answer.dispatchEvent('change')
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+
+    await expect
+        .poll(
+            () =>
+                page.locator('.builder__frame').evaluate((el) => {
+                    const node = (el as HTMLIFrameElement).contentDocument?.querySelector(
+                        '.faq[data-template]',
+                    )
+
+                    return node?.getAttribute('data-template') ?? ''
+                }),
+            { timeout: 25_000 },
+        )
+        .toBe('neon')
+
+    // The plugin's stylesheet reached the page, or the templates are inert.
+    const linked = await page.locator('.builder__frame').evaluate((el) =>
+        [...((el as HTMLIFrameElement).contentDocument?.querySelectorAll('link[rel=stylesheet]') ?? [])]
+            .some((l) => (l as HTMLLinkElement).href.includes('blog-editor.css')),
+    )
+    expect(linked).toBe(true)
+})

@@ -383,6 +383,79 @@ function onPick(field: BlockFieldDefinition, value: string) {
     }
 }
 
+/**
+ * A repeater's items, as records the row editor can read.
+ *
+ * Anything that is not a list of objects reads as empty rather than
+ * throwing: a document written before this field was a repeater, or by a
+ * hand-edit, must not take the whole inspector down.
+ */
+function itemsFor(field: BlockFieldDefinition): Record<string, unknown>[] {
+    const value = data.value[field.handle]
+    if (!Array.isArray(value)) {
+        return []
+    }
+
+    return value.filter(
+        (item): item is Record<string, unknown> =>
+            typeof item === 'object' && item !== null && !Array.isArray(item),
+    )
+}
+
+/** Every repeater write goes out as the WHOLE list — one field, one value. */
+function writeRepeater(field: BlockFieldDefinition, items: Record<string, unknown>[]): void {
+    if (props.located) {
+        emit('edit', props.located.pointer, field.handle, items)
+    }
+}
+
+function addRepeaterItem(field: BlockFieldDefinition): void {
+    // A new row starts with its sub-fields present and empty, so the shape
+    // an editor sees is the shape the block declared.
+    const blank: Record<string, unknown> = {}
+    for (const sub of field.fields) {
+        blank[sub.handle] = ''
+    }
+
+    writeRepeater(field, [...itemsFor(field), blank])
+}
+
+function removeRepeaterItem(field: BlockFieldDefinition, index: number): void {
+    const items = itemsFor(field)
+    items.splice(index, 1)
+    writeRepeater(field, items)
+}
+
+function moveRepeaterItem(field: BlockFieldDefinition, index: number, by: number): void {
+    const items = itemsFor(field)
+    const to = index + by
+    if (to < 0 || to >= items.length) {
+        return
+    }
+
+    const [moved] = items.splice(index, 1)
+    items.splice(to, 0, moved)
+    writeRepeater(field, items)
+}
+
+function setRepeaterValue(
+    field: BlockFieldDefinition,
+    index: number,
+    handle: string,
+    event: Event,
+): void {
+    const items = itemsFor(field)
+    if (!items[index]) {
+        return
+    }
+
+    items[index] = {
+        ...items[index],
+        [handle]: (event.target as HTMLInputElement | HTMLTextAreaElement).value,
+    }
+    writeRepeater(field, items)
+}
+
 function valueFor(field: BlockFieldDefinition): string {
     const value = data.value[field.handle]
 
@@ -681,6 +754,92 @@ const title = computed<string>(() => {
                     </select>
                 </div>
 
+                <!--
+                    A list field: FAQ questions, and anything else a block
+                    describes as a repeater.
+
+                    Until this existed, a repeater fell through to the plain
+                    text input below and wrote a STRING where the schema
+                    wants a list — so the blocks built out of lists could be
+                    inserted and never filled in. Each item is the block's
+                    own sub-fields; order is editable because for an FAQ the
+                    order is the content.
+                -->
+                <div v-else-if="field.type === 'repeater'" class="repeater">
+                    <div
+                        v-for="(item, index) in itemsFor(field)"
+                        :key="index"
+                        class="repeater__item"
+                    >
+                        <div class="repeater__bar">
+                            <span class="repeater__count">{{ index + 1 }}</span>
+                            <button
+                                type="button"
+                                :disabled="!editable || index === 0"
+                                :aria-label="`Move ${field.label} ${index + 1} up`"
+                                @click="moveRepeaterItem(field, index, -1)"
+                            >
+                                ↑
+                            </button>
+                            <button
+                                type="button"
+                                :disabled="!editable || index === itemsFor(field).length - 1"
+                                :aria-label="`Move ${field.label} ${index + 1} down`"
+                                @click="moveRepeaterItem(field, index, 1)"
+                            >
+                                ↓
+                            </button>
+                            <button
+                                type="button"
+                                class="repeater__remove"
+                                :disabled="!editable"
+                                :aria-label="`Remove ${field.label} ${index + 1}`"
+                                @click="removeRepeaterItem(field, index)"
+                            >
+                                Remove
+                            </button>
+                        </div>
+
+                        <label
+                            v-for="sub in field.fields"
+                            :key="sub.handle"
+                            class="repeater__field"
+                        >
+                            <span>{{ sub.label }}</span>
+                            <textarea
+                                v-if="sub.type === 'textarea' || sub.type === 'richtext'"
+                                rows="3"
+                                :value="String(item[sub.handle] ?? '')"
+                                :disabled="!editable"
+                                @change="setRepeaterValue(field, index, sub.handle, $event)"
+                            />
+                            <input
+                                v-else
+                                :type="sub.type === 'number' ? 'number' : 'text'"
+                                :value="String(item[sub.handle] ?? '')"
+                                :disabled="!editable"
+                                @change="setRepeaterValue(field, index, sub.handle, $event)"
+                            />
+                        </label>
+                    </div>
+
+                    <!--
+                        The field's own <label for> targets this button, and
+                        would otherwise name it just "Questions" — a button
+                        that announces as a noun. aria-label says what it does.
+                    -->
+                    <button
+                        type="button"
+                        class="repeater__add"
+                        :id="`field-${field.handle}`"
+                        :disabled="!editable"
+                        :aria-label="`Add ${field.label.toLowerCase()}`"
+                        @click="addRepeaterItem(field)"
+                    >
+                        Add {{ field.label.toLowerCase() }}
+                    </button>
+                </div>
+
                 <template v-else-if="field.type === 'textarea' || field.type === 'richtext'">
                     <textarea
                         :id="`field-${field.handle}`"
@@ -741,6 +900,7 @@ const title = computed<string>(() => {
                     :value="valueFor(field)"
                     :disabled="!editable"
                     :api="api"
+                    :accept="field.accept"
                     @pick="onPick(field, $event)"
                 />
 
@@ -1256,5 +1416,82 @@ select:disabled {
 .inspector__bound {
     font-size: 12px;
     opacity: 0.7;
+}
+
+/* ── Repeater rows ─────────────────────────────────────────────────────── */
+.repeater__item {
+    margin-bottom: 6px;
+    padding: 6px;
+    border: 1px solid var(--builder-border);
+    border-radius: 5px;
+}
+
+.repeater__bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 5px;
+}
+
+.repeater__count {
+    flex: 1;
+    font-size: 11px;
+    opacity: 0.6;
+}
+
+.repeater__bar button {
+    padding: 1px 6px;
+    border: 1px solid var(--builder-border);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.repeater__bar button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.repeater__field {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.repeater__field span {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+    opacity: 0.75;
+}
+
+.repeater__field input,
+.repeater__field textarea {
+    width: 100%;
+    padding: 4px 7px;
+    border: 1px solid var(--builder-border);
+    border-radius: 4px;
+    background: #0f1117;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+}
+
+.repeater__add {
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--builder-accent);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.repeater__add:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 </style>

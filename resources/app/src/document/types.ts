@@ -65,6 +65,12 @@ export interface BlockFieldDefinition {
     default: unknown
     options: Record<string, string>
     multiple: boolean
+    /**
+     * What a `media` field's picker may offer: 'image' for pictures, 'any'
+     * for a field that wants a file. Optional so a builder loaded against
+     * a server that predates it still type-checks.
+     */
+    accept?: string
     fields: BlockFieldDefinition[]
 }
 

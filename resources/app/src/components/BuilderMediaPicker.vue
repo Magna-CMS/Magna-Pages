@@ -17,12 +17,17 @@ import { ApiError, type BuilderApi, type MediaSummary } from '../api'
  * one somebody pasted a script into.
  */
 
-const props = defineProps<{
-    id: string
-    value: string
-    disabled: boolean
-    api: BuilderApi
-}>()
+const props = withDefaults(
+    defineProps<{
+        id: string
+        value: string
+        disabled: boolean
+        api: BuilderApi
+        /** What the FIELD accepts — 'image' for pictures, 'any' for files. */
+        accept?: string
+    }>(),
+    { accept: 'image' },
+)
 
 const emit = defineEmits<{ pick: [mediaId: string] }>()
 
@@ -39,11 +44,31 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 const chosen = computed(() => items.value.find((item) => item.id === props.value) ?? null)
 
+/** A field asking for any file is not asking for a picture, and says so. */
+const noun = computed(() => (props.accept === 'any' ? 'file' : 'picture'))
+const nounPlural = computed(() => (props.accept === 'any' ? 'files' : 'pictures'))
+
+/**
+ * Only an image has a thumbnail. Everything else gets its extension, which
+ * is the part of a filename someone actually scans for — an <img> pointed
+ * at a PDF renders as a broken-image icon, which reads as "this is broken"
+ * rather than "this is a PDF".
+ */
+function isImage(item: MediaSummary): boolean {
+    return item.mime.startsWith('image/')
+}
+
+function extensionOf(item: MediaSummary): string {
+    const dot = item.name.lastIndexOf('.')
+
+    return dot === -1 ? 'file' : item.name.slice(dot + 1).toLowerCase()
+}
+
 async function load() {
     try {
         error.value = null
         denied.value = false
-        items.value = (await props.api.media(search.value)).media
+        items.value = (await props.api.media(search.value, props.accept)).media
     } catch (failure) {
         if (failure instanceof ApiError && (failure.status === 403 || failure.status === 401)) {
             denied.value = true
@@ -106,8 +131,16 @@ async function add(upload: () => Promise<MediaSummary>) {
             :aria-expanded="open"
             @click="open = !open"
         >
-            <img v-if="chosen" :src="chosen.url" :alt="''" class="media__thumb" />
-            <span>{{ chosen ? chosen.name : (value ? 'Chosen picture' : 'Choose a picture') }}</span>
+            <img
+                v-if="chosen && isImage(chosen)"
+                :src="chosen.url"
+                :alt="''"
+                class="media__thumb"
+            />
+            <span v-else-if="chosen" class="media__ext" aria-hidden="true">
+                {{ extensionOf(chosen) }}
+            </span>
+            <span>{{ chosen ? chosen.name : (value ? `Chosen ${noun}` : `Choose a ${noun}`) }}</span>
             <span aria-hidden="true">{{ open ? '▾' : '▸' }}</span>
         </button>
 
@@ -125,12 +158,12 @@ async function add(upload: () => Promise<MediaSummary>) {
                 v-model="search"
                 type="search"
                 class="media__search"
-                placeholder="Search pictures…"
-                aria-label="Search pictures"
+                :placeholder="`Search ${nounPlural}…`"
+                :aria-label="`Search ${nounPlural}`"
                 @input="load"
             />
 
-            <div class="media__grid" role="listbox" aria-label="Pictures">
+            <div class="media__grid" role="listbox" :aria-label="nounPlural">
                 <button
                     v-for="item in items"
                     :key="item.id"
@@ -142,7 +175,8 @@ async function add(upload: () => Promise<MediaSummary>) {
                     :title="item.name"
                     @click="$emit('pick', item.id); open = false"
                 >
-                    <img :src="item.url" :alt="''" />
+                    <img v-if="isImage(item)" :src="item.url" :alt="''" />
+                    <span v-else class="media__ext" aria-hidden="true">{{ extensionOf(item) }}</span>
                 </button>
             </div>
 
@@ -151,19 +185,19 @@ async function add(upload: () => Promise<MediaSummary>) {
                  from page ones, and an editor who lacks them should learn
                  that rather than think the feature is broken. -->
             <p v-if="denied" class="media__empty">
-                Choosing pictures needs the media permission — ask an admin.
+                Choosing {{ nounPlural }} needs the media permission — ask an admin.
             </p>
             <p v-else-if="items.length === 0" class="media__empty">
-                {{ search === '' ? 'No pictures yet — upload one below.' : 'Nothing matches that.' }}
+                {{ search === '' ? `No ${nounPlural} yet — upload one below.` : 'Nothing matches that.' }}
             </p>
 
             <div class="media__add">
                 <label class="media__upload">
-                    <span>Upload a picture</span>
+                    <span>Upload a {{ noun }}</span>
                     <input
                         ref="fileInput"
                         type="file"
-                        accept="image/*,.svg"
+                        :accept="accept === 'any' ? undefined : 'image/*,.svg'"
                         :disabled="busy"
                         @change="onFile"
                     />
@@ -224,6 +258,18 @@ async function add(upload: () => Promise<MediaSummary>) {
     width: 22px;
     height: 22px;
     object-fit: contain;
+}
+
+/* What a non-image gets instead of a thumbnail. */
+.media__ext {
+    flex: none;
+    padding: 1px 5px;
+    border: 1px solid var(--builder-border);
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.8;
 }
 
 .media__clear {

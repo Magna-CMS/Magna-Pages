@@ -125,9 +125,25 @@ export function createApi(pageId: string, base = '/pages-builder') {
                 body: JSON.stringify({ role }),
             }),
 
-        /** Pictures already here, newest first. */
-        media: (search = ''): Promise<{ media: MediaSummary[] }> =>
-            request(`${base}/media${search === '' ? '' : `?q=${encodeURIComponent(search)}`}`),
+        /**
+         * Media already here, newest first.
+         *
+         * `accept` is the field's, not the picker's: a logo field asks for
+         * pictures and a download field asks for anything, and the server
+         * narrows to pictures unless told otherwise.
+         */
+        media: (search = '', accept = 'image'): Promise<{ media: MediaSummary[] }> => {
+            const query = new URLSearchParams()
+            if (search !== '') {
+                query.set('q', search)
+            }
+            if (accept !== 'image') {
+                query.set('accept', accept)
+            }
+            const suffix = query.toString()
+
+            return request(`${base}/media${suffix === '' ? '' : `?${suffix}`}`)
+        },
 
         /**
          * Add a picture — a file, or SVG markup.

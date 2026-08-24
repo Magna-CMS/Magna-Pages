@@ -50,12 +50,30 @@ final class BuilderMarkup
         $offset = $this->firstElementOffset($html);
 
         if ($offset === null) {
+            /*
+             * A block that rendered NOTHING still has to be here.
+             *
+             * Several blocks correctly render empty until they are given
+             * something — an image with no picture yet, a download with no
+             * file, a table with no rows. Returning the empty string left
+             * them with no node in the canvas at all, which meant an editor
+             * could insert one and then neither see it nor click it: the
+             * only way out was the navigator, and the only way to notice
+             * was to know.
+             *
+             * A placeholder is builder-only. mark() is called from the
+             * sections partial exclusively when $inBuilder, so the
+             * published page still renders the same nothing it always did.
+             */
+            if ($html === '') {
+                return '<span'.$attributes.' class="magna-node-empty"'
+                    .' data-magna-empty="true" aria-hidden="true"></span>';
+            }
+
             // Nothing to hang an attribute on. A wrapper is the lesser evil
             // here: a block with no element of its own has no layout of its
             // own to disturb.
-            return $html === ''
-                ? $html
-                : '<span'.$attributes.' style="display:contents">'.$html.'</span>';
+            return '<span'.$attributes.' style="display:contents">'.$html.'</span>';
         }
 
         // Insert immediately after the tag name, before any existing

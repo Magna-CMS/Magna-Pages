@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Magna\Blocks\BlockField;
 use Magna\Media\Exceptions\MediaIngestException;
 use Magna\Media\Exceptions\MimeTypeNotAllowedException;
 use Magna\Media\Media;
@@ -41,9 +42,20 @@ final class BuilderMediaController
 
         $search = trim((string) $request->string('q')->value());
 
-        $query = Media::query()
-            ->where('mime_type', 'like', 'image/%')
-            ->latest('created_at');
+        $query = Media::query()->latest('created_at');
+
+        /*
+         * Pictures unless the field asked for more.
+         *
+         * Defaulting to images keeps every field that existed before
+         * `accept` behaving as it did — the logo picker must not start
+         * offering PDFs because a new block wanted them. A value that is
+         * not the widening one narrows, so a malformed query string cannot
+         * widen what an editor is shown.
+         */
+        if ($request->string('accept')->value() !== BlockField::ACCEPT_ANY) {
+            $query->where('mime_type', 'like', 'image/%');
+        }
 
         if ($search !== '') {
             $query->where(function ($builder) use ($search): void {

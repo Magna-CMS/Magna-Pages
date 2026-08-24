@@ -161,6 +161,10 @@ final class BuilderBootstrap
             // Which tab this field belongs on. Null means Content, which
             // is where every field was before a block could say otherwise.
             'group' => $field->group,
+            // What a media field's picker may offer. Shipped for the same
+            // reason as the style vocabulary: the server decides, and the
+            // builder should ask for exactly what it will be given.
+            'accept' => $field->accept,
             'fields' => array_map($this->fieldPayload(...), $field->fields),
         ];
     }
