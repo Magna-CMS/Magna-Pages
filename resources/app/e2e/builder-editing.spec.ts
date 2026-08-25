@@ -1084,17 +1084,28 @@ test('places the blog FAQ, with its templates, on a page', async ({ page }) => {
     const template = page.locator('#field-template')
     await expect(template.locator('option')).toHaveCount(20)
     await template.selectOption('neon')
+    // Let the style write settle before the next gesture: two edits landing
+    // across a canvas reload can lose the first.
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
 
     // A repeater field: until the inspector could edit one, an FAQ could be
-    // inserted and never filled in.
-    await page.getByRole('button', { name: 'Add questions' }).click()
+    // inserted and never filled in. The block seeds one blank row, so there
+    // is somewhere to type without pressing Add first.
     const question = page.locator('.repeater__item input').first()
+    await expect(question).toBeVisible()
     await question.fill('Do you ship?')
     await question.dispatchEvent('change')
     const answer = page.locator('.repeater__item textarea').first()
     await answer.fill('Yes, worldwide.')
     await answer.dispatchEvent('change')
     await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+    await expect(page.locator('.builder__error')).toHaveCount(0)
+
+    // A second row, added the way an editor adds one.
+    await page.getByRole('button', { name: 'Add questions' }).click()
+    await expect(page.locator('.repeater__item')).toHaveCount(2)
+    await expect(page.getByRole('status')).toHaveText(/Saved/, { timeout: 20_000 })
+    await expect(page.locator('.builder__error')).toHaveCount(0)
 
     await expect
         .poll(
