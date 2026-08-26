@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Render;
 
+use Illuminate\Support\Facades\Route;
 use Magna\Blocks\BlockNode;
 use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
+use Magna\Content\SchemaRegistry;
 use Magna\Frontend\FrontendPage;
 use Magna\Pages\Builder\PageSettings;
 use Magna\Pages\Consent\ConsentScripts;
 use Magna\Pages\Experiments\ExperimentTracker;
 use Magna\Pages\Menus\MenuManager;
+use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Routing\LocalePrefix;
 use Magna\Pages\Templates\PopupTargeting;
@@ -47,6 +50,9 @@ final class PageRenderer
      */
     private const HEADER_MENU_HANDLE = 'primary';
 
+    /** Whether a route other than the page fallback answers GET / (memoised). */
+    private ?bool $rootClaimed = null;
+
     public function __construct(
         private readonly BlockRegistry $registry,
         private readonly BlockDataResolver $resolver,
@@ -59,6 +65,7 @@ final class PageRenderer
         private readonly LocalePrefix $localePrefix,
         private readonly ConsentScripts $consent,
         private readonly ExperimentTracker $experiments,
+        private readonly SchemaRegistry $schemaRegistry,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -189,6 +196,12 @@ final class PageRenderer
             'mainHtml' => $mainHtml,
             'siteName' => is_string($siteName) && $siteName !== '' ? $siteName : 'Magna',
             'headerMenu' => $this->menus->resolve(self::HEADER_MENU_HANDLE),
+            // Where a theme's wordmark should point. NOT always "/": the
+            // page router only sees a path nothing else has claimed, and on
+            // an install whose admin panel is mounted at the root the home
+            // page lives at its own address instead. Resolved here for the
+            // same reason the header menu is — views receive data.
+            'homeUrl' => $this->homeUrl(),
             'tree' => $tree,
             'registry' => $this->registry,
             'resolver' => $this->resolver,
@@ -355,6 +368,71 @@ final class PageRenderer
         }
 
         return $overlays === '' ? null : $overlays;
+    }
+
+    /**
+     * The site's front door, as a theme should link to it.
+     *
+     * "/" whenever the page router can answer it, which is the common case
+     * and the one PageRouteResolver already implements. When something else
+     * owns the root — a Filament panel mounted there, most obviously — that
+     * request never reaches the page router at all, and a wordmark linking
+     * to "/" walks the visitor out of the site. So the home page's OWN
+     * address is used instead, built the way menus build a page link.
+     */
+    private function homeUrl(): string
+    {
+        if (! $this->rootIsClaimed()) {
+            return '/';
+        }
+
+        $id = PagesSettings::get()->home_page_id;
+
+        if (! is_string($id) || $id === '' || ! $this->schemaRegistry->has('page')) {
+            return '/';
+        }
+
+        $home = Entry::type('page')
+            ->where('id', $id)
+            ->where('status', EntryStatus::Published->value)
+            ->first();
+
+        if ($home === null) {
+            return '/';
+        }
+
+        $path = $home->getAttribute('path');
+        $slug = $home->getAttribute('slug');
+        $segment = is_string($path) && $path !== '' ? $path : (is_string($slug) ? $slug : '');
+
+        return $segment === '' ? '/' : '/'.$segment;
+    }
+
+    /**
+     * Whether a route other than the page fallback answers GET /.
+     *
+     * Asked of the router rather than of any one package: a panel, a
+     * marketing controller or another plugin could all be the thing sitting
+     * on the root, and the answer a theme needs is the same in every case.
+     * The page fallback's own URI is a placeholder, never a literal "/".
+     */
+    private function rootIsClaimed(): bool
+    {
+        // Memoised: the route table cannot change mid-request, and this
+        // walks all of it.
+        if ($this->rootClaimed !== null) {
+            return $this->rootClaimed;
+        }
+
+        $claimed = false;
+        foreach (Route::getRoutes()->getRoutes() as $route) {
+            if ($route->uri() === '/' && in_array('GET', $route->methods(), true)) {
+                $claimed = true;
+                break;
+            }
+        }
+
+        return $this->rootClaimed = $claimed;
     }
 
     /**
