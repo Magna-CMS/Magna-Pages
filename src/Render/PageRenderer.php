@@ -191,6 +191,22 @@ final class PageRenderer
 
         return view($this->themeViews->layoutView(), [
             'title' => $title,
+            /*
+             * What search engines and share cards read.
+             *
+             * A page's own title is written for the person already on the
+             * site — "Home", "Pricing" — and a theme appends the site name
+             * to it. A search result is read by someone who has never been
+             * here, so a page may carry its own full title and a sentence
+             * describing itself, and when it does that title stands alone:
+             * the site name is already part of what the author wrote.
+             *
+             * Both are empty for anything that is not a page (a template
+             * part, a plugin frontend page), and a layout that has never
+             * heard of them keeps working — it prints $title as before.
+             */
+            'seoTitle' => $this->entryString($context, 'meta_title'),
+            'metaDescription' => $this->entryString($context, 'meta_description'),
             // Pre-rendered main-slot HTML (plugin frontend pages). A theme
             // layout must print it instead of the section tree when set.
             'mainHtml' => $mainHtml,
@@ -275,6 +291,16 @@ final class PageRenderer
             // what the locale-switcher block renders. Empty off-page.
             'localeAlternates' => $this->localeAlternates($context),
         ])->render();
+    }
+
+    /**
+     * One trimmed string field off the page being rendered, or ''.
+     */
+    private function entryString(?Entry $context, string $field): string
+    {
+        $value = $context?->getAttribute($field);
+
+        return is_string($value) ? trim($value) : '';
     }
 
     /**

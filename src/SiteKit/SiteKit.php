@@ -29,7 +29,7 @@ class SiteKit
 {
     public const VERSION = 1;
 
-    private const ENTRY_KEYS = ['title', 'slug', 'path', 'locale', 'translation_group', 'template', 'kind', 'blocks_data'];
+    private const ENTRY_KEYS = ['title', 'slug', 'path', 'locale', 'translation_group', 'template', 'kind', 'meta_title', 'meta_description', 'blocks_data'];
 
     public function __construct(
         private readonly SchemaRegistry $schemas,

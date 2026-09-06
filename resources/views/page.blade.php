@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $title }}</title>
+    <title>{{ $seoTitle !== '' ? $seoTitle : $title }}</title>
+    @if($metaDescription !== '')
+        <meta name="description" content="{{ $metaDescription }}">
+    @endif
     @if($tokensCss !== '')
         {{-- Active theme's design tokens as CSS custom properties (values
              pass the same injection filter as section tokenOverrides). --}}

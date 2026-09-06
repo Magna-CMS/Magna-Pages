@@ -20,6 +20,18 @@
             "from": "title"
         },
         {
+            "handle": "meta_title",
+            "type": "text",
+            "label": "SEO title",
+            "localizable": true
+        },
+        {
+            "handle": "meta_description",
+            "type": "textarea",
+            "label": "Meta description",
+            "localizable": true
+        },
+        {
             "handle": "template",
             "type": "text",
             "label": "Template",
