@@ -165,6 +165,15 @@ class MenuManager
                 $settings['frontend_page'] = $node['plugin_page'];
             }
 
+            // The builder sends every optional field on every item, so the
+            // blank ones are dropped rather than stored: an absent key is
+            // what "not set" means to the renderer, and a row of empty
+            // strings makes every diff of a revision look like a change.
+            $settings = array_filter(
+                $settings,
+                static fn (mixed $value): bool => $value !== '' && $value !== null,
+            );
+
             $item = MenuItem::query()->create([
                 'menu_id' => $menu->id,
                 'parent_id' => $parentId,
@@ -225,10 +234,19 @@ class MenuManager
                 }
             }
 
+            $settings = $item->settings ?? [];
+
             $level[] = [
                 'label' => $label,
                 'url' => $url ?? '#',
                 'target' => $item->target,
+                // Per-item presentation the builder collects. Absent keys
+                // stay absent: the nav view prints an attribute only when
+                // there is something to print.
+                'title_attr' => is_string($settings['title_attr'] ?? null) ? $settings['title_attr'] : null,
+                'css_class' => is_string($settings['css_class'] ?? null) ? $settings['css_class'] : null,
+                'rel' => is_string($settings['rel'] ?? null) ? $settings['rel'] : null,
+                'description' => is_string($settings['description'] ?? null) ? $settings['description'] : null,
                 'children' => $this->buildLevel($items, $item->id, $pageUrls),
             ];
         }
