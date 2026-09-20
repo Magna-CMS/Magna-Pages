@@ -18,12 +18,31 @@ use Magna\Themes\ThemeManager;
  *   typography.baseSize   → --base-size
  * i.e. color tokens get a `color-` prefix; every other category uses the
  * kebab-cased key alone. Values pass the same injection filter as section
- * tokenOverrides (no ';', no '(' — blocks url()/expression smuggling into
- * the style element).
+ * tokenOverrides — see valueIsSafe().
  */
 class ThemeTokens
 {
     public function __construct(private readonly ThemeManager $themes) {}
+
+    /**
+     * The one injection filter for token values, applied on READ so a
+     * hostile value already in the database (or a theme file) never reaches
+     * markup regardless of what the write path accepted at the time.
+     *
+     * No ';' and no '(' blocks url()/expression() smuggling inside the CSS.
+     * No '<' and no '>' blocks the other context entirely: these values are
+     * emitted into an inline <style> element, whose raw text a browser only
+     * ever terminates at `</style` — so `red</style><script …` was a stored
+     * XSS on every public page while containing neither banned character.
+     */
+    public static function valueIsSafe(string $value): bool
+    {
+        return $value !== ''
+            && ! str_contains($value, ';')
+            && ! str_contains($value, '(')
+            && ! str_contains($value, '<')
+            && ! str_contains($value, '>');
+    }
 
     /**
      * The effective tokens: the theme's declarations with the site's saved
@@ -43,8 +62,7 @@ class ThemeTokens
 
         foreach ($this->siteOverrides() as $name => $value) {
             if (array_key_exists($name, $variables)
-                && is_string($value) && $value !== ''
-                && ! str_contains($value, ';') && ! str_contains($value, '(')
+                && is_string($value) && self::valueIsSafe($value)
             ) {
                 $variables[$name] = $value;
             }
@@ -54,9 +72,7 @@ class ThemeTokens
         // as long as it runs — same declared-variables-only rule, so a
         // schedule can retune the site but never invent variables.
         foreach ($this->scheduledOverrides() as $name => $value) {
-            if (array_key_exists($name, $variables)
-                && $value !== '' && ! str_contains($value, ';') && ! str_contains($value, '(')
-            ) {
+            if (array_key_exists($name, $variables) && self::valueIsSafe($value)) {
                 $variables[$name] = $value;
             }
         }
@@ -178,7 +194,7 @@ class ThemeTokens
                 }
 
                 $value = (string) $value;
-                if ($value === '' || str_contains($value, ';') || str_contains($value, '(')) {
+                if (! self::valueIsSafe($value)) {
                     continue;
                 }
 

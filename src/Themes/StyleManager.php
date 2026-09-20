@@ -72,7 +72,7 @@ final class StyleManager
             }
 
             $value = trim((string) $value);
-            if ($value === '' || str_contains($value, ';') || str_contains($value, '(')) {
+            if (! ThemeTokens::valueIsSafe($value)) {
                 throw new PatchException("The value for \"{$name}\" is not a plain token value.");
             }
             if (mb_strlen($value) > 120) {
