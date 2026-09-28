@@ -1,0 +1,14 @@
+# The builder bundle is committed so an install needs no Node. It is build
+# output, not source — without this GitHub counts it as the repository's
+# language and reports a Laravel package as a JavaScript one.
+public/builder/** linguist-generated=true
+resources/app/package-lock.json linguist-generated=true
+
+# Blade is the frontend here; let it be counted as such.
+*.blade.php linguist-language=Blade
+
+# Keep tests and editor sources out of the distributed package.
+/resources/app/e2e export-ignore
+/resources/app/node_modules export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore

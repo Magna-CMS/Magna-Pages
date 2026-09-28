@@ -2,6 +2,22 @@
     "name": "magna/pages",
     "description": "Rendered-frontend plugin for Magna CMS: pages, templates, menus, and the visual site builder.",
     "type": "magna-plugin",
+    "license": "proprietary",
+    "homepage": "https://github.com/Magna-CMS/Magna-Pages",
+    "support": {
+        "issues": "https://github.com/Magna-CMS/Magna-Pages/issues",
+        "source": "https://github.com/Magna-CMS/Magna-Pages"
+    },
+    "keywords": [
+        "laravel",
+        "cms",
+        "page-builder",
+        "visual-editor",
+        "drag-and-drop",
+        "filament",
+        "blocks",
+        "magna"
+    ],
     "require": {
         "php": "^8.3",
         "magna-cms/plugin-sdk": "^1.0"
