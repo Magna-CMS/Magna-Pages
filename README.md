@@ -92,8 +92,8 @@ bundle is committed — you only need Node if you want to rebuild the editor you
 ## Install
 
 ```bash
-composer require magna/pages
-php artisan magna:plugin:enable magna/pages
+composer require magna-cms/pages
+php artisan magna:plugin:enable magna-cms/pages
 php artisan migrate
 ```
 

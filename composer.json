@@ -1,5 +1,5 @@
 {
-    "name": "magna/pages",
+    "name": "magna-cms/pages",
     "description": "Rendered-frontend plugin for Magna CMS: pages, templates, menus, and the visual site builder.",
     "type": "magna-plugin",
     "license": "proprietary",
