@@ -14,6 +14,8 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Magna\Admin\PanelPath;
+use Magna\Admin\PanelPathSwitcher;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
@@ -68,6 +70,10 @@ class PagesSettingsPage extends Page implements HasForms
             'default_footer_id' => $settings->default_footer_id,
             'collection_mounts' => $settings->collection_mounts,
             'integrations' => $settings->integrations,
+            // Core's, not this plugin's: where the panel answers is a core
+            // concern, and it is offered here because freeing "/" only means
+            // anything on a site that has something to serve there.
+            'admin_prefix' => PanelPath::enabled(),
         ]);
     }
 
@@ -178,6 +184,14 @@ class PagesSettingsPage extends Page implements HasForms
                             ->addActionLabel('Register a script'),
                     ]),
 
+                Section::make('Site root')
+                    ->description('Who answers at the bare domain. Magna ships with the admin panel there, so the home page above is only reachable at its own URL until you hand the root to the site.')
+                    ->schema([
+                        Toggle::make('admin_prefix')
+                            ->label('Serve the site at / and move the admin panel to /admin')
+                            ->helperText('Saving this signs nobody out and changes no content — only the address of the panel. Bookmarks pointing at the old one stop working, and "/" starts serving the home page. From a shell: php artisan magna:panel:path --root puts it back.'),
+                    ]),
+
                 Section::make('Availability')
                     ->schema([
                         Toggle::make('maintenance_mode')
@@ -209,6 +223,38 @@ class PagesSettingsPage extends Page implements HasForms
         app(PageCache::class)->flush();
 
         Notification::make()->title('Site settings saved')->success()->send();
+
+        $this->applyPanelPath((bool) ($this->data['admin_prefix'] ?? false));
+    }
+
+    /**
+     * Hand the domain root to the site, or take it back.
+     *
+     * Last, and separately: everything above is this plugin's own settings and
+     * must be saved whatever happens to the panel's address. This moves the
+     * URL the admin is standing on, so when it actually changes the only
+     * honest thing to do is send them to where the panel now lives — the page
+     * they are on ceases to exist the moment the next request is routed.
+     */
+    private function applyPanelPath(bool $adminPrefix): void
+    {
+        if ($adminPrefix === PanelPath::enabled()) {
+            return;
+        }
+
+        $switcher = app(PanelPathSwitcher::class);
+        $switcher->set($adminPrefix);
+
+        Notification::make()
+            ->title('The admin panel moved to '.$switcher->url())
+            ->body($adminPrefix
+                ? 'The site now answers at /. Update any bookmark pointing at the old panel address.'
+                : 'The panel is back at the domain root, so the site no longer answers there.')
+            ->success()
+            ->persistent()
+            ->send();
+
+        $this->redirect($switcher->url());
     }
 
     /**
