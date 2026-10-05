@@ -22,6 +22,7 @@ use Magna\Content\SchemaRegistry;
 use Magna\Pages\Cache\PageCache;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Templates\TemplatePartResolver;
+use Magna\Settings\GeneralSettings;
 use Magna\Settings\SettingsRepository;
 
 /**
@@ -60,6 +61,7 @@ class PagesSettingsPage extends Page implements HasForms
     public function mount(): void
     {
         $settings = PagesSettings::get();
+        $general = GeneralSettings::get();
 
         $this->form->fill([
             'home_page_id' => $settings->home_page_id,
@@ -74,6 +76,12 @@ class PagesSettingsPage extends Page implements HasForms
             // concern, and it is offered here because freeing "/" only means
             // anything on a site that has something to serve there.
             'admin_prefix' => PanelPath::enabled(),
+            // Core's too. Mirrored here because this plugin is what puts the
+            // name in front of visitors — every page title, the logo block and
+            // the site.name binding read it — so the screen that builds the
+            // site is where someone looks for it.
+            'site_name' => $general->site_name,
+            'site_tagline' => $general->site_tagline,
         ]);
     }
 
@@ -82,6 +90,24 @@ class PagesSettingsPage extends Page implements HasForms
         return $schema
             ->statePath('data')
             ->schema([
+                Section::make('Site identity')
+                    ->description('What the site calls itself. Stored in core settings, and the same values the All Settings screen edits — this is the other end of one setting, not a second copy.')
+                    ->columns(2)
+                    ->schema([
+                        TextInput::make('site_name')
+                            ->label('Site name')
+                            ->required()
+                            ->maxLength(255)
+                            ->placeholder('My Site')
+                            ->helperText('Appended to every page title, and what the logo block and the site.name binding render.'),
+
+                        TextInput::make('site_tagline')
+                            ->label('Tagline')
+                            ->maxLength(255)
+                            ->placeholder('A short line about the site')
+                            ->helperText('A one-line description for themes and metadata. Optional.'),
+                    ]),
+
                 Section::make('Site structure')
                     ->columns(2)
                     ->schema([
@@ -219,7 +245,13 @@ class PagesSettingsPage extends Page implements HasForms
 
         app(SettingsRepository::class)->persist($settings);
 
-        // Home page / 404 / maintenance affect routing sitewide.
+        $general = GeneralSettings::get();
+        $general->site_name = trim($this->stringOrNull($this->data['site_name'] ?? null) ?? '') ?: $general->site_name;
+        $general->site_tagline = trim($this->stringOrNull($this->data['site_tagline'] ?? null) ?? '');
+        app(SettingsRepository::class)->persist($general);
+
+        // Home page / 404 / maintenance affect routing sitewide — and so does
+        // the site name, which is rendered into every cached page title.
         app(PageCache::class)->flush();
 
         Notification::make()->title('Site settings saved')->success()->send();

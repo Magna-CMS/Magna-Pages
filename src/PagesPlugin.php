@@ -52,6 +52,8 @@ use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
 use Magna\Plugins\Plugin;
+use Magna\Settings\Events\SettingsSaved;
+use Magna\Settings\GeneralSettings;
 
 /**
  * Entry point for the magna/pages plugin — the rendered-frontend layer
@@ -149,6 +151,18 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
                 app(PurgePageCache::class)->handleEntryEvent($e);
             });
         }
+
+        // A general setting can be baked into every cached page: the site name
+        // is rendered into each title, so renaming the site from core's
+        // settings screen would otherwise leave the old name on the public
+        // site until the hour-long cache TTL expired. Core cannot flush this
+        // cache — it is the plugin's — so it says what changed and the plugin
+        // decides whether that matters.
+        Event::listen(SettingsSaved::class, function (SettingsSaved $e): void {
+            if ($e->group === GeneralSettings::group()) {
+                app(PurgePageCache::class)->flushSite();
+            }
+        });
 
         // Expired pages_cache rows are dead weight after their TTL — sweep
         // hourly. Same deferred-Schedule pattern as core's prune commands
