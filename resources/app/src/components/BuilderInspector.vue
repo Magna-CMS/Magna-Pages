@@ -7,6 +7,7 @@ import BuilderMediaPicker from './BuilderMediaPicker.vue'
 import BuilderStyleControls from './BuilderStyleControls.vue'
 import BuilderTagSuggest from './BuilderTagSuggest.vue'
 import type { BuilderApi } from '../api'
+import { jsonFieldEdit, jsonFieldText } from '../document/jsonField'
 import type { Located } from '../document/locate'
 import type { Breakpoint } from '../document/responsive'
 import { insertTag } from '../document/tags'
@@ -360,6 +361,32 @@ function writeCustomCss(value: string) {
     }
 }
 
+/**
+ * The section's CSS class and anchor.
+ *
+ * Both have always rendered, and both were editable in the old Livewire
+ * editor, but pages are only edited here — so a theme whose whole vocabulary
+ * is "the class chooses the band" had no way to say which band a section is.
+ * Custom CSS cannot stand in: it is a declaration list on the section's own
+ * style attribute, so it reaches no descendant and takes no custom property.
+ */
+const sectionText = (key: 'cssClass' | 'anchor') => computed<string>(() => {
+    const settings = (props.located?.node as { settings?: Record<string, unknown> } | undefined)?.settings
+    const value = settings?.[key]
+
+    return typeof value === 'string' ? value : ''
+})
+
+const cssClass = sectionText('cssClass')
+const anchor = sectionText('anchor')
+
+function writeSectionText(key: 'cssClass' | 'anchor', value: string) {
+    if (props.located) {
+        const trimmed = value.trim()
+        emit('editSetting', props.located.pointer, key, trimmed === '' ? null : trimmed)
+    }
+}
+
 const data = computed<Record<string, unknown>>(() => {
     const node = props.located?.node as { data?: Record<string, unknown> } | undefined
 
@@ -459,7 +486,44 @@ function setRepeaterValue(
 function valueFor(field: BlockFieldDefinition): string {
     const value = data.value[field.handle]
 
+    // A json field holds a real array or object. Returning '' for it showed
+    // an empty box over content that existed — and typing in that box
+    // replaced the array with a string.
+    if (field.type === 'json') {
+        return jsonFieldText(value)
+    }
+
     return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+}
+
+/** Per-field parse errors, so a half-typed json field says so instead of saving. */
+const jsonErrors = ref<Record<string, string>>({})
+
+/**
+ * Write a json field only when it parses.
+ *
+ * The stored value stays whatever the views already accept — an array, an
+ * object, or a string — so nothing migrates. What changes is that an
+ * unparseable edit is refused and shown, rather than silently replacing a
+ * list of items with the broken text that was typed over it.
+ */
+function onJsonInput(field: BlockFieldDefinition, event: Event) {
+    const result = jsonFieldEdit((event.target as HTMLTextAreaElement).value)
+    const next = { ...jsonErrors.value }
+
+    if (!result.ok) {
+        next[field.handle] = result.message
+        jsonErrors.value = next
+
+        return
+    }
+
+    delete next[field.handle]
+    jsonErrors.value = next
+
+    if (props.located) {
+        emit('edit', props.located.pointer, field.handle, result.value)
+    }
 }
 
 function isBound(field: BlockFieldDefinition): boolean {
@@ -840,6 +904,29 @@ const title = computed<string>(() => {
                     </button>
                 </div>
 
+                <!--
+                    A json field: the items/tiers behind features, stats,
+                    pricing, team, testimonials and logos. It used to fall
+                    through to the single-line text input below, which showed
+                    nothing and destroyed the array on first keystroke.
+                -->
+                <template v-else-if="field.type === 'json'">
+                    <textarea
+                        :id="`field-${field.handle}`"
+                        rows="10"
+                        class="inspector__json"
+                        spellcheck="false"
+                        placeholder="[]"
+                        :value="valueFor(field)"
+                        :disabled="!editable"
+                        @change="onJsonInput(field, $event)"
+                    />
+                    <span v-if="jsonErrors[field.handle]" class="inspector__error">
+                        {{ jsonErrors[field.handle] }} — not saved.
+                    </span>
+                    <span v-else class="inspector__hint">JSON. The list is saved only when it parses.</span>
+                </template>
+
                 <template v-else-if="field.type === 'textarea' || field.type === 'richtext'">
                     <textarea
                         :id="`field-${field.handle}`"
@@ -1147,6 +1234,30 @@ const title = computed<string>(() => {
             </fieldset>
 
             <label class="inspector__field inspector__stack">
+                CSS class
+                <input
+                    type="text"
+                    placeholder="hero ink tight"
+                    :value="cssClass"
+                    :disabled="!capabilities.style"
+                    @change="writeSectionText('cssClass', ($event.target as HTMLInputElement).value)"
+                />
+                <span class="inspector__hint">Space-separated classes on this section. A theme's bands and patterns are chosen here.</span>
+            </label>
+
+            <label class="inspector__field inspector__stack">
+                Anchor
+                <input
+                    type="text"
+                    placeholder="pricing"
+                    :value="anchor"
+                    :disabled="!capabilities.style"
+                    @change="writeSectionText('anchor', ($event.target as HTMLInputElement).value)"
+                />
+                <span class="inspector__hint">Becomes the section's id, so a link can land on it: /pricing#anchor.</span>
+            </label>
+
+            <label class="inspector__field inspector__stack">
                 Custom CSS
                 <textarea
                     rows="3"
@@ -1409,6 +1520,23 @@ select:disabled {
     font-size: 11px;
     opacity: 0.6;
     line-height: 1.4;
+}
+
+/* Said rather than hinted: this one means the edit was refused. */
+.inspector__error {
+    font-size: 11px;
+    line-height: 1.4;
+    color: #f43f5e;
+}
+
+/* A list of objects is read column-wise, so it gets a monospace box. */
+.inspector__json {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
 }
 
 .inspector__empty,

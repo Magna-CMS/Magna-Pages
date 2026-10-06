@@ -36,6 +36,8 @@ const emit = defineEmits<{
 const host = ref<HTMLElement | null>(null)
 const editor = shallowRef<Editor | null>(null)
 const ready = ref(false)
+/** The document as tiptap first parsed it — the baseline commit() compares against. */
+const mountedHtml = ref('')
 const marks = ref({ bold: false, italic: false, link: false, bulletList: false })
 
 function syncMarks() {
@@ -78,6 +80,12 @@ onMounted(async () => {
     })
 
     editor.value.commands.focus('end')
+    // What tiptap made of the stored HTML, before the editor was touched.
+    // Everything this component can emit is a round trip through tiptap's
+    // schema, so comparing against the ORIGINAL html would report a change
+    // on every open; comparing against the round trip reports one only when
+    // the user actually typed.
+    mountedHtml.value = editor.value.getHTML()
     ready.value = true
 })
 
@@ -129,8 +137,24 @@ function toggleLink() {
     syncMarks()
 }
 
+/**
+ * Only emit when the document actually changed.
+ *
+ * commit() is wired to @blur.capture, so focusing a text block and clicking
+ * away used to rewrite its body as tiptap's round trip of it. The schema here
+ * is deliberately narrow — no headings, no code blocks, no blockquotes — while
+ * the server sanitizer allows far more, so that round trip silently flattened
+ * tables, definition lists, figures, details and every h1-h6 an author had
+ * put in the stored HTML. Nobody asked for an edit; focus was enough.
+ */
 function commit() {
     const html = editor.value?.getHTML() ?? ''
+
+    if (html === mountedHtml.value) {
+        return
+    }
+
+    mountedHtml.value = html
     emit('commit', html)
 }
 
