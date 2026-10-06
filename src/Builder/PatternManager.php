@@ -50,6 +50,39 @@ final class PatternManager
     }
 
     /**
+     * Save a pattern the site kit carried, replacing one of the same name.
+     *
+     * Named rather than id'd, because a kit crosses environments and an id is
+     * an environment fact. Re-syncing a kit therefore updates the pattern an
+     * editor already has rather than leaving them two that look identical.
+     *
+     * @param  array<mixed, mixed>  $node
+     *
+     * @throws PatchException
+     */
+    public function upsertNamed(string $name, string $kind, array $node): Pattern
+    {
+        $existing = Pattern::query()->where('name', trim($name))->first();
+
+        if ($existing === null) {
+            return $this->save($name, $kind, $node, null);
+        }
+
+        if (! in_array($kind, [Pattern::KIND_SECTION, Pattern::KIND_BLOCK], true)) {
+            throw new PatchException('A pattern is a section or a block.');
+        }
+
+        $errors = $this->validator->validate($this->wrap($kind, $node));
+        if ($errors !== []) {
+            throw new PatchException($errors[0]);
+        }
+
+        $existing->update(['kind' => $kind, 'document' => $node]);
+
+        return $existing;
+    }
+
+    /**
      * A fresh-id copy of the pattern's subtree, ready to insert.
      *
      * @return array<mixed, mixed>

@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Content\SchemaRegistry;
+use Magna\Pages\Builder\Pattern;
+use Magna\Pages\Builder\PatternManager;
 use Magna\Pages\Menus\Menu;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\PagesSettings;
@@ -35,6 +37,7 @@ class SiteKit
         private readonly SchemaRegistry $schemas,
         private readonly EntryManager $entries,
         private readonly MenuManager $menus,
+        private readonly PatternManager $patterns,
     ) {}
 
     /** @return array<string, mixed> */
@@ -48,6 +51,7 @@ class SiteKit
             'pages' => $this->exportEntries('page'),
             'templates' => $this->exportEntries('pages_template'),
             'menus' => $this->exportMenus(),
+            'patterns' => $this->exportPatterns(),
             'settings' => [
                 'home_page_slug' => $this->slugForId($settings->home_page_id),
                 'not_found_page_slug' => $this->slugForId($settings->not_found_page_id),
@@ -86,7 +90,7 @@ class SiteKit
         }
 
         return DB::transaction(function () use ($kit, $actorId): array {
-            $counts = ['created' => 0, 'updated' => 0, 'menus' => 0];
+            $counts = ['created' => 0, 'updated' => 0, 'menus' => 0, 'patterns' => 0];
 
             foreach (['page' => 'pages', 'pages_template' => 'templates'] as $type => $key) {
                 foreach ($this->kitEntries($kit, $key) as $row) {
@@ -103,10 +107,39 @@ class SiteKit
                 $counts['menus']++;
             }
 
+            $counts['patterns'] = $this->applyPatterns($kit);
+
             $this->applySettings($kit);
 
             return $counts;
         });
+    }
+
+    /**
+     * The builder's saved patterns.
+     *
+     * A pattern is how a composite — a mocked-up terminal, a pricing table
+     * with its band — stops being something an editor must rebuild by hand
+     * every time. Until this key existed a pattern could only be born from a
+     * user's own selection, so a theme could ship the markup for a composite
+     * and no way to use it twice.
+     *
+     * Keyed by NAME on import, like everything else here is keyed by slug:
+     * ids are environment facts.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function exportPatterns(): array
+    {
+        return Pattern::query()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Pattern $pattern): array => [
+                'name' => (string) $pattern->name,
+                'kind' => (string) $pattern->kind,
+                'document' => $pattern->document,
+            ])
+            ->all();
     }
 
     /** @return list<array<string, mixed>> */
@@ -178,6 +211,45 @@ class SiteKit
         if (($row['status'] ?? null) === 'published' && ! $entry->isPublished()) {
             $this->entries->publish($entry, actorId: $actorId);
         }
+    }
+
+    /**
+     * Upsert the kit's patterns by name.
+     *
+     * Validated through PatternManager, the same gate a user's own "save as
+     * pattern" goes through — a kit is a file somebody can edit, so it earns
+     * no more trust than the builder does. An invalid one is skipped rather
+     * than aborting the sync: the rest of the site is still worth applying,
+     * and a pattern nobody can insert is a smaller problem than a half-applied
+     * bundle.
+     *
+     * @param  array<string, mixed>  $kit
+     * @return int how many were written
+     */
+    private function applyPatterns(array $kit): int
+    {
+        $rows = $kit['patterns'] ?? null;
+
+        if (! is_array($rows)) {
+            return 0;
+        }
+
+        $written = 0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! is_string($row['name'] ?? null) || ! is_string($row['kind'] ?? null) || ! is_array($row['document'] ?? null)) {
+                continue;
+            }
+
+            try {
+                $this->patterns->upsertNamed($row['name'], $row['kind'], $row['document']);
+                $written++;
+            } catch (\Throwable) {
+                // Reported by diff; a bad pattern does not cost the site.
+            }
+        }
+
+        return $written;
     }
 
     /** @param array<string, mixed> $kit */
