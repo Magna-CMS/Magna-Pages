@@ -16,6 +16,7 @@ use Magna\Pages\Render\BindingResolver;
 use Magna\Pages\Render\StyleDescriptors;
 use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
+use Magna\Themes\ThemeManager;
 
 /**
  * The single payload the builder loads on open: the document, the block
@@ -35,6 +36,7 @@ final class BuilderBootstrap
         private readonly ThemeTokens $tokens,
         private readonly BindingResolver $bindings,
         private readonly DisplayConditionRegistry $conditions,
+        private readonly ThemeManager $themes,
     ) {}
 
     /**
@@ -100,6 +102,31 @@ final class BuilderBootstrap
     }
 
     /**
+     * What a freshly inserted block starts with, the active theme having its
+     * say.
+     *
+     * Core's seed is computed from the schema, which is the only side that
+     * knows what an `optionsFrom` select offers here — a builder seeding its
+     * own would insert blocks the save then refuses. But core's seed is
+     * generic by construction, and a theme's blocks are a design vocabulary:
+     * dropping `features` into a timeline band seeded three cards about
+     * nothing, which an author deleted before writing the real ones.
+     *
+     * Merged over, not substituted: a theme states only the keys it wants to
+     * differ, and a key it says nothing about keeps whatever the schema
+     * decided — including anything a later core release adds.
+     *
+     * @return array<string, mixed>
+     */
+    private function seedFor(BlockDefinition $block): array
+    {
+        $seed = $block->seedData();
+        $themeSeed = $this->themes->active()?->blockSeeds[$block->handle] ?? null;
+
+        return is_array($themeSeed) ? array_merge($seed, $themeSeed) : $seed;
+    }
+
+    /**
      * The installed blocks, in the shape the Add panel and the schema-driven
      * inspector both read.
      *
@@ -123,7 +150,7 @@ final class BuilderBootstrap
                 // from the schema server-side because only this side knows
                 // what an `optionsFrom` select offers here — a builder that
                 // seeded its own would insert blocks the save then refuses.
-                'seed' => $block->seedData(),
+                'seed' => $this->seedFor($block),
                 // Which fields the canvas may edit in place, if this block
                 // says. Absent means the first eligible one.
                 'inlineFields' => $block->inlineFields,
