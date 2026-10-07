@@ -10,10 +10,14 @@
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-red.svg">
   <a href="composer.json"><img alt="PHP ^8.3" src="https://img.shields.io/badge/php-%5E8.3-777bb4.svg"></a>
   <img alt="Laravel 13" src="https://img.shields.io/badge/laravel-13-ff2d20.svg">
-  <a href="https://github.com/Magna-CMS"><img alt="Magna CMS" src="https://img.shields.io/badge/Magna%20CMS-%5E1.0-6366f1.svg"></a>
+  <a href="https://github.com/Magna-CMS"><img alt="Magna CMS" src="https://img.shields.io/badge/Magna%20CMS-%3E%3D1.4.7-6366f1.svg"></a>
 </p>
 
 ---
+
+<p align="center">
+  <img alt="The Magna Pages builder: the element library on the left, the real rendered page in the canvas" src=".github/screenshots/builder-canvas.png">
+</p>
 
 Magna Pages turns a headless [Magna CMS](https://github.com/Magna-CMS) install into a rendered
 website. It adds pages, reusable templates, headers and footers, navigation menus, a design-token
@@ -27,7 +31,7 @@ Your content lives in your database and renders through your Blade views.
 
 Read this part before you install anything.
 
-Magna Pages is published at **0.1.0-alpha**. It is incomplete and it has bugs — some of them known,
+Magna Pages is published at **0.2.0-alpha**. It is incomplete and it has bugs — some of them known,
 most of them not yet found. Data formats, block schemas and internal APIs will change in ways that
 break existing pages. There is no upgrade path between alpha releases.
 
@@ -64,6 +68,15 @@ editing, in the builder, rather than discovered after launch.
 **Dynamic content.** A `loop` block iterates data sources that plugins register, so an installed
 plugin's content lands on a visually built page without the builder knowing anything about it.
 
+<p align="center">
+  <img alt="A section selected in the builder, with its style inspector open" src=".github/screenshots/builder-inspector.png">
+</p>
+
+<p align="center">
+  <em>Select anything in the canvas and its settings open beside it — spacing, background, type,
+  borders, per breakpoint.</em>
+</p>
+
 ## How the canvas works
 
 Most builders maintain two renderers: one that draws the editor preview and one that renders the
@@ -79,12 +92,49 @@ The practical consequence: what you see while editing is what ships, because it 
 path. The trade-off is that the canvas is a full page render, so it is heavier than a virtual DOM
 preview.
 
+<p align="center">
+  <img alt="The same page as a visitor receives it, outside the builder" src=".github/screenshots/rendered-page.png">
+</p>
+
+<p align="center">
+  <em>The same page, published. Not a second renderer agreeing with the first — the same one.</em>
+</p>
+
+Both pictures above are captured from a running install by
+[`e2e/screenshots.spec.ts`](resources/app/e2e/screenshots.spec.ts), so they are the builder as it
+actually is rather than a mockup, and refreshing them after a UI change is one command.
+
+## Themes
+
+A theme supplies the Blade views, design tokens and CSS the canvas draws with — so the builder's
+output looks like your site rather than like a builder. `theme.json` can also shape the editing
+experience itself:
+
+```json
+{
+    "blockSeeds": {
+        "heading": { "level": "h2", "text": "Section title" }
+    }
+}
+```
+
+`blockSeeds` decides what a freshly inserted block starts with, merged over the schema's own seed,
+so dropping a `features` block into your layout seeds content that belongs to your design instead
+of three generic cards. Composites — a device mockup, a pricing table with its band — ship as
+**patterns** in a site kit, which `magna:site:sync` upserts by name.
+
+Writing one? Core block views put their classes on a **wrapper**, not on the semantic element:
+`.magna-heading h2`, never `h2.magna-heading`. The second matches nothing and nothing warns you.
+
 ## Requirements
 
 - PHP 8.3+
 - Laravel 13
-- A [Magna CMS](https://github.com/Magna-CMS) install (^1.0)
+- A [Magna CMS](https://github.com/Magna-CMS) install (^1.4.7)
 - Filament 5 (comes with Magna)
+
+The 1.4.7 floor is new in this release: the site-root toggle and the site-identity fields both read
+core settings that version introduced.
 
 No Node.js required to run it. The builder is a Vue 3 + TypeScript application, but the compiled
 bundle is committed — you only need Node if you want to rebuild the editor yourself.
@@ -137,8 +187,15 @@ Being honest about where it stands:
 - Repeater fields are new and lightly tested.
 - An edit can be silently dropped if you change a setting while the canvas is mid-reload.
 - The block library has uneven depth — some blocks are thorough, others are placeholders.
-- Theme integration works but is under-documented.
+- A `json` field is edited as JSON text. It no longer eats your array, but it is not yet a
+  structured editor.
+- Section classes are free text — a theme's vocabulary lives in its README, not in the picker.
 - Test coverage is good on the server, thinner in the editor.
+
+Three silent data-loss bugs were fixed in 0.2.0-alpha — relative links being stripped, blur
+rewriting untouched rich text, and `json` fields being overwritten on first keystroke. If you built
+anything on 0.1.0-alpha, check your internal links: they were saved without their `href`, and
+upgrading cannot put back what was never stored.
 
 ## Tech
 
