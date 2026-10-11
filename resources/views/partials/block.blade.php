@@ -84,4 +84,23 @@
         $block->id,
         'block',
     ) !!}
+    {{--
+        The block's BEHAVIOUR, beside whichever view won.
+
+        Resolved on `magna::` alone — deliberately not through
+        ThemeViewResolver — because a theme replaces a block's view and must
+        not be able to replace what makes the block work. Before this, the
+        scheme toggle shipped its own @once script inside its view: a theme
+        that overrode the view to restyle the button silently lost the
+        un-hide, the click handler and the stored choice, and the §C8 audit
+        then refused it a <script> to put them back. The result was not a
+        styling regression anyone would notice — it was a permanently
+        invisible, dead control.
+
+        Outside the $mark() wrapper above: behaviour is not a node, so it
+        carries no builder marker and no per-node style class. @includeIf
+        because most blocks ship none, and the view's own @once keeps it to
+        one copy however many times the block appears.
+    --}}
+    @includeIf('magna::block-behaviour.'.$block->block)
 @endif

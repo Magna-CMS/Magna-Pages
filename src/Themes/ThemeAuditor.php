@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Themes;
 
+use Illuminate\View\Factory as ViewFactory;
+use InvalidArgumentException;
 use Magna\Themes\ThemeManager;
 use Magna\Themes\ThemeManifest;
 use Throwable;
@@ -31,7 +33,10 @@ class ThemeAuditor
         'require', 'require_once', 'include', 'include_once', 'base64_decode',
     ];
 
-    public function __construct(private readonly ThemeManager $themes) {}
+    public function __construct(
+        private readonly ThemeManager $themes,
+        private readonly ViewFactory $views,
+    ) {}
 
     /**
      * @return list<array{level: string, file: string, message: string}>
@@ -155,6 +160,81 @@ class ThemeAuditor
             $findings[] = ['level' => 'error', 'file' => $relative,
                 'message' => 'A <script> element in a block view — interactivity ships through curated mechanisms, not theme script.'];
         }
+
+        if (str_starts_with($relative, 'views/blocks/')) {
+            $this->auditOverride($relative, $source, $findings);
+        }
+    }
+
+    /**
+     * What an overriding block view DROPS from the view it replaces.
+     *
+     * A theme override is a whole-view replacement, so anything the default
+     * view carried inline is simply gone — and the rule above forbids
+     * putting a <script> back. That combination has already shipped a
+     * permanently invisible control: the scheme toggle's un-hide, click
+     * handler and stored choice all lived in its view's @once script, and a
+     * theme that overrode the view purely to restyle the button lost the
+     * button. Nothing said so, because the failure is not a styling
+     * regression anybody sees — the control is absent, not wrong.
+     *
+     * Behaviour now ships separately (block-behaviour/, outside the theme
+     * chain), which is the real fix. This stays because it catches the same
+     * class everywhere else: a core or plugin block view that still carries
+     * inline script, and — the one way the repaired toggle can still be
+     * broken — an override that drops the `data-magna-*` hook the behaviour
+     * binds to.
+     *
+     * Warnings, not errors: dropping either may be exactly what the theme
+     * means. What it may not do is drop them without being told.
+     *
+     * @param  list<array{level: string, file: string, message: string}>  $findings
+     */
+    private function auditOverride(string $relative, string $source, array &$findings): void
+    {
+        $handle = basename($relative, '.blade.php');
+        $default = $this->defaultViewSource($handle);
+
+        if ($default === null) {
+            return;
+        }
+
+        if (preg_match('/<script\b/i', $default) === 1 && preg_match('/<script\b/i', $source) !== 1) {
+            $findings[] = ['level' => 'warning', 'file' => $relative,
+                'message' => "Overrides {$handle}, whose default view ships inline <script> that this replacement drops — and a block view may not ship script of its own, so that behaviour is simply gone. Ask for it to move to a block-behaviour view, which an override cannot drop."];
+        }
+
+        preg_match_all('/data-magna-[a-z0-9-]+/i', $default, $matches);
+
+        foreach (array_unique(array_map('strtolower', $matches[0])) as $hook) {
+            if (! str_contains(strtolower($source), $hook)) {
+                $findings[] = ['level' => 'warning', 'file' => $relative,
+                    'message' => "Overrides {$handle} without its `{$hook}` attribute — that is the hook the block's behaviour binds to, so whatever it drives will not run on this markup."];
+            }
+        }
+    }
+
+    /**
+     * The source of the default view this override replaces, or null when
+     * the handle has none.
+     *
+     * The `magna::` namespace is asked directly rather than through
+     * ThemeViewResolver: the resolver's job is to let a theme win, and the
+     * question here is precisely what the theme is winning AGAINST. The
+     * resolver also registers namespaces as a side effect, which an audit
+     * of a theme that is not even active has no business doing.
+     */
+    private function defaultViewSource(string $handle): ?string
+    {
+        try {
+            $path = $this->views->getFinder()->find('magna::blocks.'.$handle);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+
+        $source = file_get_contents($path);
+
+        return is_string($source) ? $source : null;
     }
 
     /** @return list<string> */
