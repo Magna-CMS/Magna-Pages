@@ -54,6 +54,7 @@ use Magna\Pages\Menus\NavBlockResolver;
 use Magna\Plugins\Plugin;
 use Magna\Settings\Events\SettingsSaved;
 use Magna\Settings\GeneralSettings;
+use Magna\Themes\ThemeSettings;
 
 /**
  * Entry point for the magna/pages plugin — the rendered-frontend layer
@@ -158,8 +159,15 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // site until the hour-long cache TTL expired. Core cannot flush this
         // cache — it is the plugin's — so it says what changed and the plugin
         // decides whether that matters.
+        //
+        // The theme group is here for a worse version of the same failure: the
+        // cache key is the URL alone, so nothing about a cached page records
+        // which theme drew it. Activating a theme therefore appeared to do
+        // NOTHING — every cached URL kept serving the old theme's HTML for up
+        // to an hour — and editing a theme's stylesheet had no visible effect
+        // either, which makes theme development feel broken rather than slow.
         Event::listen(SettingsSaved::class, function (SettingsSaved $e): void {
-            if ($e->group === GeneralSettings::group()) {
+            if (in_array($e->group, [GeneralSettings::group(), ThemeSettings::group()], true)) {
                 app(PurgePageCache::class)->flushSite();
             }
         });
