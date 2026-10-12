@@ -5,6 +5,47 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [Unreleased]
+
+Requires Magna CMS 1.4.9 or newer for the block-behaviour mechanism below to
+do anything. It is safe to ship against an older core, and deliberately so:
+the renderer's include is `@includeIf`, so on a core with no
+`block-behaviour/` views it resolves to nothing at all. Verified against core
+1.4.8's views with this release's renderer — pages render, no view-not-found,
+and a block that carries its behaviour inline keeps working exactly as it did.
+The theme audit's new warnings are likewise correct on an older core: there,
+`scheme-toggle`'s default view really does still ship inline `<script>` that
+an override drops, which is the defect being warned about.
+
+### Fixed
+
+- **Overriding a block view no longer drops the block's behaviour.** A block's
+  behaviour now ships as a sibling view
+  (`block-behaviour/{handle}.blade.php`) that the renderer includes beside
+  whichever markup view the theme chain picked, resolved on the `magna::`
+  namespace alone and never through `theme::`. Overriding
+  `views/blocks/{handle}.blade.php` therefore replaces markup and nothing
+  else. Before this, `scheme-toggle` carried its un-hide, click handler and
+  stored choice in an `@once` script inside its own view, and `ThemeAuditor`
+  refuses a theme's block view any `<script>` — so a theme that overrode the
+  view purely to restyle the button lost the behaviour and was forbidden from
+  putting it back. The symptom was not a styling regression anyone would spot
+  while looking at the page: the markup renders `hidden`, so what shipped was
+  a permanently invisible, dead control, with nothing reporting that an
+  override had dropped anything.
+
+### Added
+
+- **The theme audit reports what an override drops.** Every other rule in
+  `ThemeAuditor` reads one file and judges it alone, which is precisely why
+  the failure above was invisible. The audit now also compares an overriding
+  block view against the default view it replaces, and warns on two things:
+  inline `<script>` in the default that the override drops and may not
+  legally reproduce, and a `data-magna-*` hook missing from the override —
+  the one remaining way a repaired block can end up bound to nothing.
+  Warnings rather than errors, because dropping either may be deliberate;
+  dropping it unknowingly is the bug.
+
 ## [0.2.0-alpha] — 2026-10-06
 
 Authoring fixes, most of them found by building a real marketing site on the
