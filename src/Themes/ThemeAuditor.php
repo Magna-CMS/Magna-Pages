@@ -33,6 +33,25 @@ class ThemeAuditor
         'require', 'require_once', 'include', 'include_once', 'base64_decode',
     ];
 
+    /**
+     * Query and container constructs, pattern => finding. "Views receive
+     * data; they never query" has been the contract's first rule since the
+     * contract existed — these patterns are the audit actually saying so,
+     * because the cheap route around a value the payload lacks is a view
+     * that fetches it itself, and that route used to pass this audit
+     * clean. `app()->getLocale()` alone stays allowed: the shipped themes'
+     * documented idiom for the lang attribute, and it reads request state
+     * rather than resolving a service.
+     */
+    private const FORBIDDEN_QUERY_PATTERNS = [
+        '/(?<![@\w$>])Entry\s*::\s*type\s*\(/i' => 'Entry::type() in a view — views receive data; they never query. Resolve it on the payload (e.g. the pageUrl closure) instead.',
+        '/::\s*query\s*\(/i' => '::query() in a view — views receive data; they never query.',
+        '/(?<![@\w$>])DB\s*::/' => 'DB:: in a view — views receive data; they never query.',
+        '/(?<![@\w$>])resolve\s*\(/i' => 'resolve() in a view — views receive data; they never pull from the container.',
+        '/(?<![@\w$>])app\s*\(\s*[^)\s]/i' => 'app(...) in a view — views receive data; they never pull from the container.',
+        '/(?<![@\w$>])app\s*\(\s*\)\s*->\s*(?!getLocale\b)\w+/i' => 'app()-> in a view — only app()->getLocale() (the lang-attribute idiom) is allowed; views never pull from the container.',
+    ];
+
     public function __construct(
         private readonly ThemeManager $themes,
         private readonly ViewFactory $views,
@@ -125,6 +144,12 @@ class ThemeAuditor
             if (preg_match('/(?<![@\w])'.preg_quote($call, '/').'\s*\(/i', $source) === 1) {
                 $findings[] = ['level' => 'error', 'file' => $relative,
                     'message' => "Call to {$call}() — no place in a view."];
+            }
+        }
+
+        foreach (self::FORBIDDEN_QUERY_PATTERNS as $pattern => $message) {
+            if (preg_match($pattern, $source) === 1) {
+                $findings[] = ['level' => 'error', 'file' => $relative, 'message' => $message];
             }
         }
 
