@@ -19,6 +19,18 @@ an override drops, which is the defect being warned about.
 
 ### Fixed
 
+- **A page's own settings now travel with the site kit.** `page_settings` —
+  the per-page background and chrome choices the builder's settings tab
+  writes — was absent from the kit's entry keys, so an export silently
+  dropped it, `magna:site:diff` could not see it drift between environments,
+  and a sync left whatever the target already had. A stale override could
+  therefore live in one environment's database and nowhere else, invisible
+  to every tool. The semantics are deliberate: a kit row without the key
+  (one exported before this release) leaves existing settings alone on
+  apply, a present-and-empty value is an explicit clear and applies, and the
+  diff treats cleared and never-set as equal so an old kit does not read as
+  permanent drift.
+
 - **Overriding a block view no longer drops the block's behaviour.** A block's
   behaviour now ships as a sibling view
   (`block-behaviour/{handle}.blade.php`) that the renderer includes beside
@@ -35,6 +47,15 @@ an override drops, which is the defect being warned about.
   override had dropped anything.
 
 ### Added
+
+- **The pages list says when a page overrides the theme.** A page whose
+  `page_settings` is non-empty now carries a badge naming the groups it
+  overrides (`style`, `style:tablet`, `style:mobile`, `header`, `footer`).
+  Before this, a per-page style set in the builder was visible in exactly
+  one place — the builder's own settings tab — so a stale background from an
+  old experiment repainted the page and nothing in the admin said why; the
+  one that prompted this was found by querying the database. The badge reads
+  the attribute the list query already loads, so it costs no extra query.
 
 - **The site kit now carries other plugins' entities.** The kit was a closed
   list of what this plugin owns — pages, templates, menus, patterns, settings

@@ -55,6 +55,17 @@
                             @if($page['pendingApproval'])
                                 <x-filament::badge color="warning">review</x-filament::badge>
                             @endif
+                            {{-- A page's own settings override the theme and nothing
+                                 else on this screen says so — a stale background from
+                                 an old builder experiment is invisible until someone
+                                 queries the database. Name the groups, not just "has
+                                 settings", so "style:mobile" points at the right tab. --}}
+                            @if($page['settingsGroups'] !== [])
+                                <x-filament::badge color="info"
+                                                   title="This page overrides the theme: open the builder's page-settings tab to see or clear it.">
+                                    {{ implode(' · ', $page['settingsGroups']) }}
+                                </x-filament::badge>
+                            @endif
                         </td>
                         <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400">{{ $page['updated'] }}</td>
                         <td class="px-4 py-2.5">

@@ -186,6 +186,61 @@ class PagesIndexPage extends Page
     }
 
     /**
+     * Which page-settings groups a page overrides, as badge labels.
+     *
+     * A page's own settings (its background, its chrome choices) used to be
+     * invisible everywhere except the builder's settings tab — a stale
+     * override from an old experiment could repaint a page and nothing in
+     * this list, the entry form, or an export would say why. The Lekha FAQ
+     * page carried exactly that, and it was found by querying the database.
+     *
+     * Reads the attribute the row query already loaded — no extra query.
+     *
+     * @return list<string>
+     */
+    private function pageSettingsGroups(Entry $page): array
+    {
+        $settings = $page->getAttribute('page_settings');
+        if (! is_array($settings) || $settings === []) {
+            return [];
+        }
+
+        $groups = [];
+
+        $style = $settings['style'] ?? null;
+        if (is_array($style) && $style !== []) {
+            // The stored shape (PageSettings::sanitize): scalars are base
+            // values, `['$responsive' => [device => value]]` is per-device.
+            $devices = ['base' => false, 'tablet' => false, 'mobile' => false];
+            foreach ($style as $value) {
+                if (is_array($value) && is_array($value['$responsive'] ?? null)) {
+                    foreach (array_keys($devices) as $device) {
+                        if (array_key_exists($device, $value['$responsive'])) {
+                            $devices[$device] = true;
+                        }
+                    }
+                } else {
+                    $devices['base'] = true;
+                }
+            }
+
+            foreach ($devices as $device => $present) {
+                if ($present) {
+                    $groups[] = $device === 'base' ? 'style' : 'style:'.$device;
+                }
+            }
+        }
+
+        foreach (['header', 'footer'] as $role) {
+            if (is_string($settings[$role] ?? null) && $settings[$role] !== '') {
+                $groups[] = $role;
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
      * Rows for the view.
      *
      * @return list<array<string, mixed>>
@@ -225,6 +280,7 @@ class PagesIndexPage extends Page
                 'status' => $page->status->value,
                 'updated' => $page->updated_at?->diffForHumans() ?? '',
                 'pendingApproval' => $approvals->pendingFor((string) $page->getKey()) !== null,
+                'settingsGroups' => $this->pageSettingsGroups($page),
                 'builderUrl' => url('/pages-builder/edit/'.$page->getKey()),
                 'editUrl' => EntryResource::getUrl('edit', ['record' => $page->getKey(), 'type' => 'page']),
                 'viewUrl' => $page->status->value === 'published' && $page->path !== null
