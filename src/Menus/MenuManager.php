@@ -7,11 +7,11 @@ namespace Magna\Pages\Menus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Magna\Content\Entry;
-use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
 use Magna\Frontend\FrontendPageRegistry;
 use Magna\Pages\Cache\PageCache;
 use Magna\Pages\Frontend\FrontendPageVisibility;
+use Magna\Pages\Routing\PageUrls;
 
 /**
  * Menu lifecycle + resolution.
@@ -29,6 +29,7 @@ class MenuManager
         private readonly SchemaRegistry $schemaRegistry,
         private readonly FrontendPageRegistry $frontendPages,
         private readonly FrontendPageVisibility $frontendVisibility,
+        private readonly PageUrls $pageUrls,
     ) {}
 
     public function create(string $handle, string $name): Menu
@@ -79,7 +80,7 @@ class MenuManager
         }
 
         $items = $menu->items()->get();
-        $pageUrls = $this->pageUrlsFor(
+        $pageUrls = $this->pageUrls->forIds(
             $items->where('type', MenuItem::TYPE_PAGE)->pluck('page_id')->filter()->values()->all()
         );
 
@@ -252,35 +253,5 @@ class MenuManager
         }
 
         return $level;
-    }
-
-    /**
-     * Published-page slugs for the referenced ids, as site-relative URLs —
-     * one query for the whole menu.
-     *
-     * @param  list<string>  $pageIds
-     * @return array<string, string>
-     */
-    private function pageUrlsFor(array $pageIds): array
-    {
-        if ($pageIds === [] || ! $this->schemaRegistry->has('page')) {
-            return [];
-        }
-
-        $urls = [];
-        foreach (Entry::type('page')
-            ->whereIn('id', $pageIds)
-            ->where('status', EntryStatus::Published->value)
-            ->get() as $entry) {
-            $id = $entry->getKey();
-            $path = $entry->getAttribute('path');
-            $slug = $entry->getAttribute('slug');
-            $segment = is_string($path) && $path !== '' ? $path : (is_string($slug) ? $slug : '');
-            if (is_string($id) && $segment !== '') {
-                $urls[$id] = '/'.$segment;
-            }
-        }
-
-        return $urls;
     }
 }

@@ -11,7 +11,6 @@ use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
-use Magna\Content\SchemaRegistry;
 use Magna\Frontend\FrontendPage;
 use Magna\Pages\Builder\PageSettings;
 use Magna\Pages\Consent\ConsentScripts;
@@ -20,6 +19,7 @@ use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
 use Magna\Pages\Routing\LocalePrefix;
+use Magna\Pages\Routing\PageUrls;
 use Magna\Pages\Templates\PopupTargeting;
 use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
@@ -63,9 +63,9 @@ final class PageRenderer
         private readonly ConditionEvaluator $conditions,
         private readonly BindingResolver $bindings,
         private readonly LocalePrefix $localePrefix,
+        private readonly PageUrls $pageUrls,
         private readonly ConsentScripts $consent,
         private readonly ExperimentTracker $experiments,
-        private readonly SchemaRegistry $schemaRegistry,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -218,6 +218,13 @@ final class PageRenderer
             // page lives at its own address instead. Resolved here for the
             // same reason the header menu is — views receive data.
             'homeUrl' => $this->homeUrl(),
+            // Any published page's URL, by slug — how a layout links its
+            // own CTA ("download", "pricing") without hardcoding a path
+            // that breaks on rename, nesting or a locale prefix. Null for
+            // a draft or unknown slug: the layout decides how a missing
+            // target degrades. Deriving from $homeUrl is the trap this
+            // closes — the home page's own address is not the site root.
+            'pageUrl' => fn (string $slug): ?string => $this->pageUrls->forSlug($slug),
             'tree' => $tree,
             'registry' => $this->registry,
             'resolver' => $this->resolver,
@@ -414,24 +421,11 @@ final class PageRenderer
 
         $id = PagesSettings::get()->home_page_id;
 
-        if (! is_string($id) || $id === '' || ! $this->schemaRegistry->has('page')) {
+        if (! is_string($id) || $id === '') {
             return '/';
         }
 
-        $home = Entry::type('page')
-            ->where('id', $id)
-            ->where('status', EntryStatus::Published->value)
-            ->first();
-
-        if ($home === null) {
-            return '/';
-        }
-
-        $path = $home->getAttribute('path');
-        $slug = $home->getAttribute('slug');
-        $segment = is_string($path) && $path !== '' ? $path : (is_string($slug) ? $slug : '');
-
-        return $segment === '' ? '/' : '/'.$segment;
+        return $this->pageUrls->forIds([$id])[$id] ?? '/';
     }
 
     /**
