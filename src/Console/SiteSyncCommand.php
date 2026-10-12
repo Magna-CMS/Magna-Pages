@@ -42,11 +42,28 @@ class SiteSyncCommand extends Command
         app(PageCache::class)->flush();
 
         $this->info(sprintf(
-            'Applied: %d created, %d updated, %d menu(s) synced.',
+            'Applied: %d created, %d updated, %d menu(s) synced, %d pattern(s).',
             $counts['created'],
             $counts['updated'],
             $counts['menus'],
+            $counts['patterns'],
         ));
+
+        // Plugin sections are the namespaced keys — everything the base line
+        // above did not already account for.
+        foreach ($counts as $key => $written) {
+            if (str_contains($key, ':')) {
+                $this->line(sprintf('  %s: %d applied.', $key, $written));
+            }
+        }
+
+        $unknown = $kit->unknownKeys($bundle);
+        if ($unknown !== []) {
+            $this->warn(sprintf(
+                'Skipped unknown kit section(s): %s — no enabled plugin here claims them.',
+                implode(', ', $unknown),
+            ));
+        }
 
         return self::SUCCESS;
     }

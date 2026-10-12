@@ -36,6 +36,20 @@ an override drops, which is the defect being warned about.
 
 ### Added
 
+- **The site kit now carries other plugins' entities.** The kit was a closed
+  list of what this plugin owns — pages, templates, menus, patterns, settings
+  — so a site whose pages reference another plugin's entity by handle applied
+  cleanly and rendered a hole: the Lekha contact page shipped with a README'd
+  "create the form by hand" step, which is the instruction a kit exists to
+  make unnecessary. A plugin now registers a `SiteKitSection` (SDK 1.7's
+  `RegistersSiteKitSections` contract, collected by core under
+  `magna.site_kit.sections`) keyed `plugin:entity`, and export, diff, and
+  sync carry it alongside the kit's own keys, inside the same all-or-nothing
+  transaction. A section key no enabled plugin claims is skipped and
+  reported, never fatal — an older installation reads a newer kit and says
+  what it could not place. `magna:site:sync` also finally prints the pattern
+  count it already recorded, and both sync and diff name any unknown keys.
+
 - **The theme audit reports what an override drops.** Every other rule in
   `ThemeAuditor` reads one file and judges it alone, which is precisely why
   the failure above was invisible. The audit now also compares an overriding

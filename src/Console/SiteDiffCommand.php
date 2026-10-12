@@ -40,6 +40,14 @@ class SiteDiffCommand extends Command
         ));
         $this->line($total === 0 ? 'Nothing to apply.' : "{$total} item(s) would be applied by magna:site:sync.");
 
+        $unknown = $kit->unknownKeys($bundle);
+        if ($unknown !== []) {
+            $this->warn(sprintf(
+                'Unknown kit section(s) sync would skip: %s — no enabled plugin here claims them.',
+                implode(', ', $unknown),
+            ));
+        }
+
         return self::SUCCESS;
     }
 

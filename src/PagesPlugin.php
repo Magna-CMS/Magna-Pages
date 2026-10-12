@@ -51,6 +51,7 @@ use Magna\Pages\Filament\Pages\StyleSchedulesPage;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
+use Magna\Pages\SiteKit\SiteKit;
 use Magna\Plugins\Plugin;
 use Magna\Settings\Events\SettingsSaved;
 use Magna\Settings\GeneralSettings;
@@ -133,6 +134,13 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // Light up the core block editor's live-preview pane (§E1 contract
         // seam — core shows the pane only when this binding exists).
         app()->singleton(ProvidesDocumentPreview::class, ThemedDocumentPreview::class);
+
+        // The site kit carries other plugins' entities too: whatever sections
+        // core's contract wirer collected ride along. Resolved lazily — the
+        // commands run long after every plugin has booted and contributed.
+        app()->when(SiteKit::class)
+            ->needs('$sections')
+            ->give(fn ($app) => $app->bound('magna.site_kit.sections') ? $app->make('magna.site_kit.sections') : []);
 
         // The structured editor honors the builder's document lock (§E2) —
         // two editors, one lock, neither can overwrite the other unseen.

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Content\SchemaRegistry;
+use Magna\Contracts\SiteKitSection;
 use Magna\Pages\Builder\Pattern;
 use Magna\Pages\Builder\PatternManager;
 use Magna\Pages\Menus\Menu;
@@ -26,18 +27,33 @@ use Magna\Settings\SettingsRepository;
  * bundled (v1 limitation — promote media separately). Sync UPSERTS only:
  * rows present locally but absent from the kit are reported by diff and
  * left alone, because deletion deserves an explicit flag, not a default.
+ *
+ * Beyond its own keys the kit carries plugin-owned SECTIONS (SiteKitSection,
+ * registered via the RegistersSiteKitSections contract, collected under the
+ * 'magna.site_kit.sections' binding): a form the form block selects by
+ * handle has to travel with the site, or the kit applies cleanly and the
+ * page ships with a hole an admin must hand-fill. A section key no enabled
+ * plugin claims is skipped and reported (see unknownKeys()), never fatal —
+ * an older installation reads a newer kit and says what it could not place.
  */
 class SiteKit
 {
     public const VERSION = 1;
 
+    /** The kit's own top-level keys; a plugin section may never claim one. */
+    private const OWN_KEYS = ['format', 'version', 'pages', 'templates', 'menus', 'patterns', 'settings'];
+
     private const ENTRY_KEYS = ['title', 'slug', 'path', 'locale', 'translation_group', 'template', 'kind', 'meta_title', 'meta_description', 'blocks_data'];
 
+    /**
+     * @param  list<SiteKitSection>  $sections
+     */
     public function __construct(
         private readonly SchemaRegistry $schemas,
         private readonly EntryManager $entries,
         private readonly MenuManager $menus,
         private readonly PatternManager $patterns,
+        private readonly array $sections = [],
     ) {}
 
     /** @return array<string, mixed> */
@@ -45,7 +61,7 @@ class SiteKit
     {
         $settings = PagesSettings::get();
 
-        return [
+        $kit = [
             'format' => 'magna-site-kit',
             'version' => self::VERSION,
             'pages' => $this->exportEntries('page'),
@@ -59,21 +75,49 @@ class SiteKit
                 'collection_mounts' => $settings->collection_mounts,
             ],
         ];
+
+        foreach ($this->sectionMap() as $key => $section) {
+            $kit[$key] = $section->export();
+        }
+
+        return $kit;
     }
 
     /**
      * What applying the kit would change, without changing it.
      *
      * @param  array<string, mixed>  $kit
-     * @return array{pages: array<string, list<string>>, templates: array<string, list<string>>, menus: array<string, list<string>>}
+     * @return array<string, array<string, list<string>>>
      */
     public function diff(array $kit): array
     {
-        return [
+        $diff = [
             'pages' => $this->diffEntries('page', $this->kitEntries($kit, 'pages')),
             'templates' => $this->diffEntries('pages_template', $this->kitEntries($kit, 'templates')),
             'menus' => $this->diffMenus($this->kitMenus($kit)),
         ];
+
+        foreach ($this->sectionMap() as $key => $section) {
+            $diff[$key] = $section->diff($this->kitSectionRows($kit, $key));
+        }
+
+        return $diff;
+    }
+
+    /**
+     * The kit's top-level keys that nothing here will read: not the kit's
+     * own, and no enabled plugin registers a section for them. Reported by
+     * sync and diff so a kit written on a newer or fuller installation
+     * degrades loudly instead of silently.
+     *
+     * @param  array<string, mixed>  $kit
+     * @return list<string>
+     */
+    public function unknownKeys(array $kit): array
+    {
+        $known = [...self::OWN_KEYS, ...array_keys($this->sectionMap())];
+
+        return array_values(array_diff(array_map(strval(...), array_keys($kit)), $known));
     }
 
     /**
@@ -108,6 +152,16 @@ class SiteKit
             }
 
             $counts['patterns'] = $this->applyPatterns($kit);
+
+            // Plugin sections ride the same transaction: a kit applies whole
+            // or not at all, and that includes the entities its pages
+            // reference. Keys are namespaced ('forms:forms'), so they can
+            // never collide with the counts above.
+            foreach ($this->sectionMap() as $key => $section) {
+                if (array_key_exists($key, $kit)) {
+                    $counts[$key] = $section->apply($this->kitSectionRows($kit, $key), $actorId);
+                }
+            }
 
             $this->applySettings($kit);
 
@@ -365,6 +419,41 @@ class SiteKit
                 fn ($m): bool => is_array($m) && is_string($m['handle'] ?? null) && is_string($m['name'] ?? null) && is_array($m['tree'] ?? null),
             ))
             : [];
+    }
+
+    /**
+     * The registered plugin sections, keyed and validated. A key without a
+     * colon could shadow a kit key this class grows later, and two plugins
+     * claiming one key would silently swallow each other's rows — both are
+     * registration bugs, so both throw at first use rather than skip.
+     *
+     * @return array<string, SiteKitSection>
+     */
+    private function sectionMap(): array
+    {
+        $map = [];
+        foreach ($this->sections as $section) {
+            $key = $section->key();
+            if (! str_contains($key, ':') || in_array($key, self::OWN_KEYS, true)) {
+                throw new \LogicException("Site-kit section key [{$key}] must be namespaced 'plugin:entity'.");
+            }
+            if (isset($map[$key])) {
+                throw new \LogicException("Site-kit section key [{$key}] is registered twice.");
+            }
+            $map[$key] = $section;
+        }
+        ksort($map);
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, mixed>  $kit
+     * @return list<array<string, mixed>>
+     */
+    private function kitSectionRows(array $kit, string $key): array
+    {
+        return is_array($kit[$key] ?? null) ? array_values(array_filter($kit[$key], 'is_array')) : [];
     }
 
     /**
