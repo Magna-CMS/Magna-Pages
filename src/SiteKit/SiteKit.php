@@ -43,7 +43,23 @@ class SiteKit
     /** The kit's own top-level keys; a plugin section may never claim one. */
     private const OWN_KEYS = ['format', 'version', 'pages', 'templates', 'menus', 'patterns', 'settings'];
 
-    private const ENTRY_KEYS = ['title', 'slug', 'path', 'locale', 'translation_group', 'template', 'kind', 'meta_title', 'meta_description', 'blocks_data'];
+    /*
+     * `page_settings` travels with the page since the Lekha FAQ incident:
+     * a stale per-page background rode a database row that no export, diff,
+     * or admin screen ever showed, and the only way to find it was to query
+     * the table by hand. A kit that drops the key would recreate exactly
+     * that invisible drift between environments.
+     *
+     * Its sync semantics are deliberate and asymmetric:
+     *  - absent from the kit row  → left alone on apply (EntryManager
+     *    updates are partial), so a kit exported before this key existed
+     *    cannot null out settings a page already has;
+     *  - present and empty (`[]`) → an explicit clear, and it applies;
+     *  - for DIFF, empty and absent compare equal (see comparable()),
+     *    because a page whose override was cleared and a page that never
+     *    had one are the same site.
+     */
+    private const ENTRY_KEYS = ['title', 'slug', 'path', 'locale', 'translation_group', 'template', 'kind', 'meta_title', 'meta_description', 'blocks_data', 'page_settings'];
 
     /**
      * @param  list<SiteKitSection>  $sections
@@ -397,6 +413,15 @@ class SiteKit
     private function comparable(array $row): string
     {
         unset($row['translation_group']);
+
+        // A cleared page-settings override (`[]`) and a page that never had
+        // one are the same site — without this, a page whose override was
+        // cleared after an export would read as "changed" forever, because
+        // apply leaves an absent key alone and so can never make them equal.
+        if (($row['page_settings'] ?? null) === []) {
+            unset($row['page_settings']);
+        }
+
         ksort($row);
 
         return (string) json_encode($row);
