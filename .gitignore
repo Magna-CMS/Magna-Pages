@@ -1,4 +1,5 @@
 /vendor/
 /node_modules/
 resources/app/node_modules/
-.phpunit.result.cache/build/
+.phpunit.result.cache
+/build/
