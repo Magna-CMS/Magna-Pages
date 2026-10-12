@@ -16,5 +16,12 @@ parameters:
     # Floor pinned in core's PluginArchitectureTest; ratchet upward only.
     level: 0
 
+    # Per-checkout cache, exactly like core's phpstan.neon.dist: without it
+    # the default shared system-temp cache is corrupted whenever two
+    # checkouts (main + a session worktree) analyse this plugin, and the
+    # symptom is phantom "return statement is missing" errors whose count
+    # changes run to run. Relative, so every checkout gets its own.
+    tmpDir: build/phpstan
+
     paths:
         - src
