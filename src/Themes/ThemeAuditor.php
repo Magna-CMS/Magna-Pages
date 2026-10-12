@@ -224,6 +224,15 @@ class ThemeAuditor
             return;
         }
 
+        // Both sides compared without comments: the default view for
+        // scheme-toggle NAMES its optional `data-magna-label-to-*` attributes
+        // in a comment explaining the contract, and reading that as markup
+        // warned every override that declined an optional attribute. The same
+        // stripping on the override keeps a hook mentioned only in ITS
+        // comments from counting as kept.
+        $default = self::withoutComments($default);
+        $source = self::withoutComments($source);
+
         if (preg_match('/<script\b/i', $default) === 1 && preg_match('/<script\b/i', $source) !== 1) {
             $findings[] = ['level' => 'warning', 'file' => $relative,
                 'message' => "Overrides {$handle}, whose default view ships inline <script> that this replacement drops — and a block view may not ship script of its own, so that behaviour is simply gone. Ask for it to move to a block-behaviour view, which an override cannot drop."];
@@ -237,6 +246,19 @@ class ThemeAuditor
                     'message' => "Overrides {$handle} without its `{$hook}` attribute — that is the hook the block's behaviour binds to, so whatever it drives will not run on this markup."];
             }
         }
+    }
+
+    /**
+     * Blade source with `{{-- --}}` and PHP block comments removed, so prose
+     * ABOUT an attribute or a script is never mistaken for the thing itself.
+     * Line comments are left alone: `//` inside a URL is far more common in
+     * a view than a hook name mentioned in one.
+     */
+    private static function withoutComments(string $source): string
+    {
+        $stripped = (string) preg_replace('/\{\{--.*?--\}\}/s', '', $source);
+
+        return (string) preg_replace('!/\*.*?\*/!s', '', $stripped);
     }
 
     /**
