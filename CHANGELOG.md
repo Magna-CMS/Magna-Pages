@@ -5,7 +5,7 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
-## [Unreleased]
+## [0.2.1-alpha] — 2026-10-13
 
 Requires Magna CMS 1.4.9 or newer for the block-behaviour mechanism below to
 do anything. It is safe to ship against an older core, and deliberately so:
