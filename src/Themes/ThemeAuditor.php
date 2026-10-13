@@ -233,9 +233,31 @@ class ThemeAuditor
         $default = self::withoutComments($default);
         $source = self::withoutComments($source);
 
-        if (preg_match('/<script\b/i', $default) === 1 && preg_match('/<script\b/i', $source) !== 1) {
+        /*
+         * Worded from what is TRUE NOW, and silent once it stops being true.
+         *
+         * This warning used to end "Ask for it to move to a block-behaviour
+         * view, which an override cannot drop" — a destination named in the
+         * present tense. A theme author read it as a statement that the
+         * behaviour HAD moved, deleted their own working wiring on the
+         * strength of it, and shipped a page whose light/dark button never
+         * appeared: the markup renders `hidden` and nothing was left to lift
+         * it. The sentence invited exactly that.
+         *
+         * So the question is asked of the installation rather than of
+         * intentions. Where core already ships a behaviour view for this
+         * handle, an override genuinely cannot drop the behaviour and there
+         * is nothing to warn about. Where it does not, the theme must carry
+         * the behaviour itself, which is what the message now says. The
+         * warning disappears on its own the day the handle gains a behaviour
+         * view, so it cannot go stale in either direction — the only way a
+         * warning about a half-finished migration can be trusted.
+         */
+        if (preg_match('/<script\b/i', $default) === 1
+            && preg_match('/<script\b/i', $source) !== 1
+            && ! $this->hasBehaviourView($handle)) {
             $findings[] = ['level' => 'warning', 'file' => $relative,
-                'message' => "Overrides {$handle}, whose default view ships inline <script> that this replacement drops — and a block view may not ship script of its own, so that behaviour is simply gone. Ask for it to move to a block-behaviour view, which an override cannot drop."];
+                'message' => "Overrides {$handle}, and core still ships that block's behaviour inside the view you replaced, so this override drops it — a block view may not carry script of its own. Until that behaviour moves to a block-behaviour view your theme has to carry it; a guard that returns early when the button is already wired keeps it correct afterwards too."];
         }
 
         preg_match_all('/data-magna-[a-z0-9-]+/i', $default, $matches);
@@ -271,6 +293,25 @@ class ThemeAuditor
      * resolver also registers namespaces as a side effect, which an audit
      * of a theme that is not even active has no business doing.
      */
+    /**
+     * Whether core ships a behaviour view for this handle — the sibling the
+     * renderer includes beside whichever markup view won, which an override
+     * therefore cannot drop.
+     *
+     * Asked of the `magna::` namespace alone, like defaultViewSource(): the
+     * question is what CORE provides, and a theme cannot answer it.
+     */
+    private function hasBehaviourView(string $handle): bool
+    {
+        try {
+            $this->views->getFinder()->find('magna::block-behaviour.'.$handle);
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        return true;
+    }
+
     private function defaultViewSource(string $handle): ?string
     {
         try {
