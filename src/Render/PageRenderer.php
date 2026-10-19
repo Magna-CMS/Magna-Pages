@@ -12,6 +12,7 @@ use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Frontend\FrontendPage;
+use Magna\Frontend\FrontendPageResult;
 use Magna\Pages\Builder\PageSettings;
 use Magna\Pages\Consent\ConsentScripts;
 use Magna\Pages\Experiments\ExperimentTracker;
@@ -115,16 +116,17 @@ final class PageRenderer
     /**
      * A plugin frontend page (ProvidesFrontendPages): its view rendered
      * into the layout's main slot, with the same shell — header/footer
-     * parts, theme tokens, header menu — every real page gets.
+     * parts, theme tokens, header menu — every real page gets. A data
+     * provider's result feeds the view and overrides title + description.
      */
-    public function renderFrontendPage(FrontendPage $page): string
+    public function renderFrontendPage(FrontendPage $page, ?FrontendPageResult $result = null): string
     {
         $mode = $page->mode === FrontendPage::MODE_APP ? 'app' : 'content';
         $mainHtml = '<div class="magna-frontend-page magna-frontend-page--'.$mode.'">'
-            .view($page->view)->render()
+            .view($page->view, $result?->data ?? [])->render()
             .'</div>';
 
-        return $this->renderDocument([], $page->title, mainHtml: $mainHtml);
+        return $this->renderDocument([], $result?->title ?? $page->title, mainHtml: $mainHtml, metaDescription: $result?->metaDescription);
     }
 
     /**
@@ -137,7 +139,7 @@ final class PageRenderer
      *
      * @param  array<mixed, mixed>  $document
      */
-    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null, ?string $chromeSlot = null): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null, ?string $chromeSlot = null, ?string $metaDescription = null): string
     {
         /*
          * The document IS this slot's chrome: render it there rather than
@@ -202,11 +204,12 @@ final class PageRenderer
              * the site name is already part of what the author wrote.
              *
              * Both are empty for anything that is not a page (a template
-             * part, a plugin frontend page), and a layout that has never
-             * heard of them keeps working — it prints $title as before.
+             * part, a plugin frontend page — whose provider may supply the
+             * description), and a layout that has never heard of them keeps
+             * working — it prints $title as before.
              */
             'seoTitle' => $this->entryString($context, 'meta_title'),
-            'metaDescription' => $this->entryString($context, 'meta_description'),
+            'metaDescription' => $context === null ? trim($metaDescription ?? '') : $this->entryString($context, 'meta_description'),
             // Pre-rendered main-slot HTML (plugin frontend pages). A theme
             // layout must print it instead of the section tree when set.
             'mainHtml' => $mainHtml,

@@ -5,6 +5,27 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [0.4.0-alpha] - Unreleased
+
+Requires Magna CMS 1.6.0 or newer — the frontend-page data provider contract
+(`FrontendPageDataProvider`, `FrontendPageResult`, `FrontendPageRegistry::resolve()`)
+first ships there.
+
+### Added
+
+- **Plugin frontend pages can take parameters and fetch their own data.** A
+  `FrontendPage` may now declare a path such as `blog/{slug}` and a `controller`
+  naming a `FrontendPageDataProvider`. The router captures the parameters, runs
+  the page's auth and permission checks first, then asks the provider for a
+  `FrontendPageResult`: its `data` reaches the view, its `title` lands in
+  `<title>`, and its `metaDescription` reaches the layout's `$metaDescription`.
+  A provider that finds nothing answers `null`, and the request falls through to
+  the redirect table and the themed 404 exactly as a dead path does. Exact
+  paths still outrank parameterized ones, and a published page entry at the
+  literal path still outranks both. Existing exact-path pages render as before.
+- A parameterized page is never offered in the menu picker and never links from
+  a menu: it has no single address.
+
 ## [0.3.0-alpha] - 2026-10-19
 
 ### Added

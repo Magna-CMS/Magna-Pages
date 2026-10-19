@@ -213,12 +213,13 @@ class MenuManager
                 // Plugin item: URL from the registered frontend page. Gone
                 // plugin degrades the item away; an auth-gated page hides
                 // from visitors who may not open it (cache-safe because
-                // only guest renders enter the shared page cache).
+                // only guest renders enter the shared page cache). A
+                // parameterized page has no one address, so it never links.
                 $name = is_string($item->settings['frontend_page'] ?? null)
                     ? $item->settings['frontend_page']
                     : '';
                 $page = $name === '' ? null : $this->frontendPages->get($name);
-                if ($page === null || ! $this->frontendVisibility->visibleTo($page, auth()->user())) {
+                if ($page === null || $page->hasParameters() || ! $this->frontendVisibility->visibleTo($page, auth()->user())) {
                     continue;
                 }
                 $url = '/'.$page->normalizedPath();

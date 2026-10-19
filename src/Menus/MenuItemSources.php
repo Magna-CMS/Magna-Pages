@@ -69,7 +69,8 @@ final class MenuItemSources
     }
 
     /**
-     * Plugin frontend pages that asked to be menu-visible.
+     * Plugin frontend pages that asked to be menu-visible. A parameterized
+     * page (`blog/{slug}`) has no single address to link, so it never is.
      *
      * @return list<array{id: string, label: string, meta: string}>
      */
@@ -79,7 +80,7 @@ final class MenuItemSources
 
         $rows = [];
         foreach ($this->frontendPages->all() as $name => $page) {
-            if (! $page->menuVisible) {
+            if (! $page->menuVisible || $page->hasParameters()) {
                 continue;
             }
             if ($search !== '' && ! str_contains(mb_strtolower($page->title), $search)) {
