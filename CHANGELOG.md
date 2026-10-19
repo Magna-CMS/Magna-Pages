@@ -5,7 +5,20 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
-## [Unreleased]
+## [0.3.0-alpha] - 2026-10-19
+
+### Added
+
+- **A theme layout can resolve any menu, not only the header's.** The renderer
+  resolved one hardcoded handle into `headerMenu`, so a second menu was stored,
+  synced, editable in the admin, and unreachable from `layout.blade.php`. A
+  design shipping five header links beside a fifteen-link drawer had to clone
+  the header's nav client-side, and the drawer silently carried five of the
+  fifteen. The layout payload now carries a `menu` closure beside `pageUrl`:
+  `@php($drawer = $menu('secondary'))`. `headerMenu` is untouched, so a layout
+  that has never heard of it keeps working, and an unknown handle resolves to
+  an empty list rather than erroring — a theme shipping a drawer must not 500
+  every page on a site whose owner has not built that menu yet.
 
 ### Added
 
