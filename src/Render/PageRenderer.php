@@ -212,26 +212,12 @@ final class PageRenderer
             'mainHtml' => $mainHtml,
             'siteName' => is_string($siteName) && $siteName !== '' ? $siteName : 'Magna',
             'headerMenu' => $this->menus->resolve(self::HEADER_MENU_HANDLE),
-            /*
-             * Any menu, by handle — for chrome that needs more than one.
-             *
-             * `headerMenu` above resolves one hardcoded handle, and until this
-             * closure existed that was every menu a layout could reach: a
-             * second menu was stored, synced, editable in the admin and
-             * unreachable from layout.blade.php. A design shipping five header
-             * links beside a fifteen-link drawer therefore had to clone the
-             * header's nav client-side, and the drawer silently carried five
-             * of the fifteen — a theme problem with no theme-side fix.
-             *
-             * `headerMenu` stays exactly as it was, so a layout that has never
-             * heard of this keeps working, and the const remains the default
-             * for the common case of one navigation.
-             *
-             * An unknown handle resolves to an empty list rather than an error
-             * (MenuManager::resolve), so a layout may ask for a menu the site
-             * has not made and degrade to no links — the same way $pageUrl
-             * degrades to null for a slug nobody has published.
-             */
+            // Any menu by handle, for chrome needing more than one navigation:
+            // headerMenu above resolves one hardcoded handle, which was every
+            // menu a layout could reach. Empty list for an unknown handle, so a
+            // layout asking for a menu the site has not made degrades to no
+            // links. Both pinned by PagesLayoutMenusTest in core; the theme
+            // guide's layout-payload table explains when to reach for it.
             'menu' => fn (string $handle): array => $this->menus->resolve($handle),
             // Where a theme's wordmark should point. NOT always "/": the
             // page router only sees a path nothing else has claimed, and on
