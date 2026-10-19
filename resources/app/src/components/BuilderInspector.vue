@@ -112,6 +112,11 @@ const emit = defineEmits<{
     addColumn: [sectionId: string]
     removeColumn: [sectionId: string, columnId: string]
     setSpans: [sectionId: string, spans: number[]]
+    /** Exact column widths as grid tracks, or null to go back to twelfths. */
+    setColumnTemplate: [
+        sectionId: string,
+        payload: { tracks: number[] | null; stackOnMobile: boolean },
+    ]
     setStyle: [pointer: string, key: string, value: string]
     setRowStyle: [pointer: string, key: string, value: string]
     select: [nodeId: string]
@@ -1088,6 +1093,7 @@ const title = computed<string>(() => {
                 @add-column="$emit('addColumn', layoutSection.id)"
                 @remove-column="$emit('removeColumn', layoutSection.id, $event)"
                 @set-spans="$emit('setSpans', layoutSection.id, $event)"
+                @set-column-template="$emit('setColumnTemplate', layoutSection.id, $event)"
                 @select="$emit('select', $event)"
             />
 
@@ -1114,6 +1120,7 @@ const title = computed<string>(() => {
                 @add-column="$emit('addColumn', layoutSection.id)"
                 @remove-column="$emit('removeColumn', layoutSection.id, $event)"
                 @set-spans="$emit('setSpans', layoutSection.id, $event)"
+                @set-column-template="$emit('setColumnTemplate', layoutSection.id, $event)"
                 @select="$emit('select', $event)"
             />
 

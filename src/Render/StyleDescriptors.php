@@ -73,7 +73,10 @@ final class StyleDescriptors
      * key => [property, control, group, label, options, appliesTo].
      *
      * `control` names what the builder draws: text (a length or keyword),
-     * color, or select (options are the whole vocabulary for that key).
+     * color, select (options are the whole vocabulary for that key), image
+     * (a URL the emitter turns into a `url()`), or tracks (a grid track
+     * list, one number per column, drawn beside the column list rather
+     * than in the style panel).
      *
      * @var array<string, array{property: string, control: string, group: string, label: string, options: list<string>, appliesTo: list<string>}>
      */
@@ -105,6 +108,33 @@ final class StyleDescriptors
         'rowJustify' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Distribute columns', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between', 'space-around'], 'appliesTo' => [self::ROW]],
         'rowDirection' => ['property' => 'flex-direction', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Direction', 'options' => ['', 'row', 'row-reverse', 'column'], 'appliesTo' => [self::ROW]],
         'rowWrap' => ['property' => 'flex-wrap', 'control' => 'select', 'group' => 'Row layout', 'label' => 'Wrapping', 'options' => ['', 'wrap', 'nowrap'], 'appliesTo' => [self::ROW]],
+
+        /*
+         * What each column is ACTUALLY as wide as, written as grid tracks.
+         *
+         * `span` is twelfths, and twelfths cannot say 1.15 / 0.85 — a ratio
+         * a designer reaches for constantly. Until this key existed the only
+         * way to render one was a theme class that switched the row to grid
+         * behind the document's back, so the builder went on showing the
+         * twelfths while the page showed something else: 26 bands of one
+         * real design store `6, 6` and render 1.15fr / 0.85fr. The handles
+         * were not lying, they were showing the only number the document
+         * could hold.
+         *
+         * FR TRACKS ONLY, by the same rule the rest of this table follows:
+         * a control is offered when setting it will matter, and a track the
+         * column control cannot show is the very disagreement this key
+         * exists to end. `auto`, `min-content` and percentages are refused —
+         * a row that needs one of those is a theme's layout, where the theme
+         * is the stated owner, rather than a width the builder pretends to
+         * edit.
+         *
+         * It is the one row key the generic style panel does not draw (see
+         * forKind): its value is one number per COLUMN, so it belongs beside
+         * the column list, which is the only place that knows how many there
+         * are.
+         */
+        'columnTemplate' => ['property' => 'grid-template-columns', 'control' => 'tracks', 'group' => 'Row layout', 'label' => 'Column widths', 'options' => [], 'appliesTo' => [self::ROW]],
 
         'minHeight' => ['property' => 'min-height', 'control' => 'text', 'group' => 'Layout', 'label' => 'Minimum height', 'options' => [], 'appliesTo' => [self::SECTION, self::COLUMN, self::CONTAINER]],
         'justifyContent' => ['property' => 'justify-content', 'control' => 'select', 'group' => 'Layout', 'label' => 'Horizontal align', 'options' => ['', 'flex-start', 'center', 'flex-end', 'space-between'], 'appliesTo' => [self::COLUMN, self::CONTAINER]],
@@ -144,6 +174,17 @@ final class StyleDescriptors
 
         foreach (self::KEYS as $key => $descriptor) {
             if (! in_array($kind, $descriptor['appliesTo'], true)) {
+                continue;
+            }
+
+            /*
+             * A track list is one value per COLUMN, and this panel does not
+             * know how many columns a row has. Drawn beside the column list
+             * instead — a free-text track list in the style panel is exactly
+             * the value the column handles could not show, which is the bug
+             * the key was added to end.
+             */
+            if ($descriptor['control'] === 'tracks') {
                 continue;
             }
 
@@ -207,6 +248,35 @@ final class StyleDescriptors
         return 'url("'.$value.'")';
     }
 
+    /**
+     * A grid track list of plain `fr` units, normalised, or null.
+     *
+     * Nothing but numbers, for the reason set out on the key itself: a
+     * track the column control cannot show is a width the builder would
+     * misreport. Twelve is the ceiling because twelve columns is the grid.
+     * Refused rather than repaired, like an image URL — the only thing lost
+     * is a layout nobody could have been editing.
+     */
+    private static function trackList(string $value): ?string
+    {
+        $tracks = preg_split('/\s+/', trim($value));
+        if ($tracks === false || $tracks === [] || count($tracks) > 12) {
+            return null;
+        }
+
+        foreach ($tracks as $track) {
+            if (preg_match('/^(?:\d{1,4}|\d{0,4}\.\d{1,4})fr$/', $track) !== 1) {
+                return null;
+            }
+
+            if ((float) substr($track, 0, -2) <= 0.0) {
+                return null;
+            }
+        }
+
+        return implode(' ', $tracks);
+    }
+
     /** Whether a style set says anything under this key at all. */
     private static function declares(mixed $style, string $key): bool
     {
@@ -257,6 +327,7 @@ final class StyleDescriptors
         }
 
         $parts = [];
+        $gridded = false;
         foreach (self::KEYS as $key => $descriptor) {
             if (! in_array($kind, $descriptor['appliesTo'], true)) {
                 continue;
@@ -281,6 +352,24 @@ final class StyleDescriptors
             }
 
             /*
+             * A track list is BUILT here rather than passed through, for
+             * the same reason an image URL is: what the author stored is
+             * validated into the value that gets emitted, so a row can
+             * never ship a template the column control could not show.
+             */
+            if ($descriptor['control'] === 'tracks') {
+                $tracks = self::trackList($value);
+                if ($tracks === null) {
+                    continue;
+                }
+
+                $parts[] = $descriptor['property'].':'.$tracks;
+                $gridded = true;
+
+                continue;
+            }
+
+            /*
              * An image value is a URL, and the property wants a `url()`
              * function around it. The author's string is never what gets
              * emitted: it is validated as a URL first and the function is
@@ -299,6 +388,23 @@ final class StyleDescriptors
             }
 
             $parts[] = $descriptor['property'].':'.$value;
+        }
+
+        /*
+         * A row holding a track list is a GRID, and nothing else has to say
+         * so. Derived rather than offered, exactly like the two cases below
+         * — "why did my width setting need a display setting too" is a
+         * question no editor should be asked — and here the derivation is
+         * load-bearing rather than tidy: each column carries an inline
+         * `flex: N N 0%`, which a grid template on the row would otherwise
+         * lose to. Under grid that inline value simply stops applying, with
+         * no `!important` anywhere, so `span` survives as the fallback the
+         * row returns to the moment the template is gone. The price is that
+         * the two flex-only row keys — Direction and Wrapping — stop
+         * applying while a template is set.
+         */
+        if ($gridded) {
+            array_unshift($parts, 'display:grid');
         }
 
         // A column is a flex ITEM of the row, not a flex container, so

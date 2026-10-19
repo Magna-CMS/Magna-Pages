@@ -888,6 +888,29 @@ async function onSetSpans(sectionId: string, spans: number[]) {
     }
 }
 
+/**
+ * The row's exact column widths.
+ *
+ * Reloaded rather than patched in place for the same reason every other
+ * style write is: the declarations land on the columns wrapper, which the
+ * per-node fragment loop does not re-render.
+ */
+async function onSetColumnTemplate(
+    sectionId: string,
+    payload: { tracks: number[] | null; stackOnMobile: boolean },
+) {
+    if (
+        await store.setColumnTemplate(
+            activeApi.value,
+            sectionId,
+            payload.tracks,
+            payload.stackOnMobile,
+        )
+    ) {
+        reloadCanvas()
+    }
+}
+
 async function onDuplicate() {
     if (store.selectedNode && (await store.duplicateNode(activeApi.value, store.selectedNode))) {
         reloadCanvas()
@@ -1833,6 +1856,7 @@ onBeforeUnmount(() => {
                         @set-hidden="onSetHidden"
                         @set-style="onSetStyle"
                         @set-row-style="onSetRowStyle"
+                        @set-column-template="onSetColumnTemplate"
                         @select="selectNode($event)"
                     />
                 </template>

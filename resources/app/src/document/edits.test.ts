@@ -1,18 +1,27 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    addColumn,
     appendSection,
     blockFrom,
+    COLUMN_TEMPLATE,
+    columnTemplateOperations,
+    declaredMobileStack,
     duplicateNode,
     emptySection,
     exportAsLibraryAsset,
     insertBlock,
     moveNode,
     nestingMovesFor,
+    parseTracks,
+    removeColumn,
     removeNode,
+    setSpans,
+    tracksToSpans,
     withFreshIds,
 } from './edits'
 import { applyPatch } from './patch'
+import { effectiveAt } from './responsive'
 import type {
     BlockDefinition,
     BlockDocument,
@@ -646,5 +655,169 @@ describe('removing nested content', () => {
         const { document: after } = applyPatch(document, removeNode(document, 'box') ?? [])
 
         expect(after[0].columns?.[0].blocks?.map((b) => b.id)).toEqual(['a'])
+    })
+})
+
+/**
+ * Exact column widths.
+ *
+ * The row's `settings.row.columnTemplate` is the only place a ratio like
+ * 1.15 / 0.85 can live in the DOCUMENT. These tests are about the one
+ * property that makes it worth having: whatever the controls show, the
+ * document says the same thing — including the twelfths the row falls back
+ * to, which must never be left describing a different layout.
+ */
+describe('column widths as grid tracks', () => {
+    const twoColumns = (row?: Record<string, unknown>): BlockDocument => [
+        {
+            id: 'sec',
+            type: 'section',
+            settings: row === undefined ? {} : { row },
+            columns: [
+                { id: 'col-a', span: 6, settings: {}, blocks: [] },
+                { id: 'col-b', span: 6, settings: {}, blocks: [] },
+            ],
+        },
+    ]
+
+    const rowOf = (document: BlockDocument): Record<string, unknown> =>
+        ((document as SectionNode[])[0].settings?.row ?? {}) as Record<string, unknown>
+
+    it('reads a plain fr list and refuses anything else', () => {
+        expect(parseTracks('1.15fr 0.85fr')).toEqual([1.15, 0.85])
+        expect(parseTracks('6fr 6fr')).toEqual([6, 6])
+
+        // Not a width the controls could show, so not a width they accept.
+        expect(parseTracks('auto 1fr')).toBeNull()
+        expect(parseTracks('1.15fr 20%')).toBeNull()
+        expect(parseTracks('1.15 0.85')).toBeNull()
+        expect(parseTracks('0fr 1fr')).toBeNull()
+        expect(parseTracks('')).toBeNull()
+    })
+
+    it('turns a ratio into the nearest twelfths, still summing to twelve', () => {
+        expect(tracksToSpans([1.15, 0.85])).toEqual([7, 5])
+        expect(tracksToSpans([1, 1])).toEqual([6, 6])
+        expect(tracksToSpans([1, 1, 1])).toEqual([4, 4, 4])
+    })
+
+    it('seeds the template from the spans, so switching changes nothing', () => {
+        const document = twoColumns()
+        const { document: after } = applyPatch(
+            document,
+            columnTemplateOperations(document, 'sec', [6, 6], true) ?? [],
+        )
+
+        expect(rowOf(after)[COLUMN_TEMPLATE]).toEqual({
+            $responsive: { base: '6fr 6fr', mobile: '1fr' },
+        })
+        expect((after as SectionNode[])[0].columns?.map((column) => column.span)).toEqual([6, 6])
+    })
+
+    it('writes the twelfths that match the ratio, not the ones it replaced', () => {
+        const document = twoColumns()
+        const { document: after } = applyPatch(
+            document,
+            columnTemplateOperations(document, 'sec', [1.15, 0.85], true) ?? [],
+        )
+
+        // The disagreement this key exists to end, moved into the fallback,
+        // would still be a disagreement.
+        expect((after as SectionNode[])[0].columns?.map((column) => column.span)).toEqual([7, 5])
+    })
+
+    it('round-trips a stored ratio back out as the numbers that were set', () => {
+        const document = twoColumns()
+        const { document: after } = applyPatch(
+            document,
+            columnTemplateOperations(document, 'sec', [1.15, 0.85], true) ?? [],
+        )
+
+        expect(parseTracks(effectiveAt(rowOf(after)[COLUMN_TEMPLATE], 'base'))).toEqual([1.15, 0.85])
+        expect(declaredMobileStack(rowOf(after))).toBe(true)
+    })
+
+    it('keeps the stacking choice separate from the widths', () => {
+        const document = twoColumns({ [COLUMN_TEMPLATE]: '6fr 6fr' })
+        const { document: after } = applyPatch(
+            document,
+            columnTemplateOperations(document, 'sec', [6, 6], false) ?? [],
+        )
+
+        expect(rowOf(after)[COLUMN_TEMPLATE]).toBe('6fr 6fr')
+        expect(declaredMobileStack(rowOf(after))).toBe(false)
+    })
+
+    it("leaves the row's other layout values alone", () => {
+        const document = twoColumns({ gap: '3rem' })
+        const { document: after } = applyPatch(
+            document,
+            columnTemplateOperations(document, 'sec', [1.15, 0.85], true) ?? [],
+        )
+
+        expect(rowOf(after).gap).toBe('3rem')
+    })
+
+    it('removes the key outright when the row goes back to twelfths', () => {
+        const document = twoColumns({
+            [COLUMN_TEMPLATE]: { $responsive: { base: '6fr 6fr', mobile: '1fr' } },
+            gap: '3rem',
+        })
+        const { document: after } = applyPatch(
+            document,
+            columnTemplateOperations(document, 'sec', null, false) ?? [],
+        )
+
+        // Clearing only the base would leave the mobile override collapsing
+        // the row with nothing in the builder still saying so.
+        expect(COLUMN_TEMPLATE in rowOf(after)).toBe(false)
+        expect(rowOf(after).gap).toBe('3rem')
+    })
+
+    it('refuses a track list that is not one per column', () => {
+        const document = twoColumns()
+
+        expect(columnTemplateOperations(document, 'sec', [1, 1, 1], false)).toBeNull()
+        expect(columnTemplateOperations(document, 'sec', [1, 0], false)).toBeNull()
+    })
+
+    it('keeps the template to one track per column when a column is added', () => {
+        const document = twoColumns({ [COLUMN_TEMPLATE]: '6fr 6fr' })
+        const { document: after } = applyPatch(document, addColumn(document, 'sec') ?? [])
+
+        expect(rowOf(after)[COLUMN_TEMPLATE]).toBe('4fr 4fr 4fr')
+        expect((after as SectionNode[])[0].columns?.map((column) => column.span)).toEqual([4, 4, 4])
+    })
+
+    it('keeps the template to one track per column when a column goes', () => {
+        const document = twoColumns({ [COLUMN_TEMPLATE]: '7fr 5fr' })
+        const { document: after } = applyPatch(
+            document,
+            removeColumn(document, 'sec', 'col-b') ?? [],
+        )
+
+        expect(rowOf(after)[COLUMN_TEMPLATE]).toBe('12fr')
+    })
+
+    it('reshapes the template when a preset respans the row', () => {
+        const document = twoColumns({
+            [COLUMN_TEMPLATE]: { $responsive: { base: '6fr 6fr', mobile: '1fr' } },
+        })
+        const { document: after } = applyPatch(document, setSpans(document, 'sec', [8, 4]) ?? [])
+
+        expect(rowOf(after)[COLUMN_TEMPLATE]).toEqual({
+            $responsive: { base: '8fr 4fr', mobile: '1fr' },
+        })
+        expect((after as SectionNode[])[0].columns?.map((column) => column.span)).toEqual([8, 4])
+    })
+
+    it('adds nothing at all to a row that has no template', () => {
+        const document = twoColumns()
+
+        expect(setSpans(document, 'sec', [8, 4])).toEqual([
+            { op: 'replace', path: '/0/columns/0/span', value: 8 },
+            { op: 'replace', path: '/0/columns/1/span', value: 4 },
+        ])
+        expect(columnTemplateOperations(document, 'sec', null, false)).toEqual([])
     })
 })

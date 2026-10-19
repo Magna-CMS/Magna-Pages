@@ -102,6 +102,17 @@ final class PatchClassifier
             if (in_array('hidden', $segments, true)) {
                 return PatchKind::Structure;
             }
+            /*
+             * A row's column widths are LAYOUT for the same reason: the key
+             * happens to live under settings, but it is the decision the
+             * span field makes, and calling it styling would let anyone who
+             * may recolour a heading redraw the page's columns. It also has
+             * to agree with span, which is structure — one gesture cannot
+             * need two capabilities.
+             */
+            if (in_array('columnTemplate', $segments, true)) {
+                return PatchKind::Structure;
+            }
 
             return PatchKind::Style;
         }

@@ -1,5 +1,6 @@
 import { locate, newId, parentOf, subtreeHeight, subtreeIds, type Located } from './locate'
 import { applyPatch } from './patch'
+import { withBreakpoint } from './responsive'
 import type {
     BlockDefinition,
     BlockDocument,
@@ -185,7 +186,8 @@ export function addColumn(document: BlockDocument, sectionId: string): PatchOper
         return null
     }
 
-    const columns = ((found.node as SectionNode).columns ?? []).length
+    const section = found.node as SectionNode
+    const columns = (section.columns ?? []).length
     if (columns >= 12) {
         return null
     }
@@ -195,6 +197,7 @@ export function addColumn(document: BlockDocument, sectionId: string): PatchOper
     return [
         { op: 'add', path: `${found.pointer}/columns/-`, value: emptyColumn(spans[columns]) },
         ...respan(found.pointer, spans.slice(0, columns)),
+        ...retemplate(found.pointer, rowOf(section), spans),
     ]
 }
 
@@ -221,10 +224,12 @@ export function removeColumn(
     }
 
     const remaining = columns.filter((entry) => entry.id !== columnId)
+    const spans = evenSpans(remaining.length)
 
     return [
         { op: 'remove', path: column.pointer },
-        ...respan(section.pointer, evenSpans(remaining.length)),
+        ...respan(section.pointer, spans),
+        ...retemplate(section.pointer, rowOf(section.node as SectionNode), spans),
     ]
 }
 
@@ -239,12 +244,203 @@ export function setSpans(
         return null
     }
 
-    const columns = ((found.node as SectionNode).columns ?? []).length
+    const section = found.node as SectionNode
+    const columns = (section.columns ?? []).length
     if (columns === 0 || spans.length !== columns) {
         return null
     }
 
-    return respan(found.pointer, balance(spans))
+    const balanced = balance(spans)
+
+    return [
+        ...respan(found.pointer, balanced),
+        ...retemplate(found.pointer, rowOf(section), balanced),
+    ]
+}
+
+/**
+ * The row-layout key holding a column's REAL width.
+ *
+ * `span` is twelfths and cannot express 1.15 / 0.85, so a design wanting
+ * one had to put the ratio in theme CSS keyed off a section class — where
+ * the builder could not see it, and went on showing the twelfths. This key
+ * is where that ratio lives in the DOCUMENT, which is the whole point: the
+ * width controls read and write it whenever it is present, so what the
+ * editor sets is what the page renders.
+ *
+ * The name is mirrored from the server's style table rather than read out
+ * of it, the same way `settings.row` itself already is. One key name is not
+ * the second source of truth that table warns about: what it emits, what it
+ * validates and which node kinds may carry it all stay server-side.
+ */
+export const COLUMN_TEMPLATE = 'columnTemplate'
+
+/** The single-track value that means "stacked" at a narrow width. */
+const STACKED_TRACKS = '1fr'
+
+/**
+ * The numbers a stored track list names, or null when it is not a plain
+ * `fr` list. Deliberately as narrow as the renderer's own validator: a
+ * value this cannot read is one the controls must not pretend to edit.
+ */
+export function parseTracks(template: string): number[] | null {
+    const tracks = template
+        .trim()
+        .split(/\s+/)
+        .filter((track) => track !== '')
+    if (tracks.length === 0 || tracks.length > 12) {
+        return null
+    }
+
+    const numbers: number[] = []
+    for (const track of tracks) {
+        if (!/^(?:\d{1,4}|\d{0,4}\.\d{1,4})fr$/.test(track)) {
+            return null
+        }
+
+        const value = Number(track.slice(0, -2))
+        if (!Number.isFinite(value) || value <= 0) {
+            return null
+        }
+
+        numbers.push(value)
+    }
+
+    return numbers
+}
+
+/** Numbers back to the track list the renderer reads. */
+export function formatTracks(tracks: number[]): string {
+    return tracks.map((track) => `${Number(track.toFixed(3))}fr`).join(' ')
+}
+
+/**
+ * The twelfths nearest a track list.
+ *
+ * `span` stays written even under a template, because it is what the row
+ * falls back to the moment the template is removed — and a span left at
+ * `6, 6` under a 1.15 / 0.85 template would be the same disagreement this
+ * key exists to end, just moved into the fallback.
+ */
+export function tracksToSpans(tracks: number[]): number[] {
+    const total = tracks.reduce((sum, track) => sum + track, 0)
+    if (total <= 0) {
+        return evenSpans(tracks.length)
+    }
+
+    return balance(tracks.map((track) => Math.round((track / total) * 12)))
+}
+
+/**
+ * Write (or remove) a row's column widths, keeping `span` in step.
+ *
+ * `tracks` is one number per column, or null to go back to twelfths.
+ * `stackOnMobile` writes the mobile override that makes the row one column
+ * on a phone — EXPLICITLY, as a value in the document, rather than as a
+ * default the renderer applies behind the builder's back. A grid row does
+ * not inherit the flex collapse the shell gives a flex row (the inline
+ * `flex` that collapse overrides is already inert under grid), so without
+ * this a two-up band would stay two-up on a phone. Writing it down is what
+ * keeps the builder's mobile preview and the page the same picture.
+ */
+export function columnTemplateOperations(
+    document: BlockDocument,
+    sectionId: string,
+    tracks: number[] | null,
+    stackOnMobile: boolean,
+): PatchOperation[] | null {
+    const found = locate(document, sectionId)
+    if (!found || found.kind !== 'section') {
+        return null
+    }
+
+    const section = found.node as SectionNode
+    const columns = (section.columns ?? []).length
+    if (columns === 0) {
+        return null
+    }
+
+    const row = rowOf(section)
+
+    if (tracks === null) {
+        // Removing the key, not clearing its base: a template left holding
+        // only its mobile override would still collapse the row on phones,
+        // with nothing left in the builder to say why.
+        return row !== null && COLUMN_TEMPLATE in row
+            ? [{ op: 'remove', path: `${found.pointer}/settings/row/${COLUMN_TEMPLATE}` }]
+            : []
+    }
+
+    if (tracks.length !== columns || tracks.some((track) => !(track > 0))) {
+        return null
+    }
+
+    return [
+        templateWrite(found.pointer, row, tracks, stackOnMobile),
+        ...respan(found.pointer, tracksToSpans(tracks)),
+    ]
+}
+
+/** A section's `settings.row`, or null when it has none. */
+function rowOf(section: SectionNode): Record<string, unknown> | null {
+    const row = section.settings?.row
+
+    return typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : null
+}
+
+/**
+ * One operation writing the whole template value.
+ *
+ * Built in one piece rather than as two breakpoint writes: two `add`
+ * operations against the same path would each be computed from the state
+ * before either ran, and the second would silently drop the first.
+ */
+function templateWrite(
+    sectionPointer: string,
+    row: Record<string, unknown> | null,
+    tracks: number[],
+    stackOnMobile: boolean,
+): PatchOperation {
+    const base = withBreakpoint(row?.[COLUMN_TEMPLATE], 'base', formatTracks(tracks))
+    const value = withBreakpoint(base, 'mobile', stackOnMobile ? STACKED_TRACKS : '')
+
+    return row === null
+        ? { op: 'add', path: `${sectionPointer}/settings/row`, value: { [COLUMN_TEMPLATE]: value } }
+        : { op: 'add', path: `${sectionPointer}/settings/row/${COLUMN_TEMPLATE}`, value }
+}
+
+/**
+ * Keep an existing template to one track per column after the row's shape
+ * changed — a column added, removed, or respanned.
+ *
+ * Without this a row could carry a two-track template over three columns:
+ * the page would lay out from the template, the controls from the spans,
+ * and the two would disagree again somewhere new. A row with no template
+ * gets no operation at all, which is what keeps every document that does
+ * not use this byte for byte what it was.
+ */
+function retemplate(
+    sectionPointer: string,
+    row: Record<string, unknown> | null,
+    spans: number[],
+): PatchOperation[] {
+    if (row === null || !(COLUMN_TEMPLATE in row)) {
+        return []
+    }
+
+    return [templateWrite(sectionPointer, row, spans, declaredMobileStack(row))]
+}
+
+/** Whether this row already says "one column on a phone". */
+export function declaredMobileStack(row: Record<string, unknown>): boolean {
+    const value = row[COLUMN_TEMPLATE]
+    if (typeof value !== 'object' || value === null) {
+        return false
+    }
+
+    const per = (value as { $responsive?: Record<string, unknown> }).$responsive
+
+    return typeof per === 'object' && per !== null && per.mobile === STACKED_TRACKS
 }
 
 /** A deep copy of a node with every id replaced — the paste/duplicate primitive. */
@@ -325,12 +521,15 @@ export function pasteColumnOperations(
     sectionPointer: string,
     spans: number[],
     node: Record<string, unknown>,
+    /** The row's layout set, so a template keeps one track per column. */
+    row: Record<string, unknown> | null = null,
 ): PatchOperation[] {
     const balanced = balance([...spans, clampSpan(Number(node.span ?? 12))])
 
     return [
         { op: 'add', path: `${sectionPointer}/columns/-`, value: { ...node, span: balanced[balanced.length - 1] } },
         ...respan(sectionPointer, balanced.slice(0, -1)),
+        ...retemplate(sectionPointer, row, balanced),
     ]
 }
 

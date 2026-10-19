@@ -5,6 +5,7 @@ import {
     addColumn,
     appendSection,
     blockFrom,
+    columnTemplateOperations,
     duplicateNode,
     emptySection,
     insertBlock,
@@ -108,6 +109,13 @@ interface HistoryEntry {
  * enough that coming back to a field a moment later is its own undo step.
  */
 const COALESCE_WINDOW_MS = 700
+
+/** A section node's `settings.row`, or null when it carries none. */
+function rowLayoutOf(node: unknown): Record<string, unknown> | null {
+    const row = (node as { settings?: Record<string, unknown> } | null)?.settings?.row
+
+    return typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : null
+}
 
 export interface PatternSummary {
     id: string
@@ -961,6 +969,28 @@ export const useDocumentStore = defineStore('document', {
             return this.edit(api, 'Resize columns', operations)
         },
 
+        /**
+         * The row's exact column widths, as grid tracks — or null to go
+         * back to twelfths.
+         *
+         * The same undo step as a span edit, and deliberately: these are
+         * one decision at two fidelities, and the producer writes both so
+         * the document never says one width while the page shows another.
+         */
+        async setColumnTemplate(
+            api: BuilderApi,
+            sectionId: string,
+            tracks: number[] | null,
+            stackOnMobile: boolean,
+        ): Promise<boolean> {
+            const operations = columnTemplateOperations(this.blocks, sectionId, tracks, stackOnMobile)
+            if (!operations || operations.length === 0) {
+                return false
+            }
+
+            return this.edit(api, 'Resize columns', operations)
+        },
+
         /** Duplicate any node in place — section, column or block. */
         async duplicateNode(api: BuilderApi, nodeId: string): Promise<boolean> {
             const operations = duplicateNode(this.blocks, nodeId)
@@ -1165,7 +1195,12 @@ export const useDocumentStore = defineStore('document', {
             return this.edit(
                 api,
                 'Paste column',
-                pasteColumnOperations(section.pointer, spans, node as Record<string, unknown>),
+                pasteColumnOperations(
+                    section.pointer,
+                    spans,
+                    node as Record<string, unknown>,
+                    rowLayoutOf(section.node),
+                ),
             )
         },
 

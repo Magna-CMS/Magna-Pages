@@ -5,6 +5,54 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [Unreleased]
+
+### Added
+
+- **A row can now store the width its columns actually render at.** A
+  column's `span` is twelfths, and twelfths cannot say 1.15 / 0.85 — a ratio
+  a designer reaches for constantly. Until now the only way to render one was
+  a theme class that switched the row to `display: grid` behind the
+  document's back, which left the builder faithfully showing the only number
+  the document could hold while the page showed something else: in one real
+  design, 26 of 28 multi-column bands stored `6, 6` and rendered 1.15fr /
+  0.85fr, and dragging the width fields edited a number that controlled
+  nothing. `settings.row.columnTemplate` is where that ratio lives now — a
+  list of `fr` tracks, one per column, written by the same width fields that
+  used to show twelfths, so what the editor sets is what the page renders.
+
+  Four decisions worth knowing, because each one had an alternative:
+
+  - **Setting it derives `display: grid`**, the way a column's align setting
+    already derives `display: flex`. It is not a tidiness: each column
+    carries an inline `flex: N N 0%` that a grid template on the row would
+    otherwise lose to, and under grid that inline value stops applying on its
+    own — no `!important` anywhere. `span` therefore survives untouched as
+    the fallback the row returns to the moment the template is removed, and
+    the producers keep the two in step, so the twelfths never end up
+    describing a different layout from the tracks.
+  - **Fr numbers only.** `auto`, `min-content` and percentages are refused by
+    the renderer. A track the width fields cannot show is the exact
+    disagreement this key exists to end; a row that genuinely needs one is a
+    theme's layout, through a section class, where the theme is the stated
+    owner rather than something the builder pretends to edit.
+  - **The narrow-width behaviour is a value in the document, not a default.**
+    A grid row does not inherit the one-column collapse the shell gives a
+    flex row (the inline `flex` that collapse overrides is already inert), so
+    "Stack on mobile" writes `mobile: "1fr"` where the builder can show it.
+    A hand-written template with no mobile value applies at every width,
+    which is what the document says.
+  - **A row that stores no template is untouched** — no grid, no class, no
+    stylesheet, byte for byte the page it was.
+
+  The key is classified as a STRUCTURE patch rather than a style one: it is
+  the decision the span field makes, it has to agree with `span`, and one
+  gesture must not need two capabilities. Changing a column width still needs
+  `pages.layout`, exactly as it did.
+
+  Two things stop applying while a template is set, by the nature of grid:
+  the row's Direction and Wrapping controls.
+
 ## [0.2.1-alpha] — 2026-10-13
 
 Requires Magna CMS 1.4.9 or newer for the block-behaviour mechanism below to
