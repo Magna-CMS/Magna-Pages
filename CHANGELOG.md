@@ -5,7 +5,70 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
-## [0.4.0-alpha] - Unreleased
+## [0.5.0-alpha] - Unreleased
+
+Requires Magna CMS 1.6.2 or newer — everything below builds on the frontend seams
+that version introduced (`RenderContext`, `CacheCollector`, `LocaleUrls`,
+`PaginatedDataSource`, `DeclaresCacheability`, `PublicContentChanged`,
+`PublicUrlsMoved`, `magna::partials.pagination`).
+
+### Added
+
+- **The Loop block can paginate.** A new `pagination` field (`none`, the default, or
+  `pages`) pages through any data source that implements `PaginatedDataSource`:
+  the block fetches the page `?page=N` asks for, and renders core's
+  `magna::partials.pagination` under the list. Page 1 is always the bare path. A
+  source that cannot paginate keeps rendering its plain, clamped list. Loop views
+  receive `$block['_resolved']['items']` as before and, new,
+  `$block['_resolved']['pagination']` — a `Magna\Frontend\Pagination`, or null. Every
+  paginated block on one page shares the same `?page=`.
+- **Data sources travel with what they know about freshness.** A source that
+  implements `DeclaresCacheability` tags the cached page with its `cacheTags()` and
+  caps the cached copy's life at its `nextChangeAt()`. Sources now receive the
+  request's `locale` beside `limit`.
+- **Plugin frontend pages can be cached.** A data provider whose
+  `FrontendPageResult` says `cacheable` has the response stored for guests, tagged
+  with the result's `cacheTags` plus `frontend:{name}` and `site:pages`, and never
+  past its `expiresAt`. Pages with an auth or permission requirement, and signed-in
+  visitors, are never cached.
+- **Plugin frontend pages are locale-aware.** `/fr/blog/hello` reaches the same
+  plugin page as `/blog/hello`, with the locale recorded on `RenderContext` for the
+  provider to read. A result's `localeAlternates` reach the layout, and the
+  built-in layout prints them as `hreflang` links.
+- **Other plugins can purge the cache and move URLs.** `PublicContentChanged`
+  purges cached pages by tag, or flushes everything. `PublicUrlsMoved` records a
+  redirect per move, with the same chain-collapse and loop-guard rules a page
+  rename gets, and drops any copy still cached at the old address.
+- **A page listing the latest pages stays current.** The built-in "Latest pages"
+  source tags what it renders `pages:listing`, and every page publish, update,
+  unpublish and delete purges it. Before, a new page stayed missing from cached
+  listings for up to an hour.
+
+### Fixed
+
+- **Redirects now match under a locale prefix.** A translated page's rename is
+  recorded under its locale with the prefix stripped, but the router looked
+  redirects up by the raw request path with no locale, so no redirect outside the
+  fallback locale ever fired. Lookup now tries the raw path, then the localized
+  path in the request's locale, then locale-less, and the `Location` keeps the
+  prefix.
+- **Flash messages are never cached or hidden by the cache.** A form that redirects
+  back with a "sent" message or validation errors flashes them for the next
+  request; that request could be served a cached copy without them, or store a
+  copy carrying them for every later guest. A session holding flash data now
+  bypasses the cache entirely.
+
+### Changed
+
+- The page cache stores a response under its path plus, at most, `?page=2` to
+  `?page=100`, and only when something on the page paginated; every other query
+  string still bypasses. A page past the end of a listing, or past page 100,
+  answers the themed 404 and is never stored. The collection archive follows the
+  same rule and renders the shared pagination partial.
+- `Routing\LocalePrefix` is deprecated and delegates to core's
+  `Magna\Frontend\LocaleUrls`.
+
+## [0.4.0-alpha] - 2026-10-20
 
 Requires Magna CMS 1.6.0 or newer — the frontend-page data provider contract
 (`FrontendPageDataProvider`, `FrontendPageResult`, `FrontendPageRegistry::resolve()`)

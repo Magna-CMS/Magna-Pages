@@ -2,11 +2,11 @@
     "name": "magna-cms/pages",
     "displayName": "Magna Pages",
     "description": "Turns a headless Magna install into a rendered website: pages, templates, menus, and the visual site builder.",
-    "version": "0.4.0-alpha",
+    "version": "0.5.0-alpha",
     "author": "Magna Team",
     "license": "proprietary",
     "compat": {
-        "magna": ">=1.6.0 <2.0",
+        "magna": ">=1.6.2 <2.0",
         "php": "^8.3"
     },
     "entry": "Magna\\Pages\\PagesPlugin",

@@ -10,7 +10,7 @@
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-red.svg">
   <a href="composer.json"><img alt="PHP ^8.3" src="https://img.shields.io/badge/php-%5E8.3-777bb4.svg"></a>
   <img alt="Laravel 13" src="https://img.shields.io/badge/laravel-13-ff2d20.svg">
-  <a href="https://github.com/Magna-CMS"><img alt="Magna CMS" src="https://img.shields.io/badge/Magna%20CMS-%3E%3D1.6.0-6366f1.svg"></a>
+  <a href="https://github.com/Magna-CMS"><img alt="Magna CMS" src="https://img.shields.io/badge/Magna%20CMS-%3E%3D1.6.2-6366f1.svg"></a>
 </p>
 
 ---
@@ -130,11 +130,13 @@ Writing one? Core block views put their classes on a **wrapper**, not on the sem
 
 - PHP 8.3+
 - Laravel 13
-- A [Magna CMS](https://github.com/Magna-CMS) install (^1.6.0)
+- A [Magna CMS](https://github.com/Magna-CMS) install (^1.6.2)
 - Filament 5 (comes with Magna)
 
-The 1.6.0 floor is new in this release: parameterized plugin frontend pages (`blog/{slug}`) and
-their data providers use the frontend-page contract that version introduced.
+The 1.6.2 floor is new in this release: pagination, locale-aware plugin pages, cacheable plugin
+pages and cross-plugin cache purges and redirects all build on the frontend seams that version
+introduced (`RenderContext`, `CacheCollector`, `LocaleUrls`, `PublicContentChanged`,
+`PublicUrlsMoved`).
 
 No Node.js required to run it. The builder is a Vue 3 + TypeScript application, but the compiled
 bundle is committed — you only need Node if you want to rebuild the editor yourself.
