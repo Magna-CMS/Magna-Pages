@@ -7,6 +7,11 @@
     @if($metaDescription !== '')
         <meta name="description" content="{{ $metaDescription }}">
     @endif
+    @if(count($localeAlternates ?? []) > 1)
+        @foreach($localeAlternates as $alternateLocale => $alternateUrl)
+            <link rel="alternate" hreflang="{{ $alternateLocale }}" href="{{ url($alternateUrl) }}">
+        @endforeach
+    @endif
     @if($tokensCss !== '')
         {{-- Active theme's design tokens as CSS custom properties (values
              pass the same injection filter as section tokenOverrides). --}}

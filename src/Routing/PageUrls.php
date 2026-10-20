@@ -7,7 +7,7 @@ namespace Magna\Pages\Routing;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
-use Magna\Settings\LocalizationSettings;
+use Magna\Frontend\LocaleUrls;
 
 /**
  * Published-page URL resolution, in one place.
@@ -23,7 +23,7 @@ class PageUrls
 {
     public function __construct(
         private readonly SchemaRegistry $schemaRegistry,
-        private readonly LocalePrefix $localePrefix,
+        private readonly LocaleUrls $localeUrls,
     ) {}
 
     /**
@@ -83,7 +83,7 @@ class PageUrls
             return null;
         }
 
-        $fallback = LocalizationSettings::get()->fallback_locale;
+        $fallback = $this->localeUrls->fallback();
 
         $page = $pages->first(function (Entry $entry) use ($fallback): bool {
             $locale = $entry->getAttribute('locale');
@@ -100,7 +100,7 @@ class PageUrls
         $locale = $page->getAttribute('locale');
         $locale = is_string($locale) && $locale !== '' ? $locale : $fallback;
 
-        return $this->localePrefix->urlFor($locale, $segment);
+        return $this->localeUrls->urlFor($locale, $segment);
     }
 
     /** The page's address segment: its nested path when set, its slug otherwise. */

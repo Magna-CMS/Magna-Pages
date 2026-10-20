@@ -10,7 +10,6 @@ use Magna\Blocks\BlockRegistry;
 use Magna\Blocks\PageTree;
 use Magna\Blocks\Resolution\BlockDataResolver;
 use Magna\Content\Entry;
-use Magna\Content\EntryStatus;
 use Magna\Frontend\FrontendPage;
 use Magna\Frontend\FrontendPageResult;
 use Magna\Pages\Builder\PageSettings;
@@ -19,14 +18,12 @@ use Magna\Pages\Experiments\ExperimentTracker;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\PagesSettings;
 use Magna\Pages\Render\Conditions\ConditionEvaluator;
-use Magna\Pages\Routing\LocalePrefix;
 use Magna\Pages\Routing\PageUrls;
 use Magna\Pages\Templates\PopupTargeting;
 use Magna\Pages\Templates\TemplatePartResolver;
 use Magna\Pages\Themes\ThemeTokens;
 use Magna\Pages\Themes\ThemeViewResolver;
 use Magna\Settings\GeneralSettings;
-use Magna\Settings\LocalizationSettings;
 
 /**
  * Renders a page entry's block document to public HTML.
@@ -63,7 +60,7 @@ final class PageRenderer
         private readonly TemplatePartResolver $parts,
         private readonly ConditionEvaluator $conditions,
         private readonly BindingResolver $bindings,
-        private readonly LocalePrefix $localePrefix,
+        private readonly LocaleAlternates $localeAlternates,
         private readonly PageUrls $pageUrls,
         private readonly ConsentScripts $consent,
         private readonly ExperimentTracker $experiments,
@@ -126,7 +123,13 @@ final class PageRenderer
             .view($page->view, $result?->data ?? [])->render()
             .'</div>';
 
-        return $this->renderDocument([], $result?->title ?? $page->title, mainHtml: $mainHtml, metaDescription: $result?->metaDescription);
+        return $this->renderDocument(
+            [],
+            $result?->title ?? $page->title,
+            mainHtml: $mainHtml,
+            metaDescription: $result?->metaDescription,
+            localeAlternates: $result?->localeAlternates,
+        );
     }
 
     /**
@@ -138,8 +141,9 @@ final class PageRenderer
      * main slot (plugin frontend pages) — the shell still renders.
      *
      * @param  array<mixed, mixed>  $document
+     * @param  array<string, string>|null  $localeAlternates  locale => URL; null = the context entry's translations
      */
-    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null, ?string $chromeSlot = null, ?string $metaDescription = null): string
+    public function renderDocument(array $document, string $title, bool $builderMode = false, bool $withParts = true, ?Entry $context = null, ?string $mainHtml = null, ?string $chromeSlot = null, ?string $metaDescription = null, ?array $localeAlternates = null): string
     {
         /*
          * The document IS this slot's chrome: render it there rather than
@@ -305,8 +309,9 @@ final class PageRenderer
                 $this->bindings->resolve($block->data, $context),
             ),
             // The current page's published translations, locale => URL —
-            // what the locale-switcher block renders. Empty off-page.
-            'localeAlternates' => $this->localeAlternates($context),
+            // what the locale-switcher block and hreflang links render. A
+            // plugin frontend page's provider supplies its own.
+            'localeAlternates' => $localeAlternates ?? $this->localeAlternates->forEntry($context),
         ])->render();
     }
 
@@ -318,38 +323,6 @@ final class PageRenderer
         $value = $context?->getAttribute($field);
 
         return is_string($value) ? trim($value) : '';
-    }
-
-    /**
-     * @return array<string, string> locale => site-relative URL
-     */
-    private function localeAlternates(?Entry $context): array
-    {
-        $group = $context?->translation_group;
-        $handle = $context?->getHandle();
-        if (! is_string($group) || $group === '' || ! is_string($handle)) {
-            return [];
-        }
-
-        $fallback = LocalizationSettings::get()->fallback_locale;
-
-        $alternates = [];
-        foreach (Entry::type($handle)
-            ->where('translation_group', $group)
-            ->where('status', EntryStatus::Published->value)
-            ->orderBy('locale')
-            ->get() as $sibling) {
-            $locale = $sibling->getAttribute('locale');
-            // A row with no locale recorded IS the fallback locale
-            // (EntryManager stores '' when a create names none).
-            $locale = is_string($locale) && $locale !== '' ? $locale : $fallback;
-            $path = $sibling->getAttribute('path') ?? $sibling->getAttribute('slug');
-            if (is_string($path) && $path !== '') {
-                $alternates[$locale] = $this->localePrefix->urlFor($locale, $path);
-            }
-        }
-
-        return $alternates;
     }
 
     /**
