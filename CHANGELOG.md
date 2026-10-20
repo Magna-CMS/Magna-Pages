@@ -5,7 +5,7 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
-## [0.5.0-alpha] - Unreleased
+## [0.5.0-alpha] - 2026-10-21
 
 Requires Magna CMS 1.6.2 or newer — everything below builds on the frontend seams
 that version introduced (`RenderContext`, `CacheCollector`, `LocaleUrls`,
