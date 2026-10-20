@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Blocks;
 
+use DateTimeInterface;
 use Magna\Blocks\DataSources\DataSource;
+use Magna\Blocks\DataSources\DeclaresCacheability;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
@@ -15,10 +17,30 @@ use Magna\Content\SchemaRegistry;
  * content types do NOT get an automatic source: whether a type's entries
  * are public is a judgement only its owning plugin can make, so each
  * plugin registers its own sources via RegistersDataSources.
+ *
+ * A cached page listing pages answers to CACHE_TAG, which every page
+ * publish, update, unpublish and delete purges (PurgePageCache).
  */
-final class LatestPagesSource implements DataSource
+final class LatestPagesSource implements DataSource, DeclaresCacheability
 {
+    public const CACHE_TAG = 'pages:listing';
+
     public function __construct(private readonly SchemaRegistry $schemas) {}
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return list<string>
+     */
+    public function cacheTags(array $config): array
+    {
+        return [self::CACHE_TAG];
+    }
+
+    /** @param  array<string, mixed>  $config */
+    public function nextChangeAt(array $config): ?DateTimeInterface
+    {
+        return null;
+    }
 
     public function handle(): string
     {
@@ -58,7 +80,7 @@ final class LatestPagesSource implements DataSource
 
             $item = ['title' => $title, 'url' => '/'.$segment];
             $published = $entry->getAttribute('published_at');
-            if ($published instanceof \DateTimeInterface) {
+            if ($published instanceof DateTimeInterface) {
                 $item['date'] = $published->format('Y-m-d');
             }
             $items[] = $item;

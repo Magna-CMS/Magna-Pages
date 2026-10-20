@@ -25,6 +25,8 @@ use Magna\Contracts\RegistersCommands;
 use Magna\Contracts\RegistersDataSources;
 use Magna\Contracts\RegistersDynamicTags;
 use Magna\Contracts\RegistersSettingsPages;
+use Magna\Frontend\Events\PublicContentChanged;
+use Magna\Frontend\Events\PublicUrlsMoved;
 use Magna\Pages\Blocks\CurrentYearTag;
 use Magna\Pages\Blocks\DataSourceOptions;
 use Magna\Pages\Blocks\EmbedBlockResolver;
@@ -48,6 +50,7 @@ use Magna\Pages\Filament\Pages\PagesIndexPage;
 use Magna\Pages\Filament\Pages\PagesSettingsPage;
 use Magna\Pages\Filament\Pages\ReviewQueuePage;
 use Magna\Pages\Filament\Pages\StyleSchedulesPage;
+use Magna\Pages\Listeners\RecordMovedUrlRedirects;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
@@ -180,6 +183,16 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             }
         });
 
+        // Other plugins' public content and URLs (core 1.6.2 events): the
+        // plugin that owns the content says what changed or moved; this
+        // plugin owns the cache and the redirect table.
+        Event::listen(PublicContentChanged::class, function (PublicContentChanged $e): void {
+            app(PurgePageCache::class)->handlePublicContentChanged($e);
+        });
+        Event::listen(PublicUrlsMoved::class, function (PublicUrlsMoved $e): void {
+            app(RecordMovedUrlRedirects::class)->handle($e);
+        });
+
         // Expired pages_cache rows are dead weight after their TTL — sweep
         // hourly. Same deferred-Schedule pattern as core's prune commands
         // (a plugin is not a ServiceProvider, so the callAfterResolving
@@ -213,6 +226,16 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
                         'optionsFrom' => DataSourceOptions::class,
                     ],
                     ['handle' => 'limit', 'type' => 'number', 'label' => 'Items', 'required' => false, 'default' => 6],
+                    // Pages only where the source can serve them; `?page=N`
+                    // is shared by every paginated block on one page.
+                    [
+                        'handle' => 'pagination',
+                        'type' => 'select',
+                        'label' => 'Pagination',
+                        'required' => false,
+                        'default' => 'none',
+                        'options' => ['none' => 'None', 'pages' => 'Pages'],
+                    ],
                 ],
             ]),
             BlockDefinition::fromArray([

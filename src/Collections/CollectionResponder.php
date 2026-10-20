@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Collections;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Magna\Content\ContentType;
 use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
+use Magna\Frontend\RenderContext;
 use Magna\Pages\Render\PageRenderer;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -24,18 +26,19 @@ use Symfony\Component\HttpFoundation\Response;
  * list view in v1 (a designable archive document needs the
  * collection.current data source — deferred with it).
  *
- * Pagination is capped (§C4): page size fixed at 24, deep offsets bounded.
+ * Pagination is capped (§C4): page size fixed at 24, deep offsets bounded
+ * by core's RenderContext (`?page=` past 100, or past the last page, is a
+ * 404).
  */
 final class CollectionResponder
 {
     private const PAGE_SIZE = 24;
 
-    private const MAX_PAGE = 100;
-
     public function __construct(
         private readonly CollectionMounts $mounts,
         private readonly PageRenderer $renderer,
         private readonly CollectionTemplates $templates,
+        private readonly Container $container,
     ) {}
 
     /** The response for the path, or null when no mount claims it. */
@@ -52,19 +55,24 @@ final class CollectionResponder
         }
 
         return $match['mode'] === 'archive'
-            ? $this->archive($match, $contentType, $request)
+            ? $this->archive($match, $contentType)
             : $this->single($match, $contentType, (string) $match['slug']);
     }
 
     /**
      * @param  array{mode: string, type: string, prefix: string, slug: string|null}  $mount
      */
-    private function archive(array $mount, ContentType $contentType, Request $request): Response
+    private function archive(array $mount, ContentType $contentType): Response
     {
-        $page = max(1, min(self::MAX_PAGE, (int) $request->query('page', '1')));
+        $published = Entry::type($mount['type'])->where('status', EntryStatus::Published->value);
 
-        $entries = Entry::type($mount['type'])
-            ->where('status', EntryStatus::Published->value)
+        // A page past the end is recorded on the context; the router
+        // answers it with the themed 404.
+        $pagination = $this->container->make(RenderContext::class)
+            ->paginate((clone $published)->count(), self::PAGE_SIZE);
+        $page = $pagination->page;
+
+        $entries = $published
             ->orderByDesc('published_at')
             ->forPage($page, self::PAGE_SIZE)
             ->get();
@@ -81,8 +89,9 @@ final class CollectionResponder
             'typeLabel' => $contentType->displayName,
             'items' => $items,
             'page' => $page,
-            'hasMore' => count($entries) === self::PAGE_SIZE,
+            'hasMore' => $pagination->hasNext(),
             'prefix' => $mount['prefix'],
+            'pagination' => $pagination,
         ])->render();
 
         $html = $this->renderer->renderDocument([], $contentType->displayName, mainHtml: $mainHtml);

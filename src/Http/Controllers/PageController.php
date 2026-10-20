@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace Magna\Pages\Http\Controllers;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
-use Magna\Blocks\Resolution\ResolverBudget;
+use Magna\Frontend\CacheCollector;
+use Magna\Frontend\LocaleUrls;
+use Magna\Frontend\RenderContext;
 use Magna\Pages\Cache\PageCache;
+use Magna\Pages\Cache\PageCacheWriter;
 use Magna\Pages\Collections\CollectionResponder;
 use Magna\Pages\Frontend\FrontendPageResponder;
 use Magna\Pages\PagesSettings;
-use Magna\Pages\Render\Conditions\DocumentConditions;
 use Magna\Pages\Render\PageRenderer;
-use Magna\Pages\Routing\LocalePrefix;
 use Magna\Pages\Routing\PageRouteResolver;
 use Magna\Pages\Routing\RedirectManager;
-use Magna\Pages\Templates\TemplatePartResolver;
-use Magna\Pages\Themes\ThemeTokens;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -30,13 +30,11 @@ final class PageController
         private readonly PageRenderer $renderer,
         private readonly RedirectManager $redirects,
         private readonly PageCache $cache,
-        private readonly DocumentConditions $conditions,
+        private readonly PageCacheWriter $cacheWriter,
         private readonly FrontendPageResponder $frontendPages,
-        private readonly TemplatePartResolver $parts,
         private readonly CollectionResponder $collections,
-        private readonly LocalePrefix $localePrefix,
-        private readonly ThemeTokens $tokens,
-        private readonly ResolverBudget $budget,
+        private readonly LocaleUrls $localeUrls,
+        private readonly Container $container,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -54,13 +52,11 @@ final class PageController
             );
         }
 
-        // Shared page cache: guest GETs without query strings only — per-user
-        // or parameterized responses never enter the shared cache.
-        $cacheable = $request->user() === null && $request->query() === [];
-        $cacheUrl = '/'.trim($request->path(), '/');
-
-        if ($cacheable) {
-            $hit = $this->cache->get($cacheUrl);
+        // Shared page cache: guest GET/HEAD, no flash data, no query string
+        // but ?page=N — PageCacheWriter owns the rule.
+        $cacheKey = $this->cacheWriter->keyFor($request);
+        if ($cacheKey !== null) {
+            $hit = $this->cache->get($cacheKey);
             if ($hit !== null) {
                 return response($hit, 200, [
                     'Content-Type' => 'text/html; charset=utf-8',
@@ -72,10 +68,11 @@ final class PageController
         // §A2 locale-prefix strategy: /fr/about serves the French
         // translation and sets the app locale; bare paths serve the
         // fallback locale. Cache stays URL-keyed, so locales never mix.
-        ['locale' => $locale, 'path' => $localizedPath] = $this->localePrefix->split($request->path());
+        ['locale' => $locale, 'path' => $localizedPath] = $this->localeUrls->split($request->path());
         if ($locale !== null) {
             app()->setLocale($locale);
         }
+        $context = $this->startRender($request, $locale);
 
         $entry = $this->resolver->resolve($localizedPath, $settings, $locale);
 
@@ -83,92 +80,73 @@ final class PageController
             // Mounted collection (05-SITE-STRUCTURE §1): archive at the
             // prefix, single at prefix/{slug}. After real pages — an exact
             // page slug always wins — and before plugin pages.
-            $collectionResponse = $this->collections->respond($request->path(), $request);
-            if ($collectionResponse !== null) {
-                return $collectionResponse;
-            }
-
-            // Plugin frontend page (§07-EXTENSIBILITY): after real pages —
-            // the site owner's page outranks a plugin at the same path —
-            // and before redirects, which only fire for dead paths.
-            $pluginResponse = $this->frontendPages->respond($request->path(), $request);
-            if ($pluginResponse !== null) {
-                return $pluginResponse;
+            $response = $this->collections->respond($request->path(), $request)
+                // Plugin frontend page (§07-EXTENSIBILITY): after real pages
+                // — the site owner's page outranks a plugin at the same path
+                // — and before redirects, which only fire for dead paths.
+                ?? $this->frontendPages->respond($localizedPath, $request, $cacheKey);
+            if ($response !== null) {
+                return $context->outOfRange() ? $this->notFound($settings) : $response;
             }
 
             // A live page always wins over a redirect; redirects only fire
             // for paths nothing resolves anymore.
-            $redirect = $this->redirects->forPath($request->path());
+            $redirect = $this->redirects->resolve($request->path(), $localizedPath, $this->localeUrls->effective($locale));
             if ($redirect !== null) {
-                return response('', $redirect->status, [
-                    'Location' => url('/'.ltrim($redirect->target_path, '/')),
-                ]);
+                return response('', $redirect->status, ['Location' => url($redirect->path)]);
             }
 
-            $notFoundPage = $this->resolver->notFoundPage($settings);
-
-            return response(
-                $notFoundPage !== null
-                    ? $this->renderer->render($notFoundPage)
-                    : view('magna-pages::not-found')->render(),
-                404,
-                ['Content-Type' => 'text/html; charset=utf-8'],
-            );
+            return $this->notFound($settings);
         }
 
         $html = $this->renderer->render($entry);
 
-        // §C9: the conditions in everything this URL renders get a veto on
-        // caching — the page document AND every site-wide popup. A condition
-        // we cannot evaluate makes the page uncacheable outright; a schedule
-        // shortens the cached copy's life to its next boundary, so the cache
-        // never serves yesterday's banner past its `until`.
-        if ($cacheable) {
-            $document = $entry->getAttribute('blocks_data');
-            $verdict = $this->conditions->cacheVerdictAll(
-                [
-                    is_array($document) ? $document : [],
-                    ...array_column($this->parts->popups(), 'document'),
-                ],
-                $request->user(),
-                now(),
-            );
-            $cacheable = $verdict['cacheable'];
-
-            /*
-             * A render that spent its resolver budget produced gaps where
-             * slow tags and loops should have been. Storing that copy would
-             * outlive the slow minute that caused it and serve a visibly
-             * broken page to everybody until something purged it.
-             */
-            if ($this->budget->exhausted()) {
-                $cacheable = false;
-            }
-
-            // A scheduled design change is another expiry boundary: the
-            // earliest of the two decides how long this copy may live.
-            $expiresAt = $verdict['expiresAt'];
-            $styleChange = $this->tokens->nextScheduledChange();
-            if ($styleChange !== null && ($expiresAt === null || $styleChange->lessThan($expiresAt))) {
-                $expiresAt = $styleChange;
-            }
-
-            if ($cacheable) {
-                $ttl = $expiresAt === null
-                    ? null
-                    : max(1, min(PageCache::DEFAULT_TTL_SECONDS, (int) now()->diffInSeconds($expiresAt, false)));
-
-                $entryKey = $entry->getKey();
-                $this->cache->put($cacheUrl, $html, [
-                    'page:'.(is_string($entryKey) ? $entryKey : ''),
-                    'site:pages',
-                ], $ttl);
-            }
+        if ($context->outOfRange()) {
+            return $this->notFound($settings);
         }
+
+        $document = $entry->getAttribute('blocks_data');
+        $entryKey = $entry->getKey();
+        $stored = $cacheKey !== null && $this->cacheWriter->store(
+            $cacheKey,
+            $html,
+            ['page:'.(is_string($entryKey) ? $entryKey : ''), 'site:pages'],
+            [is_array($document) ? $document : []],
+        );
 
         return response($html, 200, [
             'Content-Type' => 'text/html; charset=utf-8',
-            'X-Magna-Cache' => $cacheable ? 'miss' : 'bypass',
+            'X-Magna-Cache' => $stored ? 'miss' : 'bypass',
         ]);
+    }
+
+    /**
+     * Fresh per-request render state. Both objects are scoped, but a
+     * container that serves several requests without a scope flush (the
+     * test client, a sub-request) would otherwise carry one response's page
+     * flags, tags or cache veto into the next.
+     */
+    private function startRender(Request $request, ?string $locale): RenderContext
+    {
+        $this->container->forgetInstance(RenderContext::class);
+        $this->container->forgetInstance(CacheCollector::class);
+
+        $context = $this->container->make(RenderContext::class);
+        $context->setRequest($request, $locale);
+
+        return $context;
+    }
+
+    private function notFound(PagesSettings $settings): Response
+    {
+        $notFoundPage = $this->resolver->notFoundPage($settings);
+
+        return response(
+            $notFoundPage !== null
+                ? $this->renderer->render($notFoundPage)
+                : view('magna-pages::not-found')->render(),
+            404,
+            ['Content-Type' => 'text/html; charset=utf-8'],
+        );
     }
 }

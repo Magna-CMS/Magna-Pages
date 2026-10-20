@@ -5,11 +5,18 @@ declare(strict_types=1);
 namespace Magna\Pages\Cache;
 
 use Magna\Content\Entry;
+use Magna\Frontend\Events\PublicContentChanged;
+use Magna\Pages\Blocks\LatestPagesSource;
 
 /**
  * Cache invalidation for page lifecycle events. Content edits purge exactly
- * that page's cached URLs (`page:{id}`); structural changes with sitewide
- * blast radius (slug renames — every nav link may point at the page) flush.
+ * that page's cached URLs (`page:{id}`) and every cached listing of pages
+ * (`pages:listing`); structural changes with sitewide blast radius (slug
+ * renames — every nav link may point at the page) flush.
+ *
+ * Other plugins' content reaches the cache through core's
+ * PublicContentChanged: purge by its tags, or flush when it says
+ * everything changed.
  */
 class PurgePageCache
 {
@@ -35,9 +42,20 @@ class PurgePageCache
         }
 
         $key = $entry->getKey();
-        if (is_string($key)) {
-            $this->cache->purge(['page:'.$key]);
+        $this->cache->purge(is_string($key)
+            ? ['page:'.$key, LatestPagesSource::CACHE_TAG]
+            : [LatestPagesSource::CACHE_TAG]);
+    }
+
+    public function handlePublicContentChanged(PublicContentChanged $event): void
+    {
+        if ($event->everything) {
+            $this->cache->flush();
+
+            return;
         }
+
+        $this->cache->purge(array_values($event->tags));
     }
 
     public function flushSite(): void

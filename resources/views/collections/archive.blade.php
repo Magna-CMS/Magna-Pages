@@ -20,13 +20,6 @@
             @endforeach
         </ul>
 
-        <nav class="magna-collection__pagination" aria-label="Pagination">
-            @if($page > 1)
-                <a href="/{{ $prefix }}?page={{ $page - 1 }}" rel="prev">&larr; Newer</a>
-            @endif
-            @if($hasMore)
-                <a href="/{{ $prefix }}?page={{ $page + 1 }}" rel="next">Older &rarr;</a>
-            @endif
-        </nav>
+        @include('magna::partials.pagination', ['pagination' => $pagination])
     @endif
 </div>

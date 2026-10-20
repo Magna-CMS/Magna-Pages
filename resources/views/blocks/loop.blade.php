@@ -3,9 +3,14 @@
     conventional keys (title/url/description/date/image). Everything is
     escaped — sources return presentation STRINGS, and even a source that
     misbehaves cannot inject markup through this view.
+
+    $block['_resolved']['pagination'] is a Magna\Frontend\Pagination when
+    the block pages through its source, null otherwise; core's
+    magna::partials.pagination renders nothing for null or a single page.
 --}}
 @php
     $items = $block['_resolved']['items'] ?? [];
+    $pagination = $block['_resolved']['pagination'] ?? null;
     $heading = $block['data']['heading'] ?? '';
 @endphp
 
@@ -46,5 +51,7 @@
                 </li>
             @endforeach
         </ul>
+
+        @include('magna::partials.pagination', ['pagination' => $pagination])
     @endif
 </div>

@@ -18,8 +18,9 @@ use Illuminate\Support\Str;
  *     (their blast radius genuinely is every page: nav URLs, header menus,
  *     tokens) — the TTL is the backstop for anything unhooked yet
  *
- * Only successful guest responses without query strings are cached; per-user
- * content never enters the shared cache by construction.
+ * Only successful guest responses are cached, keyed by path plus, at most,
+ * `?page=N` (PageCacheWriter decides); per-user content never enters the
+ * shared cache by construction.
  */
 class PageCache
 {
@@ -98,6 +99,12 @@ class PageCache
         if ($cacheIds->isNotEmpty()) {
             DB::table('pages_cache')->whereIn('id', $cacheIds)->delete();
         }
+    }
+
+    /** Drop the cached copy of one URL (an address that no longer serves it). */
+    public function forget(string $url): void
+    {
+        DB::table('pages_cache')->where('url_hash', $this->hash($url))->delete();
     }
 
     /**

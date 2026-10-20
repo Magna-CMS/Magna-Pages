@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 use Magna\Frontend\FrontendPageDataProvider;
 use Magna\Frontend\FrontendPageRegistry;
 use Magna\Frontend\FrontendPageResult;
+use Magna\Pages\Cache\PageCacheWriter;
 use Magna\Pages\Render\PageRenderer;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,9 +29,11 @@ use Symfony\Component\HttpFoundation\Response;
  * nothing for the captured parameters answers null, and the router carries
  * on to the redirect table and the themed 404 exactly as for a dead path.
  *
- * Plugin pages never enter the shared page cache — they are live plugin
- * output (chat, dashboards, provider-backed posts), and their auth gating
- * is per-visitor.
+ * A plugin page enters the shared page cache only when its provider's
+ * result says `cacheable` — only the provider knows whether what it
+ * rendered is the same for every guest — and only for a guest on a page
+ * with no auth or permission requirement. Live plugin output (chat,
+ * dashboards) never opts in.
  */
 final class FrontendPageResponder
 {
@@ -39,10 +42,15 @@ final class FrontendPageResponder
         private readonly PageRenderer $renderer,
         private readonly FrontendPageVisibility $visibility,
         private readonly Container $container,
+        private readonly PageCacheWriter $cacheWriter,
     ) {}
 
-    /** The response for the path, or null when no plugin page claims it. */
-    public function respond(string $path, Request $request): ?Response
+    /**
+     * The response for the path, or null when no plugin page claims it.
+     *
+     * @param  string|null  $cacheKey  The page-cache key when the request may be cached at all.
+     */
+    public function respond(string $path, Request $request, ?string $cacheKey = null): ?Response
     {
         $match = $this->registry->resolve($path);
         if ($match === null) {
@@ -71,9 +79,24 @@ final class FrontendPageResponder
             }
         }
 
-        return response($this->renderer->renderFrontendPage($page, $result), 200, [
+        $html = $this->renderer->renderFrontendPage($page, $result);
+
+        $stored = $cacheKey !== null
+            && $user === null
+            && $result !== null
+            && $result->cacheable
+            && ! $page->requiresAuth
+            && $page->permission === null
+            && $this->cacheWriter->store(
+                $cacheKey,
+                $html,
+                [...array_values($result->cacheTags), 'frontend:'.$page->name, 'site:pages'],
+                expiresAt: $result->expiresAt,
+            );
+
+        return response($html, 200, [
             'Content-Type' => 'text/html; charset=utf-8',
-            'X-Magna-Cache' => 'bypass',
+            'X-Magna-Cache' => $stored ? 'miss' : 'bypass',
         ]);
     }
 
