@@ -186,6 +186,99 @@ class SiteKit
     }
 
     /**
+     * Apply the kit adding only what this site does not have — a theme's
+     * demo content, imported on install (Magna\Themes\ThemeContentImporter).
+     *
+     * apply() is a sync: it upserts, so it can overwrite an edited page, and
+     * it writes maintenance_mode. Demo content arrives on sites that already
+     * have content, so here nothing that exists is touched:
+     *
+     *   • pages and templates are created when their slug+locale is free,
+     *     otherwise skipped;
+     *   • a menu is filled only when its handle does not exist or is empty;
+     *   • patterns are added under names not already taken;
+     *   • plugin sections receive only the rows their own diff() reports as
+     *     added, so a section's upsert never meets an existing record;
+     *   • the home and not-found pages are set only when unset; maintenance
+     *     mode and collection mounts are never changed.
+     *
+     * One transaction, like apply(): demo content lands whole or not at all.
+     *
+     * @param  array<string, mixed>  $kit
+     * @return array<string, int> created per kind, and "skipped"
+     */
+    public function applyMissing(array $kit, ?string $actorId = null): array
+    {
+        if (($kit['format'] ?? null) !== 'magna-site-kit' || ($kit['version'] ?? null) !== self::VERSION) {
+            throw new \InvalidArgumentException('Not a magna-site-kit v'.self::VERSION.' bundle.');
+        }
+
+        return DB::transaction(function () use ($kit, $actorId): array {
+            $counts = ['created' => 0, 'menus' => 0, 'patterns' => 0, 'skipped' => 0];
+
+            foreach (['page' => 'pages', 'pages_template' => 'templates'] as $type => $key) {
+                foreach ($this->kitEntries($kit, $key) as $row) {
+                    $slug = $row['slug'] ?? null;
+                    $locale = is_string($row['locale'] ?? null) ? $row['locale'] : '';
+
+                    if (is_string($slug) && $slug !== '' && Entry::type($type)->where('slug', $slug)->where('locale', $locale)->exists()) {
+                        $counts['skipped']++;
+
+                        continue;
+                    }
+
+                    $this->applyEntry($type, $row, $actorId, $counts);
+                }
+            }
+
+            foreach ($this->kitMenus($kit) as $menuRow) {
+                $menu = Menu::query()->where('handle', $menuRow['handle'])->first();
+
+                if ($menu !== null && $menu->items()->exists()) {
+                    $counts['skipped']++;
+
+                    continue;
+                }
+
+                $menu ??= Menu::query()->create(['handle' => $menuRow['handle'], 'name' => $menuRow['name']]);
+                $this->menus->syncItems($menu, $this->mapMenuTree($menuRow['tree']), $actorId);
+                $counts['menus']++;
+            }
+
+            $counts['patterns'] = $this->applyPatterns([
+                'patterns' => array_values(array_filter(
+                    is_array($kit['patterns'] ?? null) ? $kit['patterns'] : [],
+                    fn ($row): bool => is_array($row) && is_string($row['name'] ?? null)
+                        && ! Pattern::query()->where('name', trim($row['name']))->exists(),
+                )),
+            ]);
+
+            foreach ($this->sectionMap() as $key => $section) {
+                if (! array_key_exists($key, $kit)) {
+                    continue;
+                }
+
+                $new = [];
+                foreach ($this->kitSectionRows($kit, $key) as $row) {
+                    // Asked row by row: diff() names what it would add, and a
+                    // row it does not call "added" exists here already.
+                    if (($section->diff([$row])['added'] ?? []) !== []) {
+                        $new[] = $row;
+                    } else {
+                        $counts['skipped']++;
+                    }
+                }
+
+                $counts[$key] = $new === [] ? 0 : $section->apply($new, $actorId);
+            }
+
+            $this->applyMissingSettings($kit);
+
+            return $counts;
+        });
+    }
+
+    /**
      * The builder's saved patterns.
      *
      * A pattern is how a composite — a mocked-up terminal, a pricing table
@@ -320,6 +413,34 @@ class SiteKit
         }
 
         return $written;
+    }
+
+    /**
+     * The settings half of applyMissing(): the home and not-found pages only
+     * where none is set. Maintenance mode and collection mounts are a site's
+     * own business and a demo never changes them.
+     *
+     * @param  array<string, mixed>  $kit
+     */
+    private function applyMissingSettings(array $kit): void
+    {
+        $kitSettings = is_array($kit['settings'] ?? null) ? $kit['settings'] : [];
+        $settings = PagesSettings::get();
+        $changed = false;
+
+        if ($settings->home_page_id === null && ($home = $this->idForSlug($kitSettings['home_page_slug'] ?? null)) !== null) {
+            $settings->home_page_id = $home;
+            $changed = true;
+        }
+
+        if ($settings->not_found_page_id === null && ($notFound = $this->idForSlug($kitSettings['not_found_page_slug'] ?? null)) !== null) {
+            $settings->not_found_page_id = $notFound;
+            $changed = true;
+        }
+
+        if ($changed) {
+            app(SettingsRepository::class)->persist($settings);
+        }
     }
 
     /** @param array<string, mixed> $kit */
