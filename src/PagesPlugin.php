@@ -55,9 +55,11 @@ use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
 use Magna\Pages\SiteKit\SiteKit;
+use Magna\Pages\SiteKit\ThemeKitImporter;
 use Magna\Plugins\Plugin;
 use Magna\Settings\Events\SettingsSaved;
 use Magna\Settings\GeneralSettings;
+use Magna\Themes\ThemeContentImporter;
 use Magna\Themes\ThemeSettings;
 
 /**
@@ -144,6 +146,13 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         app()->when(SiteKit::class)
             ->needs('$sections')
             ->give(fn ($app) => $app->bound('magna.site_kit.sections') ? $app->make('magna.site_kit.sections') : []);
+
+        // Themes install with demo data: core asks for a ThemeContentImporter
+        // and offers "Include demo content" only when one is bound. Guarded,
+        // so this release still runs on a core that predates the contract.
+        if (interface_exists(ThemeContentImporter::class)) {
+            app()->bind(ThemeContentImporter::class, ThemeKitImporter::class);
+        }
 
         // The structured editor honors the builder's document lock (§E2) —
         // two editors, one lock, neither can overwrite the other unseen.

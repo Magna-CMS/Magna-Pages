@@ -5,6 +5,19 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [0.6.0-alpha] - 2026-10-22
+
+### Added
+
+- **Theme demo content.** `SiteKit::applyMissing()` applies a site kit add-only: pages and
+  templates whose slug the site already has are skipped, a menu is filled only when missing
+  or empty, patterns only by new name, plugin sections receive only the rows their `diff()`
+  reports as added, and the home / 404 pages are set only when unset. Maintenance mode and
+  collection mounts are never touched. `ThemeKitImporter` binds it as core's
+  `Magna\Themes\ThemeContentImporter` (Magna CMS 1.7.0+), which powers **Include demo
+  content** and **Import demo content** on the Themes page. On older cores the binding is
+  skipped.
+
 ## [0.5.0-alpha] - 2026-10-21
 
 Requires Magna CMS 1.6.2 or newer — everything below builds on the frontend seams
