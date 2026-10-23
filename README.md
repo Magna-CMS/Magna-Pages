@@ -1,7 +1,7 @@
 <h1 align="center">Magna Pages</h1>
 
 <p align="center">
-  <strong>A visual page builder for Laravel.</strong><br>
+  <strong>A visual page builder plugin for <a href="https://github.com/Magna-CMS/Magna">Magna CMS</a>.</strong><br>
   Drag-and-drop pages, templates, menus and global styles — built on Laravel 13 and Filament 5.
 </p>
 
@@ -10,7 +10,7 @@
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-red.svg">
   <a href="composer.json"><img alt="PHP ^8.3" src="https://img.shields.io/badge/php-%5E8.3-777bb4.svg"></a>
   <img alt="Laravel 13" src="https://img.shields.io/badge/laravel-13-ff2d20.svg">
-  <a href="https://github.com/Magna-CMS"><img alt="Magna CMS" src="https://img.shields.io/badge/Magna%20CMS-%3E%3D1.6.2-6366f1.svg"></a>
+  <a href="https://github.com/Magna-CMS/Magna"><img alt="Magna CMS" src="https://img.shields.io/badge/Magna%20CMS-%3E%3D1.6.2-6366f1.svg"></a>
 </p>
 
 ---
@@ -19,19 +19,21 @@
   <img alt="The Magna Pages builder: the element library on the left, the real rendered page in the canvas" src=".github/screenshots/builder-canvas.png">
 </p>
 
-Magna Pages turns a headless [Magna CMS](https://github.com/Magna-CMS) install into a rendered
-website. It adds pages, reusable templates, headers and footers, navigation menus, a design-token
-system, and a visual builder for putting it all together — the drag-and-drop editing experience people
-expect from Webflow or Elementor, running inside a Laravel application you own.
+Magna Pages is a plugin for [Magna CMS](https://github.com/Magna-CMS/Magna) that turns a headless
+Magna install into a rendered website. It adds pages, reusable templates, headers and footers,
+navigation menus, a design-token system, and a visual builder for putting it all together — the
+drag-and-drop editing experience people expect from Webflow or Elementor, running inside a Laravel
+application you own.
 
-It is a Laravel package. There is no SaaS, no external editor service, and no account to sign up for.
-Your content lives in your database and renders through your Blade views.
+It is a Magna CMS plugin, distributed as a Composer package. There is no SaaS, no external editor
+service, and no account to sign up for. Your content lives in your database and renders through your
+Blade views.
 
 ## ⚠️ This is alpha software
 
 Read this part before you install anything.
 
-Magna Pages is published at **0.2.0-alpha**. It is incomplete and it has bugs — some of them known,
+Magna Pages is published at **0.6.0-alpha**. It is incomplete and it has bugs — some of them known,
 most of them not yet found. Data formats, block schemas and internal APIs will change in ways that
 break existing pages. There is no upgrade path between alpha releases.
 
@@ -129,33 +131,50 @@ Writing one? Core block views put their classes on a **wrapper**, not on the sem
 ## Requirements
 
 - PHP 8.3+
-- Laravel 13
-- A [Magna CMS](https://github.com/Magna-CMS) install (^1.6.2)
-- Filament 5 (comes with Magna)
+- A [Magna CMS](https://github.com/Magna-CMS/Magna) install, 1.6.2 or later and below 2.0
+  (Laravel 13 and Filament 5 come with Magna)
+- Magna CMS 1.7.0+ for the Themes page's **Include demo content** / **Import demo content**
+  (on older cores that integration is skipped)
 
-The 1.6.2 floor is new in this release: pagination, locale-aware plugin pages, cacheable plugin
-pages and cross-plugin cache purges and redirects all build on the frontend seams that version
-introduced (`RenderContext`, `CacheCollector`, `LocaleUrls`, `PublicContentChanged`,
+The 1.6.2 floor was introduced in 0.5.0-alpha: pagination, locale-aware plugin pages, cacheable
+plugin pages and cross-plugin cache purges and redirects all build on the frontend seams that Magna
+version introduced (`RenderContext`, `CacheCollector`, `LocaleUrls`, `PublicContentChanged`,
 `PublicUrlsMoved`).
 
 No Node.js required to run it. The builder is a Vue 3 + TypeScript application, but the compiled
 bundle is committed — you only need Node if you want to rebuild the editor yourself.
 
-## Install
+## Installation
+
+From the root of your Magna CMS install:
 
 ```bash
 composer require magna-cms/pages
 php artisan magna:plugin:enable magna-cms/pages
-php artisan migrate
 ```
 
-Then open the admin panel, create a page, and choose **Open builder**.
+Enabling the plugin validates its manifest, runs its migrations and registers its permissions.
+
+## Usage
+
+Open the admin panel, go to **Pages**, create a page, and choose **Open builder**. Navigation menus
+are managed under **Menus**, and site-wide options under **Site settings**.
+
+The plugin also adds Artisan commands, including:
+
+| Command | What it does |
+|---|---|
+| `php artisan magna:site:export <path>` | Export pages, templates, menus, patterns and site settings to a site-kit JSON file |
+| `php artisan magna:site:diff <path>` | Compare a site-kit file against the current site |
+| `php artisan magna:site:sync <path>` | Apply a site-kit file to the current site (upserts only) |
+| `php artisan magna:theme:check [vendor/name]` | Audit one installed theme, or all of them (manifest, tokens, view rules) |
+| `php artisan magna:block:check <path>` | Validate a `block.json` block definition |
 
 ## Blocks
 
-Ships with the standard library: headings, text, images, galleries, buttons, icons, video, HTML,
-tables, code, quotes, callouts, file downloads, FAQs, heroes, features, pricing, stats, testimonials,
-team, logos, search, containers, spacers and dividers — plus dynamic blocks for menus, entry listings
+Works with Magna's standard block library: headings, text, images, galleries, buttons, icons, video,
+HTML, tables, code, quotes, callouts, file downloads, FAQs, heroes, features, pricing, stats,
+testimonials, team, logos, search, containers, spacers and dividers — plus dynamic blocks for menus, entry listings
 and plugin data sources.
 
 Plugins add their own. A plugin implements `RegistersBlocks`, ships a block schema and a Blade view,
@@ -201,9 +220,9 @@ upgrading cannot put back what was never stored.
 
 ## Tech
 
-Laravel 13 · Filament 5 · Vue 3 · TypeScript · Pinia · Vite · Pest · PHPStan level 9 · Playwright
+Laravel 13 · Filament 5 · Vue 3 · TypeScript · Pinia · Vite · Pest · PHPStan · Playwright
 
-107 PHP classes, 23 Vue components, 22 Blade views at the time of this release.
+113 PHP source files, 23 Vue components, 22 Blade views as of 0.6.0-alpha.
 
 ## License
 
@@ -226,4 +245,4 @@ available.
 
 - [Magna CMS](https://github.com/Magna-CMS/Magna) — the core
 - [Magna Plugin SDK](https://github.com/Magna-CMS/Magna-Plugin-SDK) — build your own plugins
-- [Magna Blog](https://github.com/Magna-CMS/Blog) · [Magna Docs](https://github.com/Magna-CMS/Magna-Docs) · [Magna SEO](https://github.com/Magna-CMS/Magna-SEO)
+- [Magna Blog](https://github.com/Magna-CMS/blog) · [Magna Docs](https://github.com/Magna-CMS/magna-docs) · [Magna SEO](https://github.com/Magna-CMS/magna-seo)
