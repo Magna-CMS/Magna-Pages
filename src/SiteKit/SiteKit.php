@@ -43,24 +43,6 @@ class SiteKit
     /** The kit's own top-level keys; a plugin section may never claim one. */
     private const OWN_KEYS = ['format', 'version', 'pages', 'templates', 'menus', 'patterns', 'settings'];
 
-    /*
-     * `page_settings` travels with the page since the Lekha FAQ incident:
-     * a stale per-page background rode a database row that no export, diff,
-     * or admin screen ever showed, and the only way to find it was to query
-     * the table by hand. A kit that drops the key would recreate exactly
-     * that invisible drift between environments.
-     *
-     * Its sync semantics are deliberate and asymmetric:
-     *  - absent from the kit row  → left alone on apply (EntryManager
-     *    updates are partial), so a kit exported before this key existed
-     *    cannot null out settings a page already has;
-     *  - present and empty (`[]`) → an explicit clear, and it applies;
-     *  - for DIFF, empty and absent compare equal (see comparable()),
-     *    because a page whose override was cleared and a page that never
-     *    had one are the same site.
-     */
-    private const ENTRY_KEYS = ['title', 'slug', 'path', 'locale', 'translation_group', 'template', 'kind', 'meta_title', 'meta_description', 'blocks_data', 'page_settings'];
-
     /**
      * @param  list<SiteKitSection>  $sections
      */
@@ -69,6 +51,7 @@ class SiteKit
         private readonly EntryManager $entries,
         private readonly MenuManager $menus,
         private readonly PatternManager $patterns,
+        private readonly PageSlugs $slugs,
         private readonly array $sections = [],
     ) {}
 
@@ -85,8 +68,8 @@ class SiteKit
             'menus' => $this->exportMenus(),
             'patterns' => $this->exportPatterns(),
             'settings' => [
-                'home_page_slug' => $this->slugForId($settings->home_page_id),
-                'not_found_page_slug' => $this->slugForId($settings->not_found_page_id),
+                'home_page_slug' => $this->slugs->slugForId($settings->home_page_id),
+                'not_found_page_slug' => $this->slugs->slugForId($settings->not_found_page_id),
                 'maintenance_mode' => $settings->maintenance_mode,
                 'collection_mounts' => $settings->collection_mounts,
             ],
@@ -121,6 +104,20 @@ class SiteKit
     }
 
     /**
+     * Refuse anything that is not a site kit this version reads.
+     *
+     * @param  array<string, mixed>  $kit
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function assertKit(array $kit): void
+    {
+        if (($kit['format'] ?? null) !== 'magna-site-kit' || ($kit['version'] ?? null) !== self::VERSION) {
+            throw new \InvalidArgumentException('Not a magna-site-kit v'.self::VERSION.' bundle.');
+        }
+    }
+
+    /**
      * The kit's top-level keys that nothing here will read: not the kit's
      * own, and no enabled plugin registers a section for them. Reported by
      * sync and diff so a kit written on a newer or fuller installation
@@ -145,9 +142,7 @@ class SiteKit
      */
     public function apply(array $kit, ?string $actorId = null): array
     {
-        if (($kit['format'] ?? null) !== 'magna-site-kit' || ($kit['version'] ?? null) !== self::VERSION) {
-            throw new \InvalidArgumentException('Not a magna-site-kit v'.self::VERSION.' bundle.');
-        }
+        self::assertKit($kit);
 
         return DB::transaction(function () use ($kit, $actorId): array {
             $counts = ['created' => 0, 'updated' => 0, 'menus' => 0, 'patterns' => 0];
@@ -163,7 +158,7 @@ class SiteKit
                     ['handle' => $menuRow['handle']],
                     ['name' => $menuRow['name']],
                 );
-                $this->menus->syncItems($menu, $this->mapMenuTree($menuRow['tree']), $actorId);
+                $this->menus->syncItems($menu, $this->slugs->mapMenuTree($menuRow['tree']), $actorId);
                 $counts['menus']++;
             }
 
@@ -209,9 +204,7 @@ class SiteKit
      */
     public function applyMissing(array $kit, ?string $actorId = null): array
     {
-        if (($kit['format'] ?? null) !== 'magna-site-kit' || ($kit['version'] ?? null) !== self::VERSION) {
-            throw new \InvalidArgumentException('Not a magna-site-kit v'.self::VERSION.' bundle.');
-        }
+        self::assertKit($kit);
 
         return DB::transaction(function () use ($kit, $actorId): array {
             $counts = ['created' => 0, 'menus' => 0, 'patterns' => 0, 'skipped' => 0];
@@ -241,7 +234,7 @@ class SiteKit
                 }
 
                 $menu ??= Menu::query()->create(['handle' => $menuRow['handle'], 'name' => $menuRow['name']]);
-                $this->menus->syncItems($menu, $this->mapMenuTree($menuRow['tree']), $actorId);
+                $this->menus->syncItems($menu, $this->slugs->mapMenuTree($menuRow['tree']), $actorId);
                 $counts['menus']++;
             }
 
@@ -314,14 +307,7 @@ class SiteKit
 
         $rows = [];
         foreach (Entry::type($type)->orderBy('slug')->orderBy('locale')->get() as $entry) {
-            $row = ['status' => $entry->status->value];
-            foreach (self::ENTRY_KEYS as $key) {
-                $value = $entry->getAttribute($key);
-                if ($value !== null) {
-                    $row[$key] = $value;
-                }
-            }
-            $rows[] = $row;
+            $rows[] = KitComparer::entryRow($entry);
         }
 
         return $rows;
@@ -354,7 +340,7 @@ class SiteKit
         }
         $locale = is_string($row['locale'] ?? null) ? $row['locale'] : '';
 
-        $data = array_intersect_key($row, array_flip(self::ENTRY_KEYS));
+        $data = array_intersect_key($row, array_flip(KitComparer::ENTRY_KEYS));
 
         /** @var Entry|null $existing */
         $existing = Entry::type($type)
@@ -428,12 +414,12 @@ class SiteKit
         $settings = PagesSettings::get();
         $changed = false;
 
-        if ($settings->home_page_id === null && ($home = $this->idForSlug($kitSettings['home_page_slug'] ?? null)) !== null) {
+        if ($settings->home_page_id === null && ($home = $this->slugs->idForSlug($kitSettings['home_page_slug'] ?? null)) !== null) {
             $settings->home_page_id = $home;
             $changed = true;
         }
 
-        if ($settings->not_found_page_id === null && ($notFound = $this->idForSlug($kitSettings['not_found_page_slug'] ?? null)) !== null) {
+        if ($settings->not_found_page_id === null && ($notFound = $this->slugs->idForSlug($kitSettings['not_found_page_slug'] ?? null)) !== null) {
             $settings->not_found_page_id = $notFound;
             $changed = true;
         }
@@ -449,9 +435,14 @@ class SiteKit
         $kitSettings = is_array($kit['settings'] ?? null) ? $kit['settings'] : [];
         $settings = PagesSettings::get();
 
-        $settings->home_page_id = $this->idForSlug($kitSettings['home_page_slug'] ?? null) ?? $settings->home_page_id;
-        $settings->not_found_page_id = $this->idForSlug($kitSettings['not_found_page_slug'] ?? null) ?? $settings->not_found_page_id;
-        $settings->maintenance_mode = (bool) ($kitSettings['maintenance_mode'] ?? false);
+        $settings->home_page_id = $this->slugs->idForSlug($kitSettings['home_page_slug'] ?? null) ?? $settings->home_page_id;
+        $settings->not_found_page_id = $this->slugs->idForSlug($kitSettings['not_found_page_slug'] ?? null) ?? $settings->not_found_page_id;
+        // Only when the kit says so: a kit that does not mention maintenance
+        // mode (a theme update's partial kit, or an older export) used to
+        // switch a site in maintenance back on to the public.
+        if (array_key_exists('maintenance_mode', $kitSettings)) {
+            $settings->maintenance_mode = (bool) $kitSettings['maintenance_mode'];
+        }
         if (is_array($kitSettings['collection_mounts'] ?? null)) {
             /** @var list<array{type: string, prefix: string}> $mounts */
             $mounts = array_values(array_filter($kitSettings['collection_mounts'], 'is_array'));
@@ -473,13 +464,7 @@ class SiteKit
                 $slug = $entry->getAttribute('slug');
                 $locale = $entry->getAttribute('locale');
                 if (is_string($slug)) {
-                    $local[$slug.'@'.(is_string($locale) ? $locale : '')] = $this->comparable([
-                        'status' => $entry->status->value,
-                        ...array_filter(
-                            array_combine(self::ENTRY_KEYS, array_map($entry->getAttribute(...), self::ENTRY_KEYS)),
-                            fn ($v): bool => $v !== null,
-                        ),
-                    ]);
+                    $local[$slug.'@'.(is_string($locale) ? $locale : '')] = KitComparer::entryRow($entry);
                 }
             }
         }
@@ -496,7 +481,7 @@ class SiteKit
 
             if (! array_key_exists($key, $local)) {
                 $added[] = $key;
-            } elseif ($local[$key] !== $this->comparable($row)) {
+            } elseif (KitComparer::compareTo($local[$key], $row) !== KitComparer::entryStateOf($row)) {
                 $changed[] = $key;
             }
         }
@@ -525,27 +510,26 @@ class SiteKit
         ];
     }
 
-    /**
-     * Normalised comparison form: translation_group excluded (an env fact),
-     * key order fixed.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    private function comparable(array $row): string
+    /** The home and not-found pages as slugs — what a kit's settings name. */
+    public function localSettingSlug(string $kitKey): ?string
     {
-        unset($row['translation_group']);
+        $settings = PagesSettings::get();
 
-        // A cleared page-settings override (`[]`) and a page that never had
-        // one are the same site — without this, a page whose override was
-        // cleared after an export would read as "changed" forever, because
-        // apply leaves an absent key alone and so can never make them equal.
-        if (($row['page_settings'] ?? null) === []) {
-            unset($row['page_settings']);
-        }
+        return match ($kitKey) {
+            'home_page_slug' => $this->slugs->slugForId($settings->home_page_id),
+            'not_found_page_slug' => $this->slugs->slugForId($settings->not_found_page_id),
+            default => null,
+        };
+    }
 
-        ksort($row);
-
-        return (string) json_encode($row);
+    /**
+     * The registered plugin sections, by kit key.
+     *
+     * @return array<string, SiteKitSection>
+     */
+    public function sections(): array
+    {
+        return $this->sectionMap();
     }
 
     /** @param array<string, mixed> $kit */
@@ -600,53 +584,5 @@ class SiteKit
     private function kitSectionRows(array $kit, string $key): array
     {
         return is_array($kit[$key] ?? null) ? array_values(array_filter($kit[$key], 'is_array')) : [];
-    }
-
-    /**
-     * Kit menu trees reference pages by slug; syncItems wants local ids.
-     * A slug with no local page degrades that item to a linkless entry —
-     * resolution drops it from the rendered nav, same as a deleted page.
-     *
-     * @param  list<array<string, mixed>>  $tree
-     * @return list<array<string, mixed>>
-     */
-    private function mapMenuTree(array $tree): array
-    {
-        $mapped = [];
-        foreach ($tree as $node) {
-            if (! is_array($node)) {
-                continue;
-            }
-            if (is_string($node['page_slug'] ?? null)) {
-                $node['page_id'] = $this->idForSlug($node['page_slug']);
-                unset($node['page_slug']);
-            }
-            if (is_array($node['children'] ?? null)) {
-                $node['children'] = $this->mapMenuTree(array_values($node['children']));
-            }
-            $mapped[] = $node;
-        }
-
-        return $mapped;
-    }
-
-    private function slugForId(?string $id): ?string
-    {
-        if ($id === null || $id === '' || ! $this->schemas->has('page')) {
-            return null;
-        }
-        $slug = Entry::type('page')->whereKey($id)->first()?->getAttribute('slug');
-
-        return is_string($slug) ? $slug : null;
-    }
-
-    private function idForSlug(mixed $slug): ?string
-    {
-        if (! is_string($slug) || $slug === '' || ! $this->schemas->has('page')) {
-            return null;
-        }
-        $id = Entry::type('page')->where('slug', $slug)->first()?->getKey();
-
-        return is_string($id) ? $id : null;
     }
 }

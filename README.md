@@ -135,6 +135,9 @@ Writing one? Core block views put their classes on a **wrapper**, not on the sem
   (Laravel 13 and Filament 5 come with Magna)
 - Magna CMS 1.7.0+ for the Themes page's **Include demo content** / **Import demo content**
   (on older cores that integration is skipped)
+- Magna CMS 1.8.0+ for theme updates that carry their content: on an update, pages, parts and
+  menus nobody edited follow the theme and edited ones are kept for review, and uploaded theme
+  zips are audited before install (on older cores an update changes files only)
 
 The 1.6.2 floor was introduced in 0.5.0-alpha: pagination, locale-aware plugin pages, cacheable
 plugin pages and cross-plugin cache purges and redirects all build on the frontend seams that Magna

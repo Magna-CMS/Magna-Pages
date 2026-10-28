@@ -5,6 +5,34 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [0.7.0-alpha] - Unreleased
+
+### Added
+
+- **Theme updates carry their content.** `ThemeKitUpdater` binds core's
+  `Magna\Themes\ThemeContentUpdater` (Magna CMS 1.8.0+). On a theme update every page,
+  template part, menu, pattern and plugin record is compared three ways: the outgoing
+  theme's kit, the site, and the incoming kit. What the site never edited follows the theme,
+  what it already matches is left alone, and what an editor changed is kept and reported, so
+  the Themes page can offer **Use theme version**. `replace()` applies the theme's version on
+  request, writing a restore point first for a draft page; a published page's save leaves its
+  own revision. Maintenance mode is never touched; the home and not-found pages move only when
+  the site still points where the outgoing theme left them.
+- **Uploaded themes are audited.** `ThemePackageAudit` binds core's `Magna\Themes\ThemeAudit`
+  with the same restricted-view rules as `magna:theme:check`, run on the unpacked zip before
+  anything is installed. `ThemeAuditor::auditDirectory()` audits a directory that is not an
+  installed theme yet.
+
+### Fixed
+
+- **`magna:site:diff` no longer calls every page "changed".** The comparison now sorts object
+  keys at every depth (jsonb hands them back in its own order), applies the same rich-text
+  sanitising to the kit side that a save applies, and compares only the fields the kit row
+  sets. A site synced from a kit now diffs clean against it; lekha/billing's live site had
+  reported 16 of 16 pages changed while matching the kit word for word.
+- **A kit that does not mention maintenance mode leaves it alone.** `apply()` used to switch a
+  site in maintenance back on to the public whenever the kit omitted the key.
+
 ## [0.6.0-alpha] - 2026-10-22
 
 ### Added

@@ -62,8 +62,18 @@ class ThemeAuditor
      */
     public function audit(string $themeName): array
     {
+        return $this->auditDirectory($this->themes->pathFor($themeName));
+    }
+
+    /**
+     * The same audit for a theme that is not installed yet — an uploaded
+     * package in its staging directory, checked before it is placed.
+     *
+     * @return list<array{level: string, file: string, message: string}>
+     */
+    public function auditDirectory(string $base): array
+    {
         $findings = [];
-        $base = $this->themes->pathFor($themeName);
 
         try {
             $manifest = ThemeManifest::loadFromFile($base.'/'.ThemeManifest::FILENAME);

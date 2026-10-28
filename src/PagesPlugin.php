@@ -56,10 +56,14 @@ use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
 use Magna\Pages\SiteKit\SiteKit;
 use Magna\Pages\SiteKit\ThemeKitImporter;
+use Magna\Pages\SiteKit\ThemeKitUpdater;
+use Magna\Pages\Themes\ThemePackageAudit;
 use Magna\Plugins\Plugin;
 use Magna\Settings\Events\SettingsSaved;
 use Magna\Settings\GeneralSettings;
+use Magna\Themes\ThemeAudit;
 use Magna\Themes\ThemeContentImporter;
+use Magna\Themes\ThemeContentUpdater;
 use Magna\Themes\ThemeSettings;
 
 /**
@@ -152,6 +156,19 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // so this release still runs on a core that predates the contract.
         if (interface_exists(ThemeContentImporter::class)) {
             app()->bind(ThemeContentImporter::class, ThemeKitImporter::class);
+        }
+
+        // And theme UPDATES carry their content: what nobody edited follows
+        // the theme, what an editor changed stays (ThemeKitUpdater). Guarded
+        // the same way.
+        if (interface_exists(ThemeContentUpdater::class)) {
+            app()->bind(ThemeContentUpdater::class, ThemeKitUpdater::class);
+        }
+
+        // An uploaded theme is checked by the same auditor as
+        // `magna:theme:check` before core places it.
+        if (interface_exists(ThemeAudit::class)) {
+            app()->bind(ThemeAudit::class, ThemePackageAudit::class);
         }
 
         // The structured editor honors the builder's document lock (§E2) —
