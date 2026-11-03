@@ -128,6 +128,49 @@ of three generic cards. Composites — a device mockup, a pricing table with its
 Writing one? Core block views put their classes on a **wrapper**, not on the semantic element:
 `.magna-heading h2`, never `h2.magna-heading`. The second matches nothing and nothing warns you.
 
+### The head contract (0.8.0)
+
+Other plugins add to a rendered page's `<head>` through `Magna\Pages\Render\DocumentHead`, and
+the layout receives the result as two variables:
+
+| Variable | What it is |
+|---|---|
+| `$headHtml` | Trusted, escaped markup. Print it raw right after the viewport tag. |
+| `$headProvides` | `title`, `description`, `alternates`, `icon`, `canonical` => bool: which tags `$headHtml` already carries. |
+
+Keep your own title, description, hreflang links and icon, and skip each one the head already
+provides. Guard both variables so the layout still renders on Pages 0.7:
+
+```blade
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+{!! $headHtml ?? '' !!}
+@unless($headProvides['title'] ?? false)
+    <title>{{ $seoTitle !== '' ? $seoTitle : $title }}</title>
+@endunless
+```
+
+`magna:theme:check` accepts `{!! $headHtml !!}` and `{!! $headHtml ?? '' !!}` from 0.8.0 on; an
+older Pages rejects both, so a theme that prints it needs Pages 0.8.0-alpha or later installed
+first. With no provider both variables are empty and a page renders exactly as before.
+
+**Magna SEO** is the provider that matters. With SEO installed, every page gets its meta, an
+absolute canonical (the home page's is the site root), Open Graph and Twitter cards, and one
+JSON-LD graph; FAQ blocks become `FAQPage` data. A page's own *SEO title* and *Meta description*
+are printed verbatim, and an explicit per-page SEO override wins over both. The not-found page
+is always `noindex`. Pages also become an SEO source, so `/sitemap.xml` lists
+`sitemap-pages.xml` (published pages, home at `/`, never the not-found page) and `/llms.txt`
+lists them. Neither plugin depends on the other.
+
+A plugin of your own can provide too:
+
+```php
+app(DocumentHead::class)->provide('acme', fn (DocumentHeadContext $context): ?DocumentHeadFragment
+    => new DocumentHeadFragment('<meta name="acme" content="1">'));
+```
+
+A provider that throws is reported and skipped; the page still renders. Providers never run for
+the builder canvas, chrome being edited in its slot, or a template part rendered bare.
+
 ## Requirements
 
 - PHP 8.3+

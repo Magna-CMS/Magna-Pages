@@ -3,11 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{{-- The head contract (Pages 0.8.0): providers' markup, and which of the tags
+     below it already carries. Directives sit at column 0, and this comment on
+     the directive's own line, so a page with no provider renders byte for
+     byte what it rendered before. --}}@if(($headHtml ?? '') !== '')
+    {!! $headHtml ?? '' !!}
+@endif
+@unless($headProvides['title'] ?? false)
     <title>{{ $seoTitle !== '' ? $seoTitle : $title }}</title>
-    @if($metaDescription !== '')
+@endunless
+    @if($metaDescription !== '' && ! ($headProvides['description'] ?? false))
         <meta name="description" content="{{ $metaDescription }}">
     @endif
-    @if(count($localeAlternates ?? []) > 1)
+    @if(count($localeAlternates ?? []) > 1 && ! ($headProvides['alternates'] ?? false))
         @foreach($localeAlternates as $alternateLocale => $alternateUrl)
             <link rel="alternate" hreflang="{{ $alternateLocale }}" href="{{ url($alternateUrl) }}">
         @endforeach

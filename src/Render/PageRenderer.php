@@ -51,6 +51,9 @@ final class PageRenderer
     /** Whether a route other than the page fallback answers GET / (memoised). */
     private ?bool $rootClaimed = null;
 
+    /** @var array<string, string|null> settings page id => its translation_group (memoised) */
+    private array $settingsPageGroups = [];
+
     public function __construct(
         private readonly BlockRegistry $registry,
         private readonly BlockDataResolver $resolver,
@@ -64,6 +67,7 @@ final class PageRenderer
         private readonly PageUrls $pageUrls,
         private readonly ConsentScripts $consent,
         private readonly ExperimentTracker $experiments,
+        private readonly DocumentHead $head,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -195,6 +199,32 @@ final class PageRenderer
             }
         }
 
+        $seoTitle = $this->entryString($context, 'meta_title');
+        $metaDescription = $context === null ? trim($metaDescription ?? '') : $this->entryString($context, 'meta_description');
+        $localeAlternates ??= $this->localeAlternates->forEntry($context);
+
+        /*
+         * What other plugins print in <head> (Magna SEO's meta, canonical,
+         * share cards and structured data). Only for a document a visitor is
+         * actually reading: never the builder canvas, never a header or
+         * footer being edited in its slot, never a template part rendered
+         * bare — each would advertise the wrong page to whoever reads it.
+         */
+        $head = ! $builderMode && $chromeSlot === null && $withParts && ! $this->head->isEmpty()
+            ? $this->head->render(new DocumentHeadContext(
+                kind: $context?->getHandle() === 'page' ? DocumentHeadContext::KIND_PAGE : DocumentHeadContext::KIND_FRONTEND,
+                entry: $context,
+                title: $title,
+                seoTitle: $seoTitle,
+                metaDescription: $metaDescription,
+                localeAlternates: $localeAlternates,
+                isHome: $this->isSettingsPage($context, PagesSettings::get()->home_page_id),
+                isNotFound: $this->isSettingsPage($context, PagesSettings::get()->not_found_page_id),
+                tree: $tree,
+                requestUrl: request()->url(),
+            ))
+            : DocumentHeadFragment::empty();
+
         return view($this->themeViews->layoutView(), [
             'title' => $title,
             /*
@@ -212,8 +242,18 @@ final class PageRenderer
              * description), and a layout that has never heard of them keeps
              * working — it prints $title as before.
              */
-            'seoTitle' => $this->entryString($context, 'meta_title'),
-            'metaDescription' => $context === null ? trim($metaDescription ?? '') : $this->entryString($context, 'meta_description'),
+            'seoTitle' => $seoTitle,
+            'metaDescription' => $metaDescription,
+            /*
+             * The head contract (DocumentHead). `headHtml` is trusted,
+             * escaped markup a layout prints right after its viewport tag;
+             * `headProvides` names the tags it already carries (title,
+             * description, alternates, icon, canonical) so the layout skips
+             * its own. Both are empty when no provider contributes, so a
+             * layout that ignores them renders exactly as before.
+             */
+            'headHtml' => $head->html,
+            'headProvides' => $head->provides,
             // Pre-rendered main-slot HTML (plugin frontend pages). A theme
             // layout must print it instead of the section tree when set.
             'mainHtml' => $mainHtml,
@@ -311,8 +351,37 @@ final class PageRenderer
             // The current page's published translations, locale => URL —
             // what the locale-switcher block and hreflang links render. A
             // plugin frontend page's provider supplies its own.
-            'localeAlternates' => $localeAlternates ?? $this->localeAlternates->forEntry($context),
+            'localeAlternates' => $localeAlternates,
         ])->render();
+    }
+
+    /**
+     * Whether the page being rendered is the one a site setting points at (the
+     * home page, the not-found page) — or a translation of it, which is how
+     * that page is served in another locale.
+     */
+    private function isSettingsPage(?Entry $context, ?string $id): bool
+    {
+        if ($context === null || $context->getHandle() !== 'page' || $id === null || $id === '') {
+            return false;
+        }
+
+        if ($context->getKey() === $id) {
+            return true;
+        }
+
+        $group = $context->translation_group;
+        if (! is_string($group) || $group === '') {
+            return false;
+        }
+
+        // One lookup per setting per request, however many documents render.
+        if (! array_key_exists($id, $this->settingsPageGroups)) {
+            $value = Entry::type('page')->whereKey($id)->value('translation_group');
+            $this->settingsPageGroups[$id] = is_string($value) ? $value : null;
+        }
+
+        return $this->settingsPageGroups[$id] === $group;
     }
 
     /**

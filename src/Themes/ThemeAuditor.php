@@ -23,8 +23,12 @@ use Throwable;
  */
 class ThemeAuditor
 {
-    /** Raw-echo variables the LAYOUT CONTRACT itself requires printing. */
-    private const RAW_ECHO_ALLOWLIST = ['tokensCss', 'headerPartHtml', 'footerPartHtml', 'popupsHtml', 'mainHtml', 'sectionsHtml'];
+    /**
+     * Raw-echo variables the LAYOUT CONTRACT itself requires printing.
+     * `headHtml` (0.8.0) is the head contract's output — markup Pages
+     * assembled from providers that escape their own values.
+     */
+    private const RAW_ECHO_ALLOWLIST = ['tokensCss', 'headerPartHtml', 'footerPartHtml', 'popupsHtml', 'mainHtml', 'sectionsHtml', 'headHtml'];
 
     /** Function names that have no business appearing anywhere in a view. */
     private const FORBIDDEN_CALLS = [
@@ -168,7 +172,9 @@ class ThemeAuditor
                 $trimmed = trim($expression);
                 $allowed = false;
                 foreach (self::RAW_ECHO_ALLOWLIST as $variable) {
-                    if ($trimmed === '$'.$variable) {
+                    // An empty-string fallback is allowed too: it is how a
+                    // theme prints a variable that an older Pages never passes.
+                    if (preg_match('/^\$'.$variable.'(\s*\?\?\s*(\'\'|""))?$/', $trimmed) === 1) {
                         $allowed = true;
                         break;
                     }

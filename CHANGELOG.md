@@ -5,6 +5,33 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [0.8.0-alpha] - Unreleased
+
+### Added
+
+- **The head contract.** `DocumentHead` is a registry other plugins add `<head>` markup to; the
+  renderer passes the merged result to the layout as `$headHtml`, with `$headProvides` naming the
+  tags it already carries (title, description, alternates, icon, canonical) so a layout skips its
+  own. A provider that throws is reported and skipped. Nothing is computed for the builder canvas,
+  chrome edited in its slot, or a template part rendered bare. `magna:theme:check` allows
+  `{!! $headHtml !!}` and `{!! $headHtml ?? '' !!}`, and the built-in fallback layout prints it.
+- **Magna SEO integration**, when SEO is installed (no dependency either way). A `pages` SEO
+  source puts published pages into `/sitemap.xml` (as `sitemap-pages.xml`), `/llms.txt` and the
+  SEO scans: the home page at the site root, never the not-found page, nothing in maintenance
+  mode, FAQ blocks collected as `FAQPage` data. The `seo` head provider prints SEO's meta,
+  canonical, share cards and JSON-LD into every rendered page, with the page's own SEO title and
+  description verbatim and the not-found page `noindex`. Plugin frontend pages and collections get
+  a minimal subject (canonical, share card, site-wide tags).
+
+### Changed
+
+- Saving Magna SEO settings flushes the page cache, like general and theme settings already do.
+
+### Compatibility
+
+- A theme that ignores `$headHtml` renders exactly as before, so nothing is printed twice. A
+  theme that prints it needs this release installed first: 0.7's auditor rejects the variable.
+
 ## [0.7.0-alpha] - Unreleased
 
 ### Added

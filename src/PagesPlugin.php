@@ -54,6 +54,8 @@ use Magna\Pages\Listeners\RecordMovedUrlRedirects;
 use Magna\Pages\Listeners\RecordSlugRenameRedirect;
 use Magna\Pages\Menus\MenuOptions;
 use Magna\Pages\Menus\NavBlockResolver;
+use Magna\Pages\Render\DocumentHead;
+use Magna\Pages\Seo\PagesSeoIntegration;
 use Magna\Pages\SiteKit\SiteKit;
 use Magna\Pages\SiteKit\ThemeKitImporter;
 use Magna\Pages\SiteKit\ThemeKitUpdater;
@@ -171,6 +173,14 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
             app()->bind(ThemeAudit::class, ThemePackageAudit::class);
         }
 
+        // The head contract: one registry per process that other plugins add
+        // <head> markup to (DocumentHead). Magna SEO is the first, wired by
+        // its own bridge, which does nothing when SEO is not installed.
+        if (! app()->bound(DocumentHead::class)) {
+            app()->singleton(DocumentHead::class);
+        }
+        PagesSeoIntegration::register(app());
+
         // The structured editor honors the builder's document lock (§E2) —
         // two editors, one lock, neither can overwrite the other unseen.
         app()->singleton(
@@ -203,8 +213,13 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // NOTHING — every cached URL kept serving the old theme's HTML for up
         // to an hour — and editing a theme's stylesheet had no visible effect
         // either, which makes theme development feel broken rather than slow.
+        //
+        // And Magna SEO's group ('seo', spelled out so this never loads an SEO
+        // class): its settings are printed into every page's head. SEO 1.2+
+        // also says so itself through PublicContentChanged; this covers an
+        // older SEO, and a second flush costs nothing.
         Event::listen(SettingsSaved::class, function (SettingsSaved $e): void {
-            if (in_array($e->group, [GeneralSettings::group(), ThemeSettings::group()], true)) {
+            if (in_array($e->group, [GeneralSettings::group(), ThemeSettings::group(), 'seo'], true)) {
                 app(PurgePageCache::class)->flushSite();
             }
         });
