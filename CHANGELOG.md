@@ -5,6 +5,13 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [0.8.1-alpha] - Unreleased
+
+### Changed
+
+- `PageRenderer` hands its header and footer work to a new `ChromeRenderer`, which keeps the class
+  under the 600-line ceiling core enforces on plugin source. Rendered output is unchanged.
+
 ## [0.8.0-alpha] - Unreleased
 
 ### Added

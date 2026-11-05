@@ -68,6 +68,7 @@ final class PageRenderer
         private readonly ConsentScripts $consent,
         private readonly ExperimentTracker $experiments,
         private readonly DocumentHead $head,
+        private readonly ChromeRenderer $chrome,
     ) {}
 
     public function render(Entry $page, bool $builderMode = false, bool $withParts = true): string
@@ -291,10 +292,10 @@ final class PageRenderer
             // show two of it, one stale.
             'headerPartHtml' => $chromeSlot === 'header'
                 ? $chromeHtml
-                : ($withParts ? $this->renderPart('header', $context, $builderMode) : null),
+                : ($withParts ? $this->chrome->render('header', $context, $builderMode) : null),
             'footerPartHtml' => $chromeSlot === 'footer'
                 ? $chromeHtml
-                : ($withParts ? $this->renderPart('footer', $context, $builderMode) : null),
+                : ($withParts ? $this->chrome->render('footer', $context, $builderMode) : null),
             // Published popup documents as dismissible overlays, plus the
             // consent registry's scripts + banner — everything the layout
             // prints before </body>. Never in the builder canvas and never
@@ -331,7 +332,7 @@ final class PageRenderer
              * had not heard of it. The partial is included by every layout
              * and already owns the utilities a theme must not forget.
              */
-            'pageCss' => ($withParts ? $this->chromeCss($context) : '')
+            'pageCss' => ($withParts ? $this->chrome->css($context) : '')
                 .($context === null
                     ? ''
                     : PageSettings::css(
@@ -505,135 +506,5 @@ final class PageRenderer
         }
 
         return $this->rootClaimed = $claimed;
-    }
-
-    /**
-     * A template part rendered through the same section pipeline, or null
-     * when the part does not exist or is not published.
-     */
-    private function renderPart(string $handle, ?Entry $context = null, bool $builderMode = false): ?string
-    {
-        /*
-         * Which header or footer this page gets: the page's own choice,
-         * then the site default, then a part whose slug is literally
-         * "header"/"footer". The last rung is what keeps every site that
-         * predates this feature rendering exactly as it does today.
-         */
-        $entry = $this->parts->chromeEntry($handle, $context);
-        if ($entry === null) {
-            return null;
-        }
-
-        $document = $entry->getAttribute('blocks_data');
-        $tree = PageTree::fromArray(is_array($document) ? $document : []);
-        if ($tree->sections === []) {
-            return null;
-        }
-
-        $behaviour = $this->parts->chromeBehaviour($entry);
-
-        $html = view('magna-pages::partials.sections', [
-            'tree' => $tree,
-            'registry' => $this->registry,
-            'resolver' => $this->resolver,
-            'blockViewFor' => fn (string $handle): ?string => $this->themeViews->blockView($handle),
-            // In the builder a part's nodes are marked like any other, plus
-            // the entry they belong to — a header is a different document
-            // from the page it sits on, and an edit must reach the right one.
-            'builderMode' => $builderMode,
-            'partDocumentId' => $builderMode ? (string) $entry->getKey() : null,
-            // Parts obey conditions on the public site like any section.
-            'conditionsPass' => fn (array $settings): bool => $this->conditions
-                ->evaluate($settings, auth()->user(), now())->visible,
-            // A part's bindings mean the page it appears on.
-            'resolveBindings' => fn (BlockNode $block): BlockNode => $block->withData(
-                $this->bindings->resolve($block->data, $context),
-            ),
-        ])->render();
-
-        /*
-         * Chrome is wrapped so its behaviour has something to attach to.
-         *
-         * Sticky is the awkward one: a theme puts our HTML inside its own
-         * <header>, and an element can only stick within its parent's box —
-         * so sticking the wrapper alone would do nothing, because the
-         * wrapper is exactly as tall as its parent. The rule therefore
-         * names the wrapper AND whatever element holds it, through :has().
-         * :where() keeps the specificity at zero so a theme that wants to
-         * disagree still can.
-         */
-        $classes = 'magna-chrome magna-chrome--'.$handle;
-        if ($behaviour['sticky']) {
-            $classes .= ' magna-chrome--sticky';
-        }
-        if ($behaviour['stickyMobile']) {
-            $classes .= ' magna-chrome--sticky-mobile';
-        }
-
-        /*
-         * In the builder the wrapper also says WHICH chrome it is and
-         * which document holds it, so a click on the header can offer to
-         * edit the header. Two attributes on a wrapper we already emit —
-         * nothing of it reaches a published page.
-         */
-        $marker = '';
-        if ($builderMode) {
-            $marker = ' data-magna-chrome="'.$handle.'"'
-                .' data-magna-chrome-id="'.e((string) $entry->getKey()).'"'
-                .' data-magna-chrome-title="'.e((string) ($entry->getAttribute('title') ?? $handle)).'"';
-        }
-
-        return '<div class="'.$classes.'"'.$marker.'>'.$html.'</div>';
-    }
-
-    /**
-     * The stylesheet chrome behaviour needs, or an empty string.
-     *
-     * Emitted once per page beside the document's own styles, so a theme
-     * cannot forget it and a page with ordinary chrome pays nothing.
-     */
-    private function chromeCss(?Entry $context): string
-    {
-        $sticky = false;
-        $stickyMobile = false;
-        foreach (['header', 'footer'] as $role) {
-            $behaviour = $this->parts->chromeBehaviour($this->parts->chromeEntry($role, $context));
-            $sticky = $sticky || $behaviour['sticky'];
-            $stickyMobile = $stickyMobile || $behaviour['stickyMobile'];
-        }
-
-        if (! $sticky && ! $stickyMobile) {
-            return '';
-        }
-
-        /*
-         * The rule names the wrapper AND whatever holds it: a theme puts
-         * our chrome inside its own <header>, and an element only sticks
-         * within its parent's box — so sticking the wrapper alone would
-         * emit correct CSS that does nothing.
-         *
-         * Desktop and mobile are separate rules rather than one, because
-         * they are separate answers: a header that follows you down a wide
-         * page can eat a third of a phone screen.
-         */
-        $stick = '{position:sticky;top:0;z-index:50}';
-        $unstick = '{position:static}';
-
-        $css = '';
-        if ($sticky) {
-            $css .= '@media (min-width: 768px){.magna-chrome--sticky,'
-                .':where(header,footer,div,section):has(>.magna-chrome--sticky)'.$stick.'}';
-        }
-        if ($stickyMobile) {
-            $css .= '@media (max-width: 767.98px){.magna-chrome--sticky-mobile,'
-                .':where(header,footer,div,section):has(>.magna-chrome--sticky-mobile)'.$stick.'}';
-        } else {
-            // Said explicitly: a header sticky on desktop must let go on a
-            // phone, and inheriting the desktop rule is how it would not.
-            $css .= '@media (max-width: 767.98px){.magna-chrome--sticky,'
-                .':where(header,footer,div,section):has(>.magna-chrome--sticky)'.$unstick.'}';
-        }
-
-        return $css;
     }
 }
