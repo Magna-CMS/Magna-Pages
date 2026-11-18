@@ -5,6 +5,15 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [0.8.2-alpha] - 2026-11-18
+
+### Fixed
+
+- **Magna SEO scored the wrong title.** The head prints a page's `meta_title` verbatim, but the SEO
+  subject carried only the page's short name, so SEO's content analysis failed every page on
+  "keyword in title" and "title length". The subject now carries `raw['meta_title']`; scoring it
+  needs Magna SEO 1.2.3.
+
 ## [0.8.1-alpha] - Unreleased
 
 ### Changed
