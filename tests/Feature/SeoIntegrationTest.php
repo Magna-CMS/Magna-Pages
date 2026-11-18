@@ -8,6 +8,7 @@ use Magna\Content\Entry;
 use Magna\Content\EntryManager;
 use Magna\Media\Media;
 use Magna\Pages\PagesSettings;
+use Magna\Pages\Seo\PagesSeoSource;
 use Magna\Seo\Models\SeoMeta;
 use Magna\Seo\Settings\SeoSettings;
 use Magna\Seo\Support\SeoMetaRepository;
@@ -143,6 +144,16 @@ final class SeoIntegrationTest extends PluginTestCase
         $this->app->make(SeoMetaRepository::class)->upsert($home->getMorphClass(), (string) $home->getKey(), ['title' => 'Override title']);
 
         $this->assertStringContainsString('<title>Override title</title>', (string) $this->get('/home')->getContent());
+    }
+
+    public function test_the_subject_carries_the_search_title_the_page_prints(): void
+    {
+        [$home, $faq] = $this->site();
+        $source = $this->app->make(PagesSeoSource::class);
+
+        // What SEO's analysis scores; without it only the short name "Home" is seen.
+        $this->assertSame('Acme billing software: offline GST billing', $source->resolve((string) $home->getKey())?->raw['meta_title'] ?? null);
+        $this->assertArrayNotHasKey('meta_title', $source->resolve((string) $faq->getKey())->raw ?? []);
     }
 
     public function test_the_default_share_image_carries_its_dimensions(): void

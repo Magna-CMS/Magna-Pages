@@ -117,6 +117,14 @@ final class PagesSeoSource implements SeoSubjectSource
             $raw['faq'] = $faq;
         }
 
+        // The page's own search title, which the head prints verbatim (see
+        // PagesSeoHead). SEO scores the title that is published, and without
+        // this it could only see the page's short name.
+        $metaTitle = $entry->getAttribute('meta_title');
+        if (is_string($metaTitle) && trim($metaTitle) !== '') {
+            $raw['meta_title'] = trim($metaTitle);
+        }
+
         $alternates = [];
         foreach ($this->alternates->forEntry($entry) as $alternateLocale => $path) {
             $alternates[$alternateLocale] = self::absolute($path);
