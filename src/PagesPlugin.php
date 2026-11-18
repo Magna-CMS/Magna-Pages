@@ -58,6 +58,7 @@ use Magna\Pages\Render\DocumentHead;
 use Magna\Pages\Seo\PagesSeoIntegration;
 use Magna\Pages\SiteKit\SiteKit;
 use Magna\Pages\SiteKit\ThemeKitImporter;
+use Magna\Pages\SiteKit\ThemeKitRemover;
 use Magna\Pages\SiteKit\ThemeKitUpdater;
 use Magna\Pages\Themes\ThemePackageAudit;
 use Magna\Plugins\Plugin;
@@ -65,6 +66,7 @@ use Magna\Settings\Events\SettingsSaved;
 use Magna\Settings\GeneralSettings;
 use Magna\Themes\ThemeAudit;
 use Magna\Themes\ThemeContentImporter;
+use Magna\Themes\ThemeContentRemover;
 use Magna\Themes\ThemeContentUpdater;
 use Magna\Themes\ThemeSettings;
 
@@ -165,6 +167,12 @@ class PagesPlugin extends Plugin implements RegistersAdminNavigation, RegistersB
         // the same way.
         if (interface_exists(ThemeContentUpdater::class)) {
             app()->bind(ThemeContentUpdater::class, ThemeKitUpdater::class);
+        }
+
+        // And a theme's demo content can be taken back out — on removal, on
+        // a switch, or on request — untouched rows only (ThemeKitRemover).
+        if (interface_exists(ThemeContentRemover::class)) {
+            app()->bind(ThemeContentRemover::class, ThemeKitRemover::class);
         }
 
         // An uploaded theme is checked by the same auditor as

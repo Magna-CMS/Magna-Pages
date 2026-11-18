@@ -5,6 +5,25 @@ All notable changes to Magna Pages are recorded here.
 This project is in alpha. Until 1.0, breaking changes can land in any release, and
 there is no supported upgrade path between alpha versions.
 
+## [Unreleased]
+
+### Added
+
+- **A theme's demo content can be taken back out.** `ThemeKitRemover` answers core's
+  `ThemeContentRemover` (Magna core 1.7.4): every page, header/footer part, menu, pattern
+  and plugin row the site still has exactly as the theme ships it is removed, in one
+  transaction; anything edited stays and is listed with the reason. A demo page the site's
+  own content still needs stays too: linked from the owner's menu or page, a parent of the
+  owner's page, or a collection mount. Links between the demo's own pages do not hold
+  anything back, or one edited page would keep the whole demo. The home, not-found and
+  default header/footer settings are cleared when they pointed at a removed page. Bound
+  only on a core that defines the contract.
+
+### Changed
+
+- The site-kit row helpers the theme update used are now a shared trait (`ReadsKitRows`),
+  so the update and the removal always agree which site row a kit row means.
+
 ## [0.8.2-alpha] - 2026-11-18
 
 ### Fixed
