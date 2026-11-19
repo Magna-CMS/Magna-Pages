@@ -7,6 +7,8 @@ there is no supported upgrade path between alpha versions.
 
 ## [Unreleased]
 
+## [0.9.0-alpha] - 2026-11-19
+
 ### Added
 
 - **A theme's demo content can be taken back out.** `ThemeKitRemover` answers core's
