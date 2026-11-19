@@ -9,6 +9,7 @@ use Magna\Content\Entry;
 use Magna\Content\EntryStatus;
 use Magna\Content\SchemaRegistry;
 use Magna\Pages\PagesSettings;
+use Magna\Settings\LocalizationSettings;
 
 /**
  * Resolves template parts — entries of the pages_template content type
@@ -75,10 +76,12 @@ class TemplatePartResolver
             return null;
         }
 
+        $locale = $this->pageLocale($page);
+
         if (is_string($chosen) && $chosen !== '') {
             $entry = $this->chromeById($chosen, $role);
             if ($entry !== null) {
-                return $entry;
+                return $this->inLocale($entry, $role, $locale);
             }
         }
 
@@ -89,18 +92,86 @@ class TemplatePartResolver
         if (is_string($default) && $default !== '') {
             $entry = $this->chromeById($default, $role);
             if ($entry !== null) {
-                return $entry;
+                return $this->inLocale($entry, $role, $locale);
             }
         }
 
-        /** @var Entry|null $legacy */
-        $legacy = Entry::type('pages_template')
+        /*
+         * One slug, one part per locale: a localized site has a `footer` in
+         * English and a `footer` in Malayalam, the same way it has two
+         * `features` pages. The page's own locale wins; otherwise the
+         * fallback locale's part, so an untranslated chrome still renders.
+         * Ordered, because two published rows with one slug used to make
+         * this an unordered first() — whichever the database returned.
+         */
+        $fallback = LocalizationSettings::get()->fallback_locale;
+        $legacy = null;
+        $first = null;
+        foreach (Entry::type('pages_template')
             ->where('slug', $role)
             ->where('kind', 'part')
             ->where('status', EntryStatus::Published->value)
+            ->orderBy('id')
+            ->get() as $candidate) {
+            $candidateLocale = $this->localeOf($candidate, $fallback);
+            if ($candidateLocale === $locale) {
+                return $candidate;
+            }
+            if ($legacy === null && $candidateLocale === $fallback) {
+                $legacy = $candidate;
+            }
+            $first ??= $candidate;
+        }
+
+        // A site whose only part is in some other locale keeps rendering it,
+        // as it did before parts had a locale preference at all.
+        return $legacy ?? $first;
+    }
+
+    /** The page's locale, '' and null being the fallback locale. */
+    private function pageLocale(?Entry $page): string
+    {
+        $fallback = LocalizationSettings::get()->fallback_locale;
+
+        return $page === null ? $fallback : $this->localeOf($page, $fallback);
+    }
+
+    private function localeOf(Entry $entry, string $fallback): string
+    {
+        $locale = $entry->getAttribute('locale');
+
+        return is_string($locale) && $locale !== '' ? $locale : $fallback;
+    }
+
+    /**
+     * The chosen part's translation in the page's locale, when one is
+     * published and meant for the same role; otherwise the part itself.
+     * A site's settings point at one header, and that header's Malayalam
+     * twin is what a Malayalam page should show.
+     */
+    private function inLocale(Entry $entry, string $role, string $locale): Entry
+    {
+        $fallback = LocalizationSettings::get()->fallback_locale;
+        $group = $entry->getAttribute('translation_group');
+        if ($this->localeOf($entry, $fallback) === $locale || ! is_string($group) || $group === '') {
+            return $entry;
+        }
+
+        /** @var Entry|null $twin */
+        $twin = Entry::type('pages_template')
+            ->where('translation_group', $group)
+            ->where('locale', $locale)
+            ->where('kind', 'part')
+            ->where('status', EntryStatus::Published->value)
+            ->orderBy('id')
             ->first();
 
-        return $legacy;
+        // A twin in the chosen part's own group is that part translated, so
+        // it inherits the role the chosen one proved; a kit row may not
+        // carry `role` at all (it is not one of the kit's entry keys).
+        $twinRole = $twin?->getAttribute('role');
+
+        return $twin !== null && ($twinRole === $role || $twinRole === null || $twinRole === '') ? $twin : $entry;
     }
 
     /** A published part that is actually meant for this role, or null. */

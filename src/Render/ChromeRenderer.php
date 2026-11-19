@@ -34,8 +34,11 @@ final class ChromeRenderer
     /**
      * A template part rendered through the same section pipeline, or null
      * when the part does not exist or is not published.
+     *
+     * @param  array<string, string>  $localeAlternates  the PAGE's translations, locale => URL —
+     *                                                   what a language switcher in the footer links to
      */
-    public function render(string $handle, ?Entry $context = null, bool $builderMode = false): ?string
+    public function render(string $handle, ?Entry $context = null, bool $builderMode = false, array $localeAlternates = []): ?string
     {
         /*
          * Which header or footer this page gets: the page's own choice,
@@ -73,6 +76,9 @@ final class ChromeRenderer
             'resolveBindings' => fn (BlockNode $block): BlockNode => $block->withData(
                 $this->bindings->resolve($block->data, $context),
             ),
+            // And so does a language switcher placed in it: the page's
+            // translations, not the part's own.
+            'localeAlternates' => $localeAlternates,
         ])->render();
 
         /*

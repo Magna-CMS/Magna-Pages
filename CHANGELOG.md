@@ -7,6 +7,32 @@ there is no supported upgrade path between alpha versions.
 
 ## [Unreleased]
 
+## [0.9.1-alpha] - Unreleased
+
+Translated site kits. A kit can now carry the same site in several locales —
+English slugs in every locale, so `/ml/features` is the `features` page in
+Malayalam — and apply it so the translations behave as translations.
+
+### Fixed
+
+- **A kit's home page could bind to a translation.** `PageSlugs::idForSlug()`
+  ran an unscoped, unordered lookup, so with a Malayalam `home` row present the
+  site's home page could become the Malayalam one and bare `/` would serve it.
+  It now names the fallback-locale page only. Must ship before any non-English
+  kit rows reach a live site.
+- **Kit translations were orphans.** `EntryManager::create()` roots every new
+  entry in its own translation group and its validator strips a group a kit
+  carries, so applied translations had no hreflang pair, no language switcher
+  and a localized home that resolved to nothing. `SiteKit` now adopts the
+  fallback-locale twin's group (same type, same slug) when it creates a
+  translated row. Rows that already exist keep their linkage.
+- **Chrome ignored the page's locale.** A page now gets the header or footer
+  in its own locale when one is published (by slug, or the chosen/default
+  part's translation), falling back to the fallback-locale part. The slug
+  lookup is ordered; it used to take whichever duplicate the database returned.
+- **A language switcher in the footer showed nothing.** Header and footer parts
+  now receive the page's `localeAlternates`.
+
 ## [0.9.0-alpha] - 2026-11-19
 
 ### Added

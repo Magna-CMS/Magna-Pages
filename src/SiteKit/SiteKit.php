@@ -14,6 +14,7 @@ use Magna\Pages\Builder\PatternManager;
 use Magna\Pages\Menus\Menu;
 use Magna\Pages\Menus\MenuManager;
 use Magna\Pages\PagesSettings;
+use Magna\Settings\LocalizationSettings;
 use Magna\Settings\SettingsRepository;
 
 /**
@@ -354,12 +355,61 @@ class SiteKit
             $counts['updated']++;
         } else {
             $entry = $this->entries->create($type, $data, $actorId);
+            $this->adoptTranslationGroup($type, $entry, $slug);
             $counts['created']++;
         }
 
         if (($row['status'] ?? null) === 'published' && ! $entry->isPublished()) {
             $this->entries->publish($entry, actorId: $actorId);
         }
+    }
+
+    /**
+     * Link a newly created translation to its fallback-locale twin.
+     *
+     * A kit links translations by slug: `features` in `ml` IS the Malayalam
+     * `features` page. EntryManager::create() roots every new entry in a
+     * translation group of its own id, and its validator strips a
+     * translation_group a kit might carry, so without this every localized
+     * row is an orphan: no hreflang pair, no language switcher, and a
+     * localized home page that resolves to nothing. Written straight to the
+     * model for the same reason the validator would refuse it.
+     *
+     * Only on create: once rows exist, their linkage is the site's own.
+     */
+    private function adoptTranslationGroup(string $type, Entry $entry, string $slug): void
+    {
+        if (! array_key_exists('translation_group', $entry->getAttributes())) {
+            return; // a type without translations
+        }
+
+        $fallback = LocalizationSettings::get()->fallback_locale;
+        $locale = $entry->getAttribute('locale');
+        if (! is_string($locale) || $locale === '' || $locale === $fallback) {
+            return;
+        }
+
+        /** @var Entry|null $twin */
+        $twin = Entry::type($type)
+            ->where('slug', $slug)
+            ->where(fn ($query) => $query->where('locale', $fallback)->orWhere('locale', '')->orWhereNull('locale'))
+            ->whereKeyNot($entry->getKey())
+            ->orderBy('id')
+            ->first();
+        if ($twin === null) {
+            return;
+        }
+
+        $group = $twin->getAttribute('translation_group');
+        if (! is_string($group) || $group === '') {
+            // A row from before the backfill: root the group at the twin.
+            $group = (string) $twin->getKey();
+            $twin->translation_group = $group;
+            $twin->save();
+        }
+
+        $entry->translation_group = $group;
+        $entry->save();
     }
 
     /**

@@ -292,10 +292,10 @@ final class PageRenderer
             // show two of it, one stale.
             'headerPartHtml' => $chromeSlot === 'header'
                 ? $chromeHtml
-                : ($withParts ? $this->chrome->render('header', $context, $builderMode) : null),
+                : ($withParts ? $this->chrome->render('header', $context, $builderMode, $localeAlternates) : null),
             'footerPartHtml' => $chromeSlot === 'footer'
                 ? $chromeHtml
-                : ($withParts ? $this->chrome->render('footer', $context, $builderMode) : null),
+                : ($withParts ? $this->chrome->render('footer', $context, $builderMode, $localeAlternates) : null),
             // Published popup documents as dismissible overlays, plus the
             // consent registry's scripts + banner — everything the layout
             // prints before </body>. Never in the builder canvas and never

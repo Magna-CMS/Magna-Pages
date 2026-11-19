@@ -6,6 +6,7 @@ namespace Magna\Pages\SiteKit;
 
 use Magna\Content\Entry;
 use Magna\Content\SchemaRegistry;
+use Magna\Settings\LocalizationSettings;
 
 /**
  * Pages by slug, the way a site kit names them: ids are environment facts,
@@ -26,12 +27,30 @@ final class PageSlugs
         return is_string($slug) ? $slug : null;
     }
 
+    /**
+     * The fallback-locale page with this slug.
+     *
+     * A localized site keeps English slugs for every locale (`/ml/features`
+     * is the `features` page in Malayalam), so one slug names one page per
+     * locale. What a kit names by slug — the home page, the not-found page —
+     * is the site's own setting, and the site's own pages are the fallback
+     * locale's. An unscoped, unordered lookup could return the Malayalam row
+     * and bind it as the home page, serving Malayalam at bare `/`.
+     */
     public function idForSlug(mixed $slug): ?string
     {
         if (! is_string($slug) || $slug === '' || ! $this->schemas->has('page')) {
             return null;
         }
-        $id = Entry::type('page')->where('slug', $slug)->first()?->getKey();
+        $fallback = LocalizationSettings::get()->fallback_locale;
+
+        $id = Entry::type('page')
+            ->where('slug', $slug)
+            // '' (and null on old rows) is how EntryManager stores "the
+            // fallback locale" when a create names none.
+            ->where(fn ($query) => $query->where('locale', $fallback)->orWhere('locale', '')->orWhereNull('locale'))
+            ->orderBy('id')
+            ->first()?->getKey();
 
         return is_string($id) ? $id : null;
     }
