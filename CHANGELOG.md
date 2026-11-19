@@ -7,7 +7,7 @@ there is no supported upgrade path between alpha versions.
 
 ## [Unreleased]
 
-## [0.9.1-alpha] - Unreleased
+## [0.9.1-alpha] - 2026-11-20
 
 Translated site kits. A kit can now carry the same site in several locales —
 English slugs in every locale, so `/ml/features` is the `features` page in
